@@ -1,10 +1,10 @@
 import { resolveProperty } from "@/lib/get-property";
 import { notFound } from "next/navigation";
-import { HomeClient } from "./home-client";
+import { CheckoutClient } from "./checkout-client";
 
-export default async function HomePage() {
+export default async function CheckoutPage() {
   const property = await resolveProperty();
   if (!property) notFound();
 
-  return <HomeClient property={property} />;
+  return <CheckoutClient property={property} />;
 }

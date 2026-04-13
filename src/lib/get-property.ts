@@ -54,8 +54,9 @@ export async function resolveProperty(): Promise<ResolvedProperty | null> {
       .limit(1);
   }
 
-  // Fallback: if on localhost and only one property exists, use it
-  if (!property && (domain === "localhost" || domain === "127.0.0.1")) {
+  // Fallback: if no property matched by domain, use the first one
+  // This covers localhost dev, Railway preview URLs, and single-property setups
+  if (!property) {
     [property] = await db.select().from(properties).limit(1);
   }
 

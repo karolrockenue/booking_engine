@@ -5,9 +5,18 @@ import { eq } from "drizzle-orm";
 import { encryptToken, verifyOauthState } from "@/lib/crypto";
 import { exchangeCodeForTokens } from "@/lib/cloudbeds/client";
 
-function redirectWithError(req: NextRequest, code: string) {
+// Use the public origin from CLOUDBEDS_REDIRECT_URI, not req.url. Inside
+// Railway the request URL reflects the internal localhost:8080 host, not the
+// public Railway domain — using req.url for redirects breaks the round trip.
+function publicOrigin(): string {
+  const redirectUri = process.env.CLOUDBEDS_REDIRECT_URI;
+  if (redirectUri) return new URL(redirectUri).origin;
+  return "http://localhost:3000";
+}
+
+function redirectWithError(code: string) {
   return NextResponse.redirect(
-    new URL(`/admin?cloudbedsError=${encodeURIComponent(code)}`, req.url)
+    `${publicOrigin()}/admin?cloudbedsError=${encodeURIComponent(code)}`
   );
 }
 
@@ -17,18 +26,18 @@ export async function GET(req: NextRequest) {
   const state = searchParams.get("state");
   const oauthError = searchParams.get("error");
 
-  if (oauthError) return redirectWithError(req, oauthError);
-  if (!code || !state) return redirectWithError(req, "missing_params");
+  if (oauthError) return redirectWithError(oauthError);
+  if (!code || !state) return redirectWithError("missing_params");
 
   const verified = verifyOauthState(state);
-  if (!verified) return redirectWithError(req, "invalid_state");
+  if (!verified) return redirectWithError("invalid_state");
 
   let tokens;
   try {
     tokens = await exchangeCodeForTokens(code);
   } catch (err) {
     console.error("Cloudbeds token exchange failed:", err);
-    return redirectWithError(req, "token_exchange_failed");
+    return redirectWithError("token_exchange_failed");
   }
 
   await db
@@ -41,9 +50,6 @@ export async function GET(req: NextRequest) {
     .where(eq(properties.id, verified.propertyId));
 
   return NextResponse.redirect(
-    new URL(
-      `/admin/properties/${verified.propertyId}?cloudbeds=connected`,
-      req.url
-    )
+    `${publicOrigin()}/admin/properties/${verified.propertyId}?cloudbeds=connected`
   );
 }

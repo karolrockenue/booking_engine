@@ -11,6 +11,8 @@ interface Property {
   name: string;
   domain: string | null;
   cloudbedsPropertyId: string | null;
+  cloudbedsConnected: boolean;
+  cloudbedsTokenExpiresAt: string | null;
   stripeAccountId: string | null;
   stripeAccountStatus: string | null;
   stripeAccountCurrency: string | null;
@@ -69,6 +71,33 @@ export default function PropertyDetailPage({
   const [newRoomMaxOcc, setNewRoomMaxOcc] = useState("2");
   const [newRoomDesc, setNewRoomDesc] = useState("");
   const [creatingRoom, setCreatingRoom] = useState(false);
+
+  // Cloudbeds OAuth
+  const [connecting, setConnecting] = useState(false);
+
+  async function handleConnectCloudbeds() {
+    setConnecting(true);
+    try {
+      const res = await fetch("/api/cloudbeds/oauth/start", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ propertyId: id }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.authorizeUrl) {
+        alert(data.error ?? "Failed to start Cloudbeds OAuth");
+        setConnecting(false);
+        return;
+      }
+      window.location.href = data.authorizeUrl;
+    } catch (e) {
+      alert("Failed to start Cloudbeds OAuth");
+      setConnecting(false);
+    }
+  }
 
   async function fetchProperty() {
     setLoading(true);
@@ -291,19 +320,32 @@ export default function PropertyDetailPage({
             </div>
           </div>
 
-          {/* Connection status — set programmatically by OAuth + Connect flows (Steps 4 / 9) */}
+          {/* Connection status. Cloudbeds tokens set by OAuth (Step 4); Stripe
+              status set by Connect onboarding (Step 9). */}
           <div className="mt-6 grid gap-4 md:grid-cols-2 text-xs">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-3 flex-wrap">
               <span className="text-gray-500">Cloudbeds:</span>
               <span
                 className={`px-2 py-0.5 rounded-full font-medium ${
-                  property.cloudbedsPropertyId
+                  property.cloudbedsConnected
                     ? "bg-green-100 text-green-700"
                     : "bg-gray-100 text-gray-500"
                 }`}
               >
-                {property.cloudbedsPropertyId ? "configured" : "not connected"}
+                {property.cloudbedsConnected ? "connected" : "not connected"}
               </span>
+              <button
+                type="button"
+                onClick={handleConnectCloudbeds}
+                disabled={connecting}
+                className="text-xs px-2 py-0.5 border rounded hover:bg-gray-50 disabled:opacity-50"
+              >
+                {connecting
+                  ? "Redirecting..."
+                  : property.cloudbedsConnected
+                    ? "Reconnect"
+                    : "Connect to Cloudbeds"}
+              </button>
             </div>
             <div className="flex items-center gap-2">
               <span className="text-gray-500">Stripe:</span>

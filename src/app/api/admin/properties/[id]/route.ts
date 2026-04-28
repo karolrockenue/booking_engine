@@ -42,8 +42,17 @@ export async function GET(
       db.select().from(ratePlans).where(eq(ratePlans.propertyId, id)),
     ]);
 
+  // Don't ship the encrypted tokens to the browser — replace with a derived
+  // boolean for UI status.
+  const {
+    cloudbedsAccessToken,
+    cloudbedsRefreshToken,
+    ...safeProperty
+  } = property;
+
   return NextResponse.json({
-    ...property,
+    ...safeProperty,
+    cloudbedsConnected: !!cloudbedsAccessToken && !!cloudbedsRefreshToken,
     pages: propertyPages,
     contentBlocks: propertyContent,
     images: propertyImages,

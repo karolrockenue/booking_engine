@@ -9,6 +9,13 @@ import {
   AvailabilityResults,
   type AvailabilityResult,
 } from "@/components/booking/AvailabilityResults";
+import { BookingProgress } from "@/components/booking/BookingProgress";
+import {
+  ExtrasPanel,
+  AVAILABLE_EXTRAS,
+} from "@/components/booking/ExtrasPanel";
+import { StickyBookingBar } from "@/components/booking/StickyBookingBar";
+import { PriceCompare } from "@/components/booking/PriceCompare";
 import type { ResolvedProperty } from "@/lib/get-property";
 
 export function RoomsClient({ property }: { property: ResolvedProperty }) {
@@ -17,9 +24,19 @@ export function RoomsClient({ property }: { property: ResolvedProperty }) {
   const checkIn = searchParams.get("checkIn") ?? "";
   const checkOut = searchParams.get("checkOut") ?? "";
   const adults = parseInt(searchParams.get("adults") ?? "2");
+  const children = parseInt(searchParams.get("children") ?? "0");
+  const roomsCount = parseInt(searchParams.get("rooms") ?? "1");
+  const currency = property.currency ?? "GBP";
 
   const [results, setResults] = useState<AvailabilityResult[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Selection state
+  const [selectedResult, setSelectedResult] =
+    useState<AvailabilityResult | null>(null);
+  const [selectedExtras, setSelectedExtras] = useState<Set<string>>(
+    new Set()
+  );
 
   useEffect(() => {
     if (!checkIn || !checkOut) {
@@ -54,75 +71,148 @@ export function RoomsClient({ property }: { property: ResolvedProperty }) {
   }
 
   function handleSelect(result: AvailabilityResult) {
+    setSelectedResult(result);
+    setSelectedExtras(new Set());
+  }
+
+  function handleClear() {
+    setSelectedResult(null);
+    setSelectedExtras(new Set());
+  }
+
+  function handleToggleExtra(extraId: string) {
+    setSelectedExtras((prev) => {
+      const next = new Set(prev);
+      if (next.has(extraId)) {
+        next.delete(extraId);
+      } else {
+        next.add(extraId);
+      }
+      return next;
+    });
+  }
+
+  function calcExtrasTotal() {
+    let total = 0;
+    for (const id of selectedExtras) {
+      const extra = AVAILABLE_EXTRAS.find((e) => e.id === id);
+      if (extra) {
+        total +=
+          extra.priceType === "per_night"
+            ? extra.price * nights
+            : extra.price;
+      }
+    }
+    return total;
+  }
+
+  function handleContinue() {
+    if (!selectedResult) return;
+    const extrasTotal = calcExtrasTotal();
     const params = new URLSearchParams({
       checkIn,
       checkOut,
       adults: adults.toString(),
-      roomTypeId: result.roomType.id,
-      ratePlanId: result.ratePlan.id,
-      roomName: result.roomType.name,
-      rateName: result.ratePlan.name,
-      totalPrice: result.totalPrice.toString(),
-      nights: result.nights.toString(),
-      nightlyRates: JSON.stringify(result.nightlyRates),
+      roomTypeId: selectedResult.roomType.id,
+      ratePlanId: selectedResult.ratePlan.id,
+      roomName: selectedResult.roomType.name,
+      rateName: selectedResult.ratePlan.name,
+      totalPrice: (selectedResult.totalPrice + extrasTotal).toString(),
+      nights: selectedResult.nights.toString(),
+      nightlyRates: JSON.stringify(selectedResult.nightlyRates),
     });
+    if (selectedExtras.size > 0) {
+      params.set("extras", JSON.stringify(Array.from(selectedExtras)));
+      params.set("extrasTotal", extrasTotal.toString());
+    }
     router.push(`/checkout?${params}`);
   }
 
   return (
     <ThemeProvider theme={property.theme}>
-      <NavBar />
+      <NavBar variant="booking" />
+      <BookingProgress currentStep={1} />
       <main
         className="min-h-screen"
-        style={{ backgroundColor: "var(--color-background)" }}
+        style={{
+          backgroundColor: "#F2F2F2",
+          paddingBottom: selectedResult ? "100px" : undefined,
+        }}
       >
+        {/* Page header with accent band */}
         <div
-          className="mx-auto pt-32 pb-24"
+          style={{
+            backgroundColor: "var(--color-primary)",
+          }}
+        >
+          <div
+            className="mx-auto py-10 md:py-12"
+            style={{
+              maxWidth: "var(--layout-max-width)",
+              paddingLeft: "var(--container-padding)",
+              paddingRight: "var(--container-padding)",
+            }}
+          >
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <h1
+                  className="text-2xl md:text-3xl mb-2"
+                  style={{
+                    fontFamily: "var(--font-heading)",
+                    fontWeight: "var(--font-heading-weight)",
+                    letterSpacing: "var(--font-heading-letter-spacing)",
+                    color: "#FFFFFF",
+                  }}
+                >
+                  Select Your Room
+                </h1>
+                <p
+                  className="text-sm"
+                  style={{
+                    fontFamily: "var(--font-body)",
+                    color: "rgba(255,255,255,0.7)",
+                  }}
+                >
+                  {formatDate(checkIn)} &rarr; {formatDate(checkOut)} &middot;{" "}
+                  {nights} night{nights !== 1 ? "s" : ""} &middot;{" "}
+                  {adults} adult{adults !== 1 ? "s" : ""}
+                  {children > 0 && <>, {children} child{children !== 1 ? "ren" : ""}</>}
+                  {" "}&middot; {roomsCount} room{roomsCount !== 1 ? "s" : ""}
+                  <span className="ml-3 hidden sm:inline-flex items-center gap-1 text-[10px] uppercase tracking-wider" style={{ color: "rgba(255,255,255,0.4)" }}>
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>
+                    Best rate guaranteed
+                  </span>
+                </p>
+              </div>
+              <a
+                href="/"
+                className="text-sm px-4 py-2 rounded transition-colors self-start"
+                style={{
+                  fontFamily: "var(--font-body)",
+                  color: "#FFFFFF",
+                  border: "1px solid rgba(255,255,255,0.3)",
+                }}
+                onMouseEnter={(e) =>
+                  (e.currentTarget.style.backgroundColor = "rgba(255,255,255,0.1)")
+                }
+                onMouseLeave={(e) =>
+                  (e.currentTarget.style.backgroundColor = "")
+                }
+              >
+                Change dates
+              </a>
+            </div>
+          </div>
+        </div>
+
+        <div
+          className="mx-auto pt-8 pb-24"
           style={{
             maxWidth: "var(--layout-max-width)",
             paddingLeft: "var(--container-padding)",
             paddingRight: "var(--container-padding)",
           }}
         >
-          <div
-            className="flex items-center justify-between mb-10 pb-4"
-            style={{ borderBottom: "1px solid var(--color-border)" }}
-          >
-            <div>
-              <h1
-                className="text-2xl md:text-3xl mb-1"
-                style={{
-                  fontFamily: "var(--font-heading)",
-                  fontWeight: "var(--font-heading-weight)",
-                  letterSpacing: "var(--font-heading-letter-spacing)",
-                  color: "var(--color-text)",
-                }}
-              >
-                Select Your Room
-              </h1>
-              <p
-                className="text-sm"
-                style={{
-                  fontFamily: "var(--font-body)",
-                  color: "var(--color-text-muted)",
-                }}
-              >
-                {formatDate(checkIn)} &rarr; {formatDate(checkOut)} &middot;{" "}
-                {nights} night{nights !== 1 ? "s" : ""} &middot; {adults} guest
-                {adults !== 1 ? "s" : ""}
-              </p>
-            </div>
-            <a
-              href="/"
-              className="text-sm underline"
-              style={{
-                fontFamily: "var(--font-body)",
-                color: "var(--color-text-muted)",
-              }}
-            >
-              Change dates
-            </a>
-          </div>
 
           {loading ? (
             <div className="text-center py-16">
@@ -137,14 +227,49 @@ export function RoomsClient({ property }: { property: ResolvedProperty }) {
               </p>
             </div>
           ) : (
+            <>
+            <PriceCompare
+              directRate={
+                results.length > 0
+                  ? Math.min(...results.map((r) => r.totalPrice / r.nights))
+                  : 0
+              }
+              currency={currency}
+              nights={nights}
+            />
             <AvailabilityResults
               results={results}
-              currency={property.currency ?? "GBP"}
+              currency={currency}
               onSelect={handleSelect}
+              selectedRatePlanId={selectedResult?.ratePlan.id}
+              onClearSelection={handleClear}
+              selectedSlot={
+                <ExtrasPanel
+                  selectedExtras={selectedExtras}
+                  onToggle={handleToggleExtra}
+                  nights={nights}
+                  currency={currency}
+                />
+              }
             />
+            </>
           )}
         </div>
       </main>
+
+      {selectedResult && (
+        <StickyBookingBar
+          roomName={selectedResult.roomType.name}
+          rateName={selectedResult.ratePlan.name}
+          roomPrice={selectedResult.totalPrice}
+          selectedExtras={selectedExtras}
+          nights={nights}
+          currency={currency}
+          onContinue={handleContinue}
+          onClear={handleClear}
+          onRemoveExtra={handleToggleExtra}
+        />
+      )}
       <Footer />
     </ThemeProvider>
   );

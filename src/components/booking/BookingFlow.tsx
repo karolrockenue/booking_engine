@@ -33,6 +33,7 @@ export function BookingFlow({
     email: "",
     phone: "",
     country: "",
+    specialRequests: "",
   });
   const [submitting, setSubmitting] = useState(false);
   const [orderId, setOrderId] = useState<string | null>(null);

@@ -8,6 +8,7 @@ interface GuestDetails {
   email: string;
   phone: string;
   country: string;
+  specialRequests: string;
 }
 
 interface GuestDetailsFormProps {
@@ -15,6 +16,8 @@ interface GuestDetailsFormProps {
   onChange: (details: GuestDetails) => void;
   onSubmit: () => void;
   submitting?: boolean;
+  /** Hide the submit button (when parent handles submission separately) */
+  hideSubmit?: boolean;
 }
 
 const inputStyle = {
@@ -30,6 +33,7 @@ export function GuestDetailsForm({
   onChange,
   onSubmit,
   submitting = false,
+  hideSubmit = false,
 }: GuestDetailsFormProps) {
   function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -159,22 +163,47 @@ export function GuestDetailsForm({
         </select>
       </div>
 
-      <button
-        type="submit"
-        disabled={submitting}
-        className="mt-4 px-8 py-3 text-sm uppercase tracking-widest transition-colors disabled:opacity-50"
-        style={{
-          fontFamily: "var(--font-body)",
-          fontWeight: "600",
-          borderRadius: "var(--radius-button)",
-          backgroundColor: "var(--color-primary)",
-          color: "#FFFFFF",
-          border: "none",
-          cursor: submitting ? "not-allowed" : "pointer",
-        }}
-      >
-        {submitting ? "Processing..." : "Continue to Payment"}
-      </button>
+      <div>
+        <label
+          className="block text-xs uppercase tracking-wider mb-2 font-medium"
+          style={{ fontFamily: "var(--font-body)", color: "var(--color-text-muted)" }}
+        >
+          Special Requests <span className="normal-case tracking-normal font-normal">(optional)</span>
+        </label>
+        <textarea
+          value={details.specialRequests}
+          onChange={(e) => update("specialRequests", e.target.value)}
+          rows={3}
+          placeholder="Early check-in, extra pillows, dietary requirements..."
+          className="w-full px-4 py-3 text-sm resize-none"
+          style={inputStyle}
+        />
+        <p
+          className="text-[11px] mt-1"
+          style={{ color: "var(--color-text-muted)" }}
+        >
+          We&apos;ll do our best to accommodate your requests.
+        </p>
+      </div>
+
+      {!hideSubmit && (
+        <button
+          type="submit"
+          disabled={submitting}
+          className="mt-4 px-8 py-3 text-sm uppercase tracking-widest transition-colors disabled:opacity-50"
+          style={{
+            fontFamily: "var(--font-body)",
+            fontWeight: "600",
+            borderRadius: "var(--radius-button)",
+            backgroundColor: "var(--color-primary)",
+            color: "#FFFFFF",
+            border: "none",
+            cursor: submitting ? "not-allowed" : "pointer",
+          }}
+        >
+          {submitting ? "Processing..." : "Continue to Payment"}
+        </button>
+      )}
     </form>
   );
 }

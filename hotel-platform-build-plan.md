@@ -1,7 +1,9 @@
-# Hotel Website + Booking Engine Platform — Build Plan
+# Hotel Website + Booking Engine Platform — Reference
 
-> **Last updated:** 2026-04-13
-> **Status:** Core platform built and deployed. Awaiting Cloudbeds integration path clarification.
+> **Last updated:** 2026-04-28
+> **Status:** Core platform built and deployed. Design overhaul complete. Mid-rebuild on integrations: B2U dropped, moving to Cloudbeds REST API (OAuth2) + Stripe Connect (Express, direct charges). See `TODO.md` for the live build plan.
+
+This doc is a **snapshot of the current platform** — what's built, how it's organised, the design conventions that hold across pages. For the forward plan (rebuild steps, sequencing, design questions), see `TODO.md`.
 
 ---
 
@@ -17,6 +19,7 @@ A multi-tenant hotel website platform with an integrated booking engine, connect
 - Below the fold: photos, location, about — for reassurance, but most won't scroll.
 - Booking flow is separate pages: `/` → `/rooms` → `/checkout` → `/confirmation`
 - No content-heavy sections, virtual tours, or 20-section homepages.
+- Subtly emulate Booking.com UX patterns (date picker, guest selector, rate plan display) to build trust with guests arriving from OTAs.
 
 ---
 
@@ -44,12 +47,13 @@ A multi-tenant hotel website platform with an integrated booking engine, connect
 │              └──────┬──────┘                         │
 └─────────────────────┼───────────────────────────────┘
                       │
-          ┌───────────┼───────────────┐
-          ▼           ▼               ▼
-   ┌────────────┐ ┌────────┐  ┌─────────────┐
-   │ PostgreSQL │ │ Stripe │  │  Cloudbeds   │
-   │   (Neon)   │ │  (TBD) │  │  (TBD path) │
-   └────────────┘ └────────┘  └─────────────┘
+          ┌───────────┼─────────────────────┐
+          ▼           ▼                     ▼
+   ┌────────────┐ ┌────────────────┐  ┌────────────────────┐
+   │ PostgreSQL │ │ Stripe Connect │  │ Cloudbeds REST API │
+   │   (Neon)   │ │ (Express,       │  │ (OAuth2 per       │
+   │            │ │  direct charges)│  │  property)        │
+   └────────────┘ └────────────────┘  └────────────────────┘
 ```
 
 ### Multi-Tenant Routing
@@ -67,45 +71,77 @@ Next.js middleware reads `Host` header → resolves property from DB → serves 
 | **Database** | PostgreSQL 17 on Neon (AWS, eu-central-1) | ✅ Live |
 | **ORM** | Drizzle ORM | ✅ Built |
 | **Hosting** | Railway Pro | ✅ Deployed |
-| **Payments** | Stripe (deferred — awaiting Cloudbeds payment flow clarification) | ⏸ Deferred |
-| **Image Storage** | TBD (Cloudflare R2 planned) | 🔲 Not started |
+| **UI Library** | Radix UI (popovers), react-day-picker (calendar), Lucide (icons) | ✅ Built |
+| **Font** | Inter (via Google Fonts) | ✅ Live |
+| **PMS Integration** | Cloudbeds REST API (OAuth2) | 🟡 In progress |
+| **Payments** | Stripe Connect (Express, direct charges) | 🔲 Not started |
+| **Image Storage** | Cloudflare R2 (planned) | 🔲 Not started |
 | **DNS/Domains** | Cloudflare (planned) | 🔲 Not started |
 
 ---
 
 ## What's Built
 
-### Pages (4-page booking flow)
+### Pages (booking flow + dev tools)
 
 | Route | Purpose | Status |
 |---|---|---|
-| `/` | Hero image + date picker (above the fold only) | ✅ |
-| `/rooms` | Available rooms + rates for selected dates | ✅ |
-| `/checkout` | Guest details form + booking summary sidebar | ✅ |
-| `/confirmation` | Booking confirmed with reference number | ✅ |
+| `/` | Hero image + booking bar + about/gallery/amenities/location/CTA | ✅ |
+| `/rooms` | Room selection with rate plans, extras, price comparison | ✅ |
+| `/checkout` | Guest details + payment form + booking summary sidebar | ✅ (mock card form) |
+| `/confirmation` | Booking confirmed with reference, stay details, nightly breakdown | ✅ |
 | `/admin` | Admin dashboard (token-protected) | ✅ |
 | `/admin/properties/[id]` | Property editor (general, rooms, theme) | ✅ |
 | `/admin/bookings` | Bookings list across all properties | ✅ |
+| `/pickers` | DEV: 4 booking bar style variants (legacy, see /bars) | ✅ Dev |
+| `/bars` | DEV: 6 booking bar concepts on full hero folds | ✅ Dev |
+| `/compare` | DEV: 15 price comparison banner concepts | ✅ Dev |
+| `/compare-live` | DEV: 5 shortlisted banners in full page context with switcher | ✅ Dev |
+| `/fonts` | DEV: 10 font options rendered on full room cards | ✅ Dev |
+| `/rates` | DEV: 6 rate plan display concepts | ✅ Dev |
+| `/enhance` | DEV: 8 extras/upsell panel concepts | ✅ Dev |
+| `/rooms-mockup` | DEV: 4 full-page room card layout concepts with switcher | ✅ Dev |
 
-### API Routes
+### Booking Flow Features
 
-| Route | Method | Purpose | Status |
-|---|---|---|---|
-| `/api/availability` | GET | Query inventory with restriction checks | ✅ |
-| `/api/bookings` | POST | Create booking (validates, saves, generates order ID) | ✅ |
-| `/api/b2u/health-check` | POST | Cloudbeds B2U health check | ✅ Ready |
-| `/api/b2u/setup-property` | POST | B2U property link setup | ✅ Ready |
-| `/api/b2u/get-room-types` | POST | Return room types to Cloudbeds | ✅ Ready |
-| `/api/b2u/get-rate-plans` | POST | Return rate plans to Cloudbeds | ✅ Ready |
-| `/api/b2u/ari-update` | POST | Receive + store ARI pushes | ✅ Ready |
-| `/api/b2u/get-booking-list` | POST | Return bookings to Cloudbeds | ✅ Ready |
-| `/api/b2u/get-booking-id` | POST | Return single booking to Cloudbeds | ✅ Ready |
-| `/api/admin/properties` | GET/POST | List/create properties | ✅ |
-| `/api/admin/properties/[id]` | GET/PATCH | Get/update property | ✅ |
-| `/api/admin/properties/[id]/rooms` | GET/POST | List/create room types | ✅ |
-| `/api/admin/properties/[id]/pages` | GET/POST | List/upsert page layouts | ✅ |
-| `/api/admin/properties/[id]/content` | GET/POST | List/upsert content blocks | ✅ |
-| `/api/admin/bookings` | GET | List all bookings | ✅ |
+**Homepage:**
+- Full-screen hero with hotel image + gradient overlay
+- Icon-led booking bar: tinted icon squares (Calendar, Users, Tag), small gray labels, normal-case values, no underlines
+- Smart date placeholder showing tomorrow's dates
+- "Check Availability" button with colour-matched glow shadow
+- "Official Website — Lowest Price Guaranteed" trust badge on hero
+- Below-fold sections: About, Gallery (bento grid with next/image), Amenities (white cards on #F2F2F2), Location (split panel: info + map), Why Book Direct (navy section with glass cards), Booking Policy + CTA
+- Scroll fade-in animations via IntersectionObserver (FadeIn component)
+- "Official Site" badge in NavBar next to hotel name
+
+**Room Selection (`/rooms`):**
+- 4-step progress bar: Select Room → Your Details → Payment → Confirmation (evenly spaced, centered)
+- Navy page header with dates/guests/rooms summary + "Best rate guaranteed" inline badge
+- Price comparison banner: emerald gradient with OTA prices in frosted pills (strikethrough) vs direct rate
+- Dark Header room cards: navy band with room name + urgency tags, image left, description + rates right
+- 4 rate plans per room: Flexible Room Only, Flexible + Breakfast, Non-Refundable Room Only, Non-Refundable + Breakfast
+- Rate plans sorted by price, cheapest 2 shown by default, "Show more rates" expander
+- Breakfast/cancellation badges, outline "Reserve" buttons
+- Selection flow: select rate → other rooms dim, extras panel appears, sticky basket bar appears
+- Extras panel: "Enhance your stay" with card grid (currently hardcoded list — being moved to Cloudbeds `getItems`)
+- Sticky basket bar: navy background, shopping bag icon, itemised extras as removable pills, running total, white "Continue" button
+
+**Checkout (`/checkout`):**
+- Guest Details card with navy header band (name, email, phone, country, special requests)
+- Payment card with navy header band — currently a mock card form, being replaced with Stripe Elements
+- Card brand badges (Visa, Mastercard, Amex)
+- SSL security note
+- Booking Summary sidebar with nightly breakdown
+- Test data helpers (fill guest data, use test card 4242)
+- "Pay & Confirm" button
+
+**Confirmation (`/confirmation`):**
+- Green "Booking Successful" header with checkmark
+- Booking reference with copy-to-clipboard
+- Email confirmation note
+- Stay Details grid (hotel, room, dates, rate, guests, total)
+- Nightly breakdown with total row
+- Return to homepage button
 
 ### Design System
 
@@ -121,24 +157,28 @@ Next.js middleware reads `Host` header → resolves property from DB → serves 
 
 All rendered via CSS custom properties. Components read from `useTheme()` context.
 
+**Design language (established 2026-04-14):**
+- Font: Inter (loaded via Google Fonts)
+- Page backgrounds: `#F2F2F2` for booking flow, `#fff` for homepage sections
+- Card pattern: white cards with `1px solid #E5E0D8` border, `rounded-md`
+- Dark header bands: navy `var(--color-primary)` on room cards, checkout sections, confirmation sections
+- Buttons: outline "Reserve" style (`border: 1px solid primary, borderRadius: 2px`) for rate selection
+- Progress bar: 4 steps, evenly spaced, navy fill, 3px top accent line
+- Sticky basket: navy background, white text, removable extra pills, white Continue button
+- Booking bar: frosted glass with ambient shadow, Booking.com-inspired date/guest selectors
+
 **Component library:**
-- Website: HeroSection, ContentBlock, RoomCard, RoomShowcase, AmenitiesGrid, Gallery, TestimonialsSection, LocationMap, ContactSection, CTABanner
-- Booking: DatePicker, GuestSelector, AvailabilityResults, GuestDetailsForm, BookingSummary, BookingWidget, BookingFlow
-- Layout: ThemeProvider, NavBar, Footer
+- Website: HeroSection, FadeIn (scroll animation)
+- Booking: BookingBar, BookingBarLuxury, BookingBarCompact, BookingBarWarm, BookingProgress, AvailabilityResults (with RatePlanList), ExtrasPanel, StickyBookingBar, PriceCompare, GuestDetailsForm, BookingSummary, BookingWidget, BookingFlow
+- Layout: ThemeProvider, NavBar (default/booking variants, hideCta option), Footer
 - Admin: ThemeEditor
 - PageRenderer (JSON config → component composition)
 
-**Admin theme editor** — visual editor with:
-- Color pickers with hex input + swatch preview
-- Font dropdowns, weight selector
-- Spacing/radius inputs with visual preview
-- Style selectors (nav, button, hero, image treatment)
-- Hero config (headline, subheadline, image, overlay slider)
-- Contact info + social links
-
 ### Database Schema (8 tables, all live on Neon)
 
-- `properties` — multi-tenant config, theme JSONB, domain, Cloudbeds IDs
+> Schema is being reworked alongside the integration rebuild — see `TODO.md` Step 3 for the migration plan. Current shape:
+
+- `properties` — multi-tenant config, theme JSONB, domain, integration IDs
 - `pages` — page layouts per property (JSON composition)
 - `content_blocks` — key-value content per property
 - `images` — image references per property
@@ -149,75 +189,26 @@ All rendered via CSS custom properties. Components read from `useTheme()` contex
 
 ### Test Data
 
-Two seeded properties with full inventory (90 days):
+**The Kensington Arms** (slug: `demo`, GBP)
+- 3 rooms: Classic Double, Deluxe Suite, Superior Twin
+- 4 rate plans per room: Flexible Room Only, Flexible + Breakfast, Non-Refundable Room Only, Non-Refundable + Breakfast
+- 90 days of inventory with weekend surcharges (+20%)
+- Breakfast rates +12%, Non-Refundable -12%
+- Hero image: boutique hotel room (from House on Warwick)
+- Font: Inter
+- Theme: Navy (#2C3E50) primary, warm border (#E5E0D8)
 
-1. **The Kensington Arms** (slug: `demo`, GBP)
-   - 3 rooms: Classic Double (£145), Deluxe Suite (£225), Superior Twin (£165)
-   - Weekend rates +20%
-   - Navy + gold theme, serif headings, sharp corners
-
-2. **UrbanStay Apartments** (slug: `urbanstay`, EUR)
-   - 2 rooms: Studio (€89), One-Bedroom (€129)
-   - Weekend rates +15%
-   - Slate + blue theme, system font, rounded corners
+**UrbanStay Apartments** (slug: `urbanstay`, EUR)
+- 2 rooms: Studio (€89), One-Bedroom (€129)
+- Weekend rates +15%
+- Slate + blue theme, system font, rounded corners
 
 ### Deployment
 
 - **Railway URL:** `https://booking-engine-production-b11b.up.railway.app`
-- **Admin panel:** `/admin` (token: `change-me-before-deploy` — CHANGE THIS)
+- **Admin panel:** `/admin` (token: `change-me-before-deploy` — needs changing before sharing)
 - **Dev convenience:** `?property=urbanstay` switches property on localhost or Railway URL
-- **Environment variables:** DATABASE_URL, ADMIN_TOKEN, B2U_SHARED_SECRET (all set on Railway)
-
----
-
-## Cloudbeds Integration — Current Status
-
-### What We Have
-- **App Type:** Booking Engine (registered as "Rockenue Booking Engine")
-- **Integration Status:** In Development
-- **Credentials:** REST API / OAuth (Client ID + Secret)
-- **Client ID:** `rockenue_be_cRtJg7K1HSUyBeYkbFLVhDMz`
-
-### What We Need to Clarify (email sent to Manuel)
-The credentials we have are **REST API/OAuth**, not **B2U/MyAllocator**. These are two different integration paths:
-
-| | B2U (MyAllocator) | REST API (OAuth) |
-|---|---|---|
-| **Data flow** | Cloudbeds pushes ARI to you | You pull from Cloudbeds |
-| **Auth** | Channel ID + Shared Secret | OAuth2 access tokens |
-| **Endpoints** | You host them, Cloudbeds calls | Cloudbeds hosts, you call |
-| **Certification** | Self-certification wizard | Standard OAuth flow |
-| **What we built** | All 7 B2U endpoints ready | Not yet built |
-
-**If B2U:** Wire in the shared secret, run self-certification, done.
-**If REST API:** Need to build OAuth flow, polling for ARI data, and adapt the booking submission to use the REST API instead of B2U callbacks. More work but doable.
-
-### OAuth Redirect URI (if REST API path)
-```
-https://booking-engine-production-b11b.up.railway.app/api/auth/callback
-```
-
----
-
-## What's NOT Built Yet
-
-### Blocked on Cloudbeds answer
-- [ ] Cloudbeds data connection (B2U or REST — waiting on Manuel)
-- [ ] BookingCreate callback to Cloudbeds (stubbed, needs real API path)
-
-### Blocked on payment clarification
-- [ ] Stripe integration (authorize → capture flow)
-- [ ] Payment form (Stripe Elements)
-- [ ] Channel Collect / Strike Token handling with Cloudbeds
-
-### Not started
-- [ ] Image upload pipeline (Cloudflare R2)
-- [ ] Confirmation emails to guests
-- [ ] Custom domain setup (Cloudflare DNS + SSL per hotel)
-- [ ] UI polish / responsive refinement
-- [ ] Real hotel content (photos, copy, room descriptions)
-- [ ] Cancellation flow
-- [ ] Booking modification flow
+- **Environment variables:** `DATABASE_URL`, `ADMIN_TOKEN` set on Railway. Cloudbeds + Stripe vars added during the rebuild (see `TODO.md`).
 
 ---
 
@@ -227,17 +218,24 @@ https://booking-engine-production-b11b.up.railway.app/api/auth/callback
 src/
 ├── app/
 │   ├── page.tsx                    # Server component → resolves property
-│   ├── home-client.tsx             # Hero + date picker
+│   ├── home-client.tsx             # Homepage: hero + below-fold sections
 │   ├── rooms/
 │   │   ├── page.tsx                # Server component
-│   │   └── rooms-client.tsx        # Availability results
+│   │   └── rooms-client.tsx        # Room selection + extras + basket
 │   ├── checkout/
 │   │   ├── page.tsx                # Server component
-│   │   └── checkout-client.tsx     # Guest details + summary
+│   │   └── checkout-client.tsx     # Guest details + payment (mock — Stripe Elements TBD)
 │   ├── confirmation/
 │   │   ├── page.tsx                # Server component
 │   │   └── confirmation-client.tsx # Booking confirmed
-│   ├── book/page.tsx               # Redirects to /
+│   ├── pickers/                    # DEV: booking bar variants (legacy)
+│   ├── bars/                       # DEV: 6 booking bar concepts on hero
+│   ├── compare/                    # DEV: 15 price comparison banners
+│   ├── compare-live/               # DEV: 5 banners in full page context
+│   ├── fonts/                      # DEV: font comparison on room cards
+│   ├── rates/                      # DEV: rate plan display concepts
+│   ├── enhance/                    # DEV: extras panel concepts
+│   ├── rooms-mockup/               # DEV: room card layout concepts
 │   ├── admin/
 │   │   ├── layout.tsx              # Auth context + nav
 │   │   ├── page.tsx                # Properties list
@@ -245,26 +243,31 @@ src/
 │   │   └── bookings/page.tsx       # Bookings list
 │   └── api/
 │       ├── availability/route.ts
-│       ├── bookings/route.ts
-│       ├── b2u/                    # 7 B2U endpoints
+│       ├── bookings/route.ts       # Currently stubs Cloudbeds — TODO Step 11 rewrites
+│       ├── b2u/                    # ⚠ B2U routes — being deleted in TODO Step 2
 │       └── admin/                  # Admin CRUD endpoints
 ├── components/
 │   ├── layout/                     # ThemeProvider, NavBar, Footer
-│   ├── website/                    # HeroSection, Gallery, etc.
-│   ├── booking/                    # DatePicker, AvailabilityResults, etc.
+│   ├── website/                    # HeroSection
+│   ├── booking/                    # BookingBar*, BookingProgress, AvailabilityResults,
+│   │                               # ExtrasPanel (hardcoded list), StickyBookingBar,
+│   │                               # PriceCompare, GuestDetailsForm, BookingSummary, etc.
+│   ├── ui/                         # FadeIn (scroll animation)
 │   ├── admin/                      # ThemeEditor
 │   └── PageRenderer.tsx            # JSON → components
 ├── db/
-│   ├── schema.ts                   # Drizzle schema (8 tables)
+│   ├── schema.ts                   # Drizzle schema (8 tables — being reworked)
 │   └── index.ts                    # Neon connection
 ├── lib/
 │   ├── theme.ts                    # PropertyTheme type + CSS vars
 │   ├── get-property.ts             # Multi-tenant resolver
 │   ├── admin-auth.ts               # Bearer token check
-│   └── b2u-auth.ts                 # Shared secret check
+│   └── b2u-auth.ts                 # ⚠ B2U auth — being deleted in TODO Step 2
 ├── scripts/
 │   ├── seed.ts                     # Kensington Arms test data
 │   ├── seed-second.ts              # UrbanStay test data
+│   ├── seed-rate-plans.ts          # 4 rate plans per room + inventory
+│   ├── update-font.ts              # Update property font in DB
 │   └── update-themes.ts            # Theme migration script
 └── middleware.ts                    # Host header + ?property= override
 ```
@@ -281,6 +284,16 @@ npm run dev
 # → http://localhost:3000/?property=urbanstay (switch property)
 ```
 
+### Dev pages (design comparison tools)
+- `/bars` — 6 booking bar concepts on full hero folds
+- `/compare` — 15 price comparison banner concepts
+- `/compare-live` — 5 shortlisted banners in full page context (with switcher)
+- `/fonts` — font comparison on full room cards
+- `/rates` — rate plan display concepts
+- `/enhance` — extras panel concepts
+- `/rooms-mockup` — 4 room card layout concepts in full page (with switcher)
+- `/pickers` — legacy booking bar variants
+
 ### Deploy
 ```bash
 railway up
@@ -291,72 +304,51 @@ railway up
 npx drizzle-kit push
 ```
 
-### Admin panel
-- Local: `http://localhost:3000/admin`
-- Production: `https://booking-engine-production-b11b.up.railway.app/admin`
-- Token: stored in `ADMIN_TOKEN` env var
+### Seed rate plans (4 per room)
+```bash
+source .env.local && export $(grep -v '^#' .env.local | xargs) && npx tsx src/scripts/seed-rate-plans.ts
+```
 
-### Adding a new property
-1. Go to `/admin` → "New Property"
-2. Set name, slug, domain
-3. Go to the property → "Theme" tab → configure colors, fonts, hero, contact
-4. Go to "Rooms" tab → add room types with OTA Room IDs
-5. Rate plans and inventory come from Cloudbeds via ARI updates (or will need manual seeding until Cloudbeds is connected)
+### Update font
+```bash
+source .env.local && export $(grep -v '^#' .env.local | xargs) && npx tsx src/scripts/update-font.ts
+```
 
-### Key decisions
+---
+
+## Design conventions (do not relitigate)
+
+These are the outcomes of the design overhaul. Follow them unless explicitly redesigning.
+
 - **Hosting:** Railway (not Vercel)
 - **DB:** Neon Postgres 17, AWS eu-central-1
-- **Payment:** Deferred until Cloudbeds confirms payment flow
 - **Design:** Conversion-first, not content-first. Homepage = booking engine.
 - **Page flow:** Separate pages (`/` → `/rooms` → `/checkout` → `/confirmation`), not single-page scroll
+- **Font:** Inter (via Google Fonts link in layout.tsx, stored in DB theme)
+- **Booking bar:** Icon-led — tinted icon squares, small gray labels, no underlines, glow button
+- **Room card layout:** Dark Header concept (navy band with room name + urgency tags, image left, rates right)
+- **Rate plan buttons:** Outline "Reserve" style (`border: 1px solid primary, borderRadius: 2px`)
+- **Extras:** Card grid with navy header, toggle on/off, sticky navy basket bar below
+- **Price compare:** Emerald gradient banner with OTA rates in frosted pills
+- **Trust signals:** "Official Site" badge in nav, "Official Website — Lowest Price Guaranteed" on hero, "Best rate guaranteed" on rooms header
+- **Page backgrounds:** Homepage = white + #F2F2F2 alternating, booking flow = #F2F2F2 throughout
+- **Dev mockup pages:** Pattern is to create comparison pages with multiple concepts, then pick the winner and apply to live. All dev pages have links in the NavBar dev section. This process works well — keep doing it for future design decisions.
 
 ---
 
-## Original Build Phases (Updated)
+## Notes for Next Agent
 
-### Phase 1: Foundation — ✅ COMPLETE
-- [x] Next.js project with TypeScript
-- [x] Neon database with full schema
-- [x] B2U endpoint handlers (all 7)
-- [x] Basic admin panel
-- [ ] B2U self-certification (blocked on credentials)
+**Design iteration process:** Karol prefers to see multiple options side by side before committing. The pattern that works:
+1. Create a dev mockup page (e.g. `/bars`, `/compare`) with 10-15 static concepts
+2. Karol shortlists to 4-5 favourites
+3. Create a "live" mockup page showing the shortlisted options in full page context with a switcher
+4. Karol picks the winner, you apply it to the real components
 
-### Phase 2: Design System + First Hotel Site — ✅ COMPLETE
-- [x] Shared component library (~15 core components)
-- [x] Theme token system with CSS custom properties
-- [x] Multi-tenant routing middleware
-- [x] First hotel website end-to-end
-- [x] Second hotel with different theme (proves multi-tenant)
+**Karol's design preferences (learned through iteration):**
+- Dislikes: emojis, too much navy/dark, magnolia (#FAF8F5) as standalone background, heavy borders, uppercase values, card-per-section on homepage
+- Likes: clean white + #F2F2F2, navy used sparingly (headers, one full section), outline buttons, subtle trust signals, Inter font, frosted/glass effects, icon-led UI
+- Homepage should feel like a hotel website, booking flow should feel like a polished product
+- The dark header pattern on room cards is the signature — navy band with room name, white body below
+- Sticky basket bar should feel substantial (navy bg, white button) not shy
 
-### Phase 3: Booking Engine MVP — ✅ COMPLETE (minus payment)
-- [x] Booking flow: search → results → details → confirmation
-- [x] Availability search from inventory table
-- [x] Booking submission API with order ID generation
-- [ ] Stripe Elements for payment (deferred)
-- [ ] BookingCreate to Cloudbeds (stubbed)
-
-### Phase 4: Admin Panel + Image Pipeline — 🟡 PARTIAL
-- [x] Theme editor (visual, with previews)
-- [x] Property CRUD + room management
-- [x] Booking management view
-- [ ] Image upload to R2
-- [ ] Content editing UI (page compositions)
-- [ ] B2U health monitoring
-
-### Phase 5: Production Pilot — 🔲 NOT STARTED
-- [ ] Deploy first real hotel on its own domain
-- [ ] Real ARI data flowing from Cloudbeds
-- [ ] Real bookings with real payments
-- [ ] Edge case handling
-
-### Phase 6: Scale — 🔲 NOT STARTED
-- [ ] Build remaining hotel sites
-- [ ] Refine components based on real designs
-
----
-
-## Open Questions
-
-1. **Cloudbeds integration path:** B2U (MyAllocator) or REST API? Email sent to Manuel. If REST, significant new work needed (OAuth flow, ARI polling, different booking submission).
-2. **Payment flow:** Channel Collect (we process via Stripe, Cloudbeds gets pre-paid reservation)? Strike Token passthrough? Refund handling? — Blocked until Cloudbeds answers.
-3. **Image hosting:** Cloudflare R2 planned but not set up. Could also use Railway's built-in storage or a simpler solution.
+**Current state:** Pages are functional and styled. Design is ~90% there. The integration layer is the active work — see `TODO.md` for the sequenced rebuild.

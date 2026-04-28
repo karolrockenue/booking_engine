@@ -85,7 +85,7 @@ export const images = pgTable(
   ]
 );
 
-// --- Room types (mirrored from Cloudbeds via B2U) ---
+// --- Room types (mirrored from Cloudbeds) ---
 
 export const roomTypes = pgTable(
   "room_types",
@@ -108,7 +108,7 @@ export const roomTypes = pgTable(
   ]
 );
 
-// --- Rate plans (mirrored from Cloudbeds via B2U) ---
+// --- Rate plans (mirrored from Cloudbeds) ---
 
 export const ratePlans = pgTable(
   "rate_plans",
@@ -129,7 +129,7 @@ export const ratePlans = pgTable(
   ]
 );
 
-// --- Inventory cache (populated by ARIUpdate pushes) ---
+// --- Inventory cache ---
 
 export const inventory = pgTable(
   "inventory",

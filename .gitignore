@@ -42,3 +42,6 @@ next-env.d.ts
 
 # source design assets (not deployed)
 /design/
+
+# scratch / smoke test output (may contain Cloudbeds response data)
+/tmp/

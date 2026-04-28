@@ -1,7 +1,7 @@
 # Hotel Website + Booking Engine Platform — Reference
 
 > **Last updated:** 2026-04-28
-> **Status:** Core platform built and deployed. Design overhaul complete. Mid-rebuild on integrations: B2U dropped, moving to Cloudbeds REST API (OAuth2) + Stripe Connect (Express, direct charges). See `TODO.md` for the live build plan.
+> **Status:** Core platform built and deployed. Design overhaul complete. Cloudbeds rebuild in flight: B2U deleted, schema migrated, OAuth + token storage live, partner-account smoke test passed. Currently blocked on a handful of open questions about cancellation policy fields, items scope, and webhook subscription — see the "Open questions — Cloudbeds API discovery" section in `TODO.md`. Stripe Connect not yet started. See `TODO.md` for the live build plan.
 
 This doc is a **snapshot of the current platform** — what's built, how it's organised, the design conventions that hold across pages. For the forward plan (rebuild steps, sequencing, design questions), see `TODO.md`.
 

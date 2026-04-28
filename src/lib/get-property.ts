@@ -13,8 +13,6 @@ export type ResolvedProperty = {
   timezone: string | null;
   theme: PropertyTheme;
   status: string | null;
-  myaPropertyId: string | null;
-  otaPropertyId: string | null;
 };
 
 /**
@@ -71,8 +69,6 @@ export async function resolveProperty(): Promise<ResolvedProperty | null> {
     timezone: property.timezone,
     theme: parseTheme(property.theme),
     status: property.status,
-    myaPropertyId: property.myaPropertyId,
-    otaPropertyId: property.otaPropertyId,
   };
 }
 

@@ -18,7 +18,6 @@ async function seed() {
       currency: "EUR",
       timezone: "Europe/Berlin",
       status: "live",
-      otaPropertyId: "urbanstay-001",
       theme: {
         name: "UrbanStay Apartments",
         slug: "urbanstay",

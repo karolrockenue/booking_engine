@@ -10,8 +10,12 @@ interface Property {
   slug: string;
   name: string;
   domain: string | null;
-  myaPropertyId: string | null;
-  otaPropertyId: string | null;
+  cloudbedsPropertyId: string | null;
+  stripeAccountId: string | null;
+  stripeAccountStatus: string | null;
+  stripeAccountCurrency: string | null;
+  platformFeePercent: string | null;
+  payoutSchedule: string | null;
   currency: string | null;
   timezone: string | null;
   theme: Record<string, unknown>;
@@ -32,6 +36,7 @@ interface Property {
     name: string;
     namePublic: string | null;
     isPublic: boolean | null;
+    isRefundable: boolean | null;
     roomTypeId: string | null;
   }>;
 }
@@ -54,7 +59,9 @@ export default function PropertyDetailPage({
   const [domain, setDomain] = useState("");
   const [status, setStatus] = useState("draft");
   const [currency, setCurrency] = useState("GBP");
-  const [myaPropertyId, setMyaPropertyId] = useState("");
+  const [cloudbedsPropertyId, setCloudbedsPropertyId] = useState("");
+  const [platformFeePercent, setPlatformFeePercent] = useState("3.00");
+  const [payoutSchedule, setPayoutSchedule] = useState("weekly");
 
   // Room creation
   const [newRoomName, setNewRoomName] = useState("");
@@ -77,7 +84,9 @@ export default function PropertyDetailPage({
         setDomain(data.domain ?? "");
         setStatus(data.status ?? "draft");
         setCurrency(data.currency ?? "GBP");
-        setMyaPropertyId(data.myaPropertyId ?? "");
+        setCloudbedsPropertyId(data.cloudbedsPropertyId ?? "");
+        setPlatformFeePercent(data.platformFeePercent ?? "3.00");
+        setPayoutSchedule(data.payoutSchedule ?? "weekly");
       }
     } finally {
       setLoading(false);
@@ -103,7 +112,9 @@ export default function PropertyDetailPage({
           domain: domain || null,
           status,
           currency,
-          myaPropertyId: myaPropertyId || null,
+          cloudbedsPropertyId: cloudbedsPropertyId || null,
+          platformFeePercent,
+          payoutSchedule,
         }),
       });
       fetchProperty();
@@ -242,17 +253,79 @@ export default function PropertyDetailPage({
             </div>
             <div>
               <label className="block text-xs text-gray-500 mb-1">
-                Cloudbeds Property ID (mya_property_id)
+                Cloudbeds Property ID
               </label>
               <input
                 type="text"
-                value={myaPropertyId}
-                onChange={(e) => setMyaPropertyId(e.target.value)}
+                value={cloudbedsPropertyId}
+                onChange={(e) => setCloudbedsPropertyId(e.target.value)}
                 placeholder="From Cloudbeds"
                 className="w-full px-3 py-2 border rounded text-sm text-gray-900"
               />
             </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">
+                Platform fee %
+              </label>
+              <input
+                type="text"
+                value={platformFeePercent}
+                onChange={(e) => setPlatformFeePercent(e.target.value)}
+                placeholder="3.00"
+                className="w-full px-3 py-2 border rounded text-sm text-gray-900"
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">
+                Payout schedule
+              </label>
+              <select
+                value={payoutSchedule}
+                onChange={(e) => setPayoutSchedule(e.target.value)}
+                className="w-full px-3 py-2 border rounded text-sm text-gray-900"
+              >
+                <option value="daily">Daily</option>
+                <option value="weekly">Weekly</option>
+                <option value="monthly">Monthly</option>
+              </select>
+            </div>
           </div>
+
+          {/* Connection status — set programmatically by OAuth + Connect flows (Steps 4 / 9) */}
+          <div className="mt-6 grid gap-4 md:grid-cols-2 text-xs">
+            <div className="flex items-center gap-2">
+              <span className="text-gray-500">Cloudbeds:</span>
+              <span
+                className={`px-2 py-0.5 rounded-full font-medium ${
+                  property.cloudbedsPropertyId
+                    ? "bg-green-100 text-green-700"
+                    : "bg-gray-100 text-gray-500"
+                }`}
+              >
+                {property.cloudbedsPropertyId ? "configured" : "not connected"}
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-gray-500">Stripe:</span>
+              <span
+                className={`px-2 py-0.5 rounded-full font-medium ${
+                  property.stripeAccountStatus === "active"
+                    ? "bg-green-100 text-green-700"
+                    : property.stripeAccountStatus === "restricted"
+                      ? "bg-red-100 text-red-700"
+                      : "bg-gray-100 text-gray-500"
+                }`}
+              >
+                {property.stripeAccountStatus ?? "not connected"}
+              </span>
+              {property.stripeAccountCurrency && (
+                <span className="text-gray-400">
+                  · {property.stripeAccountCurrency.toUpperCase()}
+                </span>
+              )}
+            </div>
+          </div>
+
           <button
             onClick={handleSave}
             disabled={saving}

@@ -19,7 +19,6 @@ async function seed() {
       currency: "GBP",
       timezone: "Europe/London",
       status: "live",
-      otaPropertyId: "demo-001",
       theme: {
         name: "The Kensington Arms",
         slug: "kensington-arms",

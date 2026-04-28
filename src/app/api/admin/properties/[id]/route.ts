@@ -63,15 +63,17 @@ export async function PATCH(
   const { id } = await params;
   const body = await req.json();
 
-  // Only allow updating specific fields
+  // Only allow updating specific fields. Stripe and Cloudbeds-token fields
+  // are set programmatically (OAuth callback / Connect onboarding webhook),
+  // not via the admin PATCH.
   const allowed: Record<string, unknown> = {};
   const fields = [
     "name",
     "slug",
     "domain",
-    "myaPropertyId",
-    "otaPropertyId",
-    "hotelKey",
+    "cloudbedsPropertyId",
+    "platformFeePercent",
+    "payoutSchedule",
     "currency",
     "timezone",
     "theme",
@@ -80,12 +82,7 @@ export async function PATCH(
 
   for (const field of fields) {
     if (body[field] !== undefined) {
-      // Map camelCase to snake_case for DB columns
-      const dbField = field === "myaPropertyId" ? "myaPropertyId"
-        : field === "otaPropertyId" ? "otaPropertyId"
-        : field === "hotelKey" ? "hotelKey"
-        : field;
-      allowed[dbField] = body[field];
+      allowed[field] = body[field];
     }
   }
 

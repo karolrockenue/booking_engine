@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
-import { bookings, bookingDayRates, inventory } from "@/db/schema";
-import { eq, and, gte, lt, sql } from "drizzle-orm";
+import { bookings, bookingDayRates, inventory, ratePlans } from "@/db/schema";
+import { eq, and, gte, lt } from "drizzle-orm";
 
 function generateOrderId() {
   const now = new Date();
@@ -47,7 +47,6 @@ export async function POST(req: NextRequest) {
     currency: string;
   };
 
-  // Validate required fields
   if (
     !propertyId ||
     !roomTypeId ||
@@ -65,12 +64,12 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // Re-verify availability before confirming
   const checkInDate = new Date(checkIn);
   const checkOutDate = new Date(checkOut);
   const nights =
     (checkOutDate.getTime() - checkInDate.getTime()) / (1000 * 60 * 60 * 24);
 
+  // Re-verify availability before confirming
   const inv = await db
     .select()
     .from(inventory)
@@ -100,9 +99,19 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const orderId = generateOrderId();
+  // Look up the rate plan to derive rateType (flex/nr) for the booking record.
+  // Cloudbeds postReservation + Stripe charge wiring lands in plan Steps 10/11.
+  const [ratePlan] = await db
+    .select()
+    .from(ratePlans)
+    .where(eq(ratePlans.id, ratePlanId))
+    .limit(1);
 
-  // Create booking
+  const rateType = ratePlan?.isRefundable === false ? "nr" : "flex";
+
+  const orderId = generateOrderId();
+  const roomTotal = totalPrice.toFixed(2);
+
   const [booking] = await db
     .insert(bookings)
     .values({
@@ -110,6 +119,7 @@ export async function POST(req: NextRequest) {
       orderId,
       roomTypeId,
       ratePlanId,
+      rateType,
       checkIn,
       checkOut,
       adults: adults ?? 1,
@@ -119,13 +129,15 @@ export async function POST(req: NextRequest) {
       guestEmail,
       guestPhone: guestPhone ?? null,
       guestCountry: guestCountry ?? null,
-      totalPrice: totalPrice.toFixed(2),
+      roomTotal,
+      extrasTotal: "0.00",
+      taxesTotal: "0.00",
+      grandTotal: roomTotal,
       currency: currency ?? "GBP",
-      myaStatus: "pending",
+      status: "pending",
     })
     .returning();
 
-  // Insert day rates
   if (nightlyRates && nightlyRates.length > 0) {
     await db.insert(bookingDayRates).values(
       nightlyRates.map((nr) => ({
@@ -136,13 +148,6 @@ export async function POST(req: NextRequest) {
       }))
     );
   }
-
-  // TODO: Call Cloudbeds BookingCreate here when payment is wired up
-  // For now, mark as confirmed (will change to: pending -> pay -> cloudbeds -> confirmed)
-  await db
-    .update(bookings)
-    .set({ myaStatus: "confirmed" })
-    .where(eq(bookings.id, booking.id));
 
   return NextResponse.json({
     success: true,

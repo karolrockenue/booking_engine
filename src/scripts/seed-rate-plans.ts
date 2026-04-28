@@ -49,24 +49,28 @@ async function seedRatePlans() {
       name: "Flexible Rate",
       namePublic: "Flexible - Room Only",
       priceMult: 1.0,
+      isRefundable: true,
     },
     {
       suffix: "flex-bb",
       name: "Flexible + Breakfast",
       namePublic: "Flexible - Breakfast Included",
       priceMult: 1.12, // +12% for breakfast
+      isRefundable: true,
     },
     {
       suffix: "nonref-room",
       name: "Non-Refundable Rate",
       namePublic: "Non-Refundable - Room Only",
       priceMult: 0.88, // -12% discount
+      isRefundable: false,
     },
     {
       suffix: "nonref-bb",
       name: "Non-Refundable + Breakfast",
       namePublic: "Non-Refundable - Breakfast Included",
       priceMult: 1.0, // breakfast premium offsets NR discount
+      isRefundable: false,
     },
   ];
 
@@ -128,6 +132,7 @@ async function seedRatePlans() {
           name: template.name,
           namePublic: template.namePublic,
           isPublic: true,
+          isRefundable: template.isRefundable,
         })
         .returning();
 

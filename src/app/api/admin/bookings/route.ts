@@ -22,9 +22,9 @@ export async function GET(req: NextRequest) {
       guestFirst: bookings.guestFirst,
       guestLast: bookings.guestLast,
       guestEmail: bookings.guestEmail,
-      totalPrice: bookings.totalPrice,
+      grandTotal: bookings.grandTotal,
       currency: bookings.currency,
-      myaStatus: bookings.myaStatus,
+      status: bookings.status,
       createdAt: bookings.createdAt,
     })
     .from(bookings)

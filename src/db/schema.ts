@@ -20,13 +20,29 @@ export const properties = pgTable("properties", {
   slug: text("slug").unique().notNull(),
   name: text("name").notNull(),
   domain: text("domain").unique(),
-  myaPropertyId: text("mya_property_id"),
-  otaPropertyId: text("ota_property_id"),
-  hotelKey: text("hotel_key"),
   currency: text("currency").default("GBP"),
   timezone: text("timezone").default("Europe/London"),
   theme: jsonb("theme").notNull(),
   status: text("status").default("draft"),
+
+  // Cloudbeds OAuth (tokens stored encrypted at app layer — see lib/crypto.ts)
+  cloudbedsPropertyId: text("cloudbeds_property_id"),
+  cloudbedsAccessToken: text("cloudbeds_access_token"),
+  cloudbedsRefreshToken: text("cloudbeds_refresh_token"),
+  cloudbedsTokenExpiresAt: timestamp("cloudbeds_token_expires_at", {
+    withTimezone: true,
+  }),
+
+  // Stripe Connect (Express, direct charges)
+  stripeAccountId: text("stripe_account_id"),
+  stripeAccountCurrency: text("stripe_account_currency"),
+  stripeAccountStatus: text("stripe_account_status").default("pending"), // pending | active | restricted
+  platformFeePercent: decimal("platform_fee_percent", {
+    precision: 5,
+    scale: 2,
+  }).default("3.00"),
+  payoutSchedule: text("payout_schedule").default("weekly"),
+
   createdAt: timestamp("created_at", { withTimezone: true }).default(
     sql`NOW()`
   ),
@@ -120,6 +136,8 @@ export const ratePlans = pgTable(
     name: text("name").notNull(),
     namePublic: text("name_public"),
     isPublic: boolean("is_public").default(true),
+    isRefundable: boolean("is_refundable").default(true),
+    cancellationPolicy: jsonb("cancellation_policy"),
   },
   (table) => [
     uniqueIndex("rate_plans_property_ota_idx").on(
@@ -162,13 +180,25 @@ export const inventory = pgTable(
 );
 
 // --- Bookings ---
+//
+// Status lifecycle (not strictly sequential — pms_synced and paid can occur in
+// either order in the Flex flow, since the Cloudbeds reservation is created at
+// booking time but the charge is deferred to the cancellation cutoff):
+//   pending             — created, no money or PMS yet
+//   payment_authorized  — Flex SetupIntent saved, no charge yet
+//   paid                — PaymentIntent succeeded (NR at checkout, or Flex at cutoff)
+//   pms_synced          — postReservation succeeded
+//   failed              — terminal; auto-charge gave up after 24h grace
+//   cancelled           — guest self-cancelled or auto-cancelled after failure
 
 export const bookings = pgTable("bookings", {
   id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
   propertyId: uuid("property_id").references(() => properties.id),
   orderId: text("order_id").unique().notNull(),
+  cloudbedsReservationId: text("cloudbeds_reservation_id"),
   roomTypeId: uuid("room_type_id").references(() => roomTypes.id),
   ratePlanId: uuid("rate_plan_id").references(() => ratePlans.id),
+  rateType: text("rate_type"), // flex | nr
   checkIn: date("check_in").notNull(),
   checkOut: date("check_out").notNull(),
   adults: integer("adults").default(1),
@@ -178,11 +208,29 @@ export const bookings = pgTable("bookings", {
   guestEmail: text("guest_email").notNull(),
   guestPhone: text("guest_phone"),
   guestCountry: text("guest_country"),
-  totalPrice: decimal("total_price", { precision: 10, scale: 2 }).notNull(),
+
+  // Price breakdown
+  roomTotal: decimal("room_total", { precision: 10, scale: 2 }).notNull(),
+  extrasTotal: decimal("extras_total", { precision: 10, scale: 2 })
+    .notNull()
+    .default("0.00"),
+  taxesTotal: decimal("taxes_total", { precision: 10, scale: 2 })
+    .notNull()
+    .default("0.00"),
+  applicationFee: decimal("application_fee", { precision: 10, scale: 2 }),
+  grandTotal: decimal("grand_total", { precision: 10, scale: 2 }).notNull(),
   currency: text("currency").notNull(),
-  stripePaymentIntentId: text("stripe_pi_id"),
-  myaStatus: text("mya_status").default("pending"),
-  myaResponse: jsonb("mya_response"),
+
+  // Stripe state
+  stripePaymentIntentId: text("stripe_payment_intent_id"),
+  stripeSetupIntentId: text("stripe_setup_intent_id"),
+  stripePaymentMethodId: text("stripe_payment_method_id"),
+  stripeCustomerId: text("stripe_customer_id"),
+  chargeAt: timestamp("charge_at", { withTimezone: true }),
+
+  cancellationPolicySnapshot: jsonb("cancellation_policy_snapshot"),
+  status: text("status").notNull().default("pending"),
+
   createdAt: timestamp("created_at", { withTimezone: true }).default(
     sql`NOW()`
   ),
@@ -196,4 +244,35 @@ export const bookingDayRates = pgTable("booking_day_rates", {
   date: date("date").notNull(),
   rate: decimal("rate", { precision: 10, scale: 2 }).notNull(),
   rateId: text("rate_id"),
+});
+
+// --- Booking extras (Cloudbeds items attached to a reservation as folio line items) ---
+
+export const bookingExtras = pgTable("booking_extras", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  bookingId: uuid("booking_id").references(() => bookings.id),
+  cloudbedsItemId: text("cloudbeds_item_id"),
+  name: text("name").notNull(),
+  qty: integer("qty").notNull().default(1),
+  unitPrice: decimal("unit_price", { precision: 10, scale: 2 }).notNull(),
+  totalPrice: decimal("total_price", { precision: 10, scale: 2 }).notNull(),
+  currency: text("currency").notNull(),
+});
+
+// --- Payment events (audit trail for Stripe + auto-charge cron) ---
+
+export const paymentEvents = pgTable("payment_events", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  bookingId: uuid("booking_id").references(() => bookings.id),
+  type: text("type").notNull(), // payment_intent_created | payment_intent_succeeded | payment_intent_failed | setup_intent_created | setup_intent_succeeded | auto_charge_attempt | auto_charge_succeeded | auto_charge_failed | refund | payment_method_detached
+  stripeId: text("stripe_id"),
+  amount: decimal("amount", { precision: 10, scale: 2 }),
+  currency: text("currency"),
+  status: text("status"),
+  errorCode: text("error_code"),
+  errorMessage: text("error_message"),
+  payload: jsonb("payload"),
+  createdAt: timestamp("created_at", { withTimezone: true }).default(
+    sql`NOW()`
+  ),
 });

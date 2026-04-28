@@ -12,9 +12,9 @@ interface Booking {
   guestFirst: string;
   guestLast: string;
   guestEmail: string;
-  totalPrice: string;
+  grandTotal: string;
   currency: string;
-  myaStatus: string | null;
+  status: string | null;
   createdAt: string | null;
 }
 
@@ -75,21 +75,19 @@ export default function AdminBookingsPage() {
                     {b.checkIn} &rarr; {b.checkOut}
                   </td>
                   <td className="px-4 py-3 text-right text-gray-900 font-medium">
-                    {symbol(b.currency)}{parseFloat(b.totalPrice).toFixed(2)}
+                    {symbol(b.currency)}{parseFloat(b.grandTotal).toFixed(2)}
                   </td>
                   <td className="px-4 py-3">
                     <span
                       className={`inline-block px-2 py-0.5 text-xs rounded-full font-medium ${
-                        b.myaStatus === "confirmed"
+                        b.status === "paid" || b.status === "pms_synced"
                           ? "bg-green-100 text-green-700"
-                          : b.myaStatus === "cancelled"
+                          : b.status === "cancelled" || b.status === "failed"
                             ? "bg-red-100 text-red-700"
-                            : b.myaStatus === "failed"
-                              ? "bg-red-100 text-red-700"
-                              : "bg-yellow-100 text-yellow-700"
+                            : "bg-yellow-100 text-yellow-700"
                       }`}
                     >
-                      {b.myaStatus}
+                      {b.status}
                     </span>
                   </td>
                   <td className="px-4 py-3 text-gray-400 text-xs">

@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
-import { inventory, roomTypes, ratePlans, images } from "@/db/schema";
-import { eq, and, gte, lte, gt, sql } from "drizzle-orm";
+import { properties, inventory, roomTypes, ratePlans } from "@/db/schema";
+import { eq, and, gte, lte, sql } from "drizzle-orm";
+import { syncInventoryForProperty } from "@/lib/cloudbeds/sync-inventory";
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
@@ -27,6 +28,35 @@ export async function GET(req: NextRequest) {
       { error: "checkOut must be after checkIn" },
       { status: 400 }
     );
+  }
+
+  // Cold-start: if the property is connected to Cloudbeds but we have no
+  // inventory rows in the requested window, sync synchronously. This catches
+  // the first ever request after OAuth and any gap left by a missed webhook
+  // before the 6-hourly safety net runs.
+  const [coldStartCheck] = await db
+    .select({
+      cloudbedsPropertyId: properties.cloudbedsPropertyId,
+      hasInventory: sql<boolean>`EXISTS (
+        SELECT 1 FROM ${inventory}
+        WHERE ${inventory.propertyId} = ${properties.id}
+          AND ${inventory.date} >= ${checkIn}
+          AND ${inventory.date} <= ${checkOut}
+      )`,
+    })
+    .from(properties)
+    .where(eq(properties.id, propertyId))
+    .limit(1);
+
+  if (coldStartCheck?.cloudbedsPropertyId && !coldStartCheck.hasInventory) {
+    try {
+      await syncInventoryForProperty(propertyId);
+    } catch (e) {
+      console.error(
+        `availability cold-start sync failed: ${e instanceof Error ? e.message : String(e)}`
+      );
+      // Fall through — return whatever (empty) inventory we have rather than 500.
+    }
   }
 
   // Get all room types for the property

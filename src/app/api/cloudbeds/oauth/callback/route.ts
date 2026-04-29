@@ -5,6 +5,29 @@ import { eq } from "drizzle-orm";
 import { encryptToken, verifyOauthState } from "@/lib/crypto";
 import { exchangeCodeForTokens } from "@/lib/cloudbeds/client";
 
+interface CloudbedsHotel {
+  propertyID: string;
+  propertyName?: string;
+}
+
+async function fetchPrimaryHotelId(
+  accessToken: string
+): Promise<string | null> {
+  const res = await fetch("https://hotels.cloudbeds.com/api/v1.3/getHotels", {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      Accept: "application/json",
+    },
+  });
+  if (!res.ok) return null;
+  const body = (await res.json()) as {
+    success?: boolean;
+    data?: CloudbedsHotel[];
+  };
+  if (!body.success || !body.data || body.data.length === 0) return null;
+  return body.data[0].propertyID ?? null;
+}
+
 // Use the public origin from CLOUDBEDS_REDIRECT_URI, not req.url. Inside
 // Railway the request URL reflects the internal localhost:8080 host, not the
 // public Railway domain — using req.url for redirects breaks the round trip.
@@ -40,12 +63,21 @@ export async function GET(req: NextRequest) {
     return redirectWithError("token_exchange_failed");
   }
 
+  // Resolve the Cloudbeds property ID once at connection time so subsequent
+  // calls (sync, webhook handler) don't have to. Don't fail the whole flow if
+  // this call hits a hiccup — a fallback in syncInventoryForProperty will
+  // backfill it on the first sync run.
+  const cloudbedsPropertyId = await fetchPrimaryHotelId(
+    tokens.access_token
+  ).catch(() => null);
+
   await db
     .update(properties)
     .set({
       cloudbedsAccessToken: encryptToken(tokens.access_token),
       cloudbedsRefreshToken: encryptToken(tokens.refresh_token),
       cloudbedsTokenExpiresAt: new Date(Date.now() + tokens.expires_in * 1000),
+      ...(cloudbedsPropertyId ? { cloudbedsPropertyId } : {}),
     })
     .where(eq(properties.id, verified.propertyId));
 

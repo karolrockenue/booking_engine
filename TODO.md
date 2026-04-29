@@ -8,9 +8,11 @@ Earlier steps are concrete because the work is well-scoped. Later steps are loos
 
 ## Before you start
 
-- Manuel's email (2026-04-24) confirmed REST API path. No further green light needed before starting. Take him up on the call offer only if a blocker surfaces during Step 5.
-- Current branch is `main` with a lot of uncommitted work. Don't begin the schema migration before Step 1 (git setup) — losing the current state is not recoverable.
-- Cloudbeds API docs: pull endpoint references straight from `https://hotels.cloudbeds.com/api/v1.3/docs/` as you go. Don't rely on memorised shapes.
+- Manuel's email (2026-04-24) confirmed REST API path. No further green light needed.
+- Cloudbeds has TWO API surfaces and we use both:
+    - **v1.3 (legacy, action-style)** at `https://hotels.cloudbeds.com/api/v1.3` — `getRatePlans`, `getReservations`, `postReservation`, `postCustomItem`, `postPayment`, `postWebhook`. `propertyID` goes in the query string. Response is `{ success, data, ... }`.
+    - **New modular API** at `https://api.cloudbeds.com` — REST paths like `/addons/v1/addons`. `propertyId` goes in the `x-property-id` header. Response is `{ offset, limit, data }`. Prices are returned as strings in **minor units** (e.g. `"1500"` = £15.00) — divide by 100 when displaying.
+    - Both share one OAuth flow + one set of tokens. Just request the union of scopes.
 - Next.js docs: per `AGENTS.md`, this is Next.js 16 with breaking changes from prior versions. Check `node_modules/next/dist/docs/` before writing route handlers, middleware, or server actions.
 
 ---
@@ -113,7 +115,7 @@ Goal: per-property OAuth tokens stored encrypted, refresh handled silently, read
 
 Deliverable: webmaster can click "Connect to Cloudbeds" in admin, complete OAuth, and the property has working tokens. `cloudbeds(propertyId, "/getHotelDetails")` returns the hotel info as a smoke-test endpoint.
 
-### Step 5: Sandbox smoke-test — partially done
+### Step 5: Sandbox smoke-test — done
 
 Read-only smoke test script lives at `src/scripts/cloudbeds-smoke.ts`; raw responses save to `tmp/cloudbeds-smoke/` (gitignored). Run with:
 
@@ -125,25 +127,39 @@ set -a && source .env.local && set +a && npx tsx src/scripts/cloudbeds-smoke.ts 
 - OAuth + token refresh.
 - `getHotels` → `propertyID` for subsequent calls.
 - `getHotelDetails`, `getRoomTypes`, `getRooms`, `getTaxesAndFees`, `getReservations` (returns `thirdPartyIdentifier` ✓), `getWebhooks` (subscription list — empty until we subscribe).
-- `getRatePlans` with `startDate` + `endDate` (note: not `resultsFrom`/`resultsTo` as originally guessed) and `detailedRates: true` returns `rateID`, `roomTypeID`, daily pricing, and per-date restrictions (`minLos`, `maxLos`, `closedToArrival`, `closedToDeparture`, `cutOff`).
+- `getRatePlans` with `startDate` + `endDate` and `detailedRates: true` returns `rateID`, `roomTypeID`, daily pricing, and per-date restrictions (`minLos`, `maxLos`, `closedToArrival`, `closedToDeparture`, `cutOff`).
+- `/addons/v1/addons` on the new API host (with `x-property-id` header and `read:addon` scope) returns the property's add-on catalog. Price is a string in minor units (`"1000"` = $10.00); the `currencyCode` may not match the property's currency in the partner test account.
 
-**Open questions surfaced — see the "Open questions — Cloudbeds API discovery" section at the bottom.** Don't build Step 6 / 7 against assumptions about cancellation policy and items until those are answered. Re-run this script after rate plans + cancellation policies are properly configured in Cloudbeds — fields that look missing now may simply not be populated in the partner test account.
+**Resolved questions** (folded into Steps 6 / 7 below):
 
-**Deferred — needs a sandbox / proper test setup:** `postReservation`, `postCustomItem`, `postPayment` write tests, webhook subscription via `postWebhook`-equivalent.
+- *Cancellation policy / `isRefundable`* — REST API does not expose this. Probed `/getRatePlanDetails`, `/getCancellationPolicies`, `/getCancellationPolicy`, `/getPolicies` — all 404. Even with rate plans named "Direct Rate - 72h cancelation" configured in CB, no policy fields come through `getRatePlans`. **Path:** configure these in our admin UI per rate plan; snapshot to `bookings.cancellationPolicySnapshot` at booking time. (See Step 6 for the seed heuristic.)
+- *Items vs addons* — v1.3 `getItems` / `getItemCategories` are dead-ends for our use case (require POS scopes that aren't part of the public partner integration). Use `GET /addons/v1/addons` on the new API host for the read-only catalog. We still call v1.3 `postCustomItem` to attach extras to a reservation in Step 11 — but that needs `read:reservation`/`write:reservation` (which we have), not an item-specific scope.
+- *`ratePlanAddOns`* — empty in our test data; deprioritised. If it turns out to be the right home for rate-bundled extras (e.g. "this rate includes breakfast"), revisit during Step 7.
+
+**Still open — launch carry, not blocking dev work:**
+
+- *Webhook signature verification* — `postWebhook` exists, 34 event names confirmed in docs, scopes inherited per resource (we have `read:reservation` + `read:rate`). But the docs don't publish the signature header name or hash algorithm. Need to ask Manuel or test live before Step 6 ships to production. Until then, the webhook handler can run without sig verification on a non-public path.
+
+**Deferred — needs a sandbox / proper test setup:** `postReservation`, `postCustomItem`, `postPayment` write tests, webhook subscription via `postWebhook`.
 
 ### Step 6: Inventory sync
 
 Goal: the existing `inventory` table gets populated from Cloudbeds, with webhooks for invalidation and a 6-hourly safety-net poll.
 
 1. Build `src/lib/cloudbeds/sync-inventory.ts` — `syncInventoryForProperty(propertyId, days = 90)`:
-   - Fetch `getRatePlans` with `startDate`, `endDate`, and `detailedRates: true`.
-   - Upsert `roomTypes` (from `getRoomTypes`).
-   - Upsert `ratePlans`. Handle the master/derived split: master rates have only `rateID` + pricing (no name — synthesise "Standard Rate" or use the `roomTypeName`); derived rates carry `ratePlanID`, `ratePlanNamePublic`, `derivedType`, `derivedValue`. **`cancellationPolicy` + `isRefundable` source is open question Q1** — for now, leave nullable and populate manually until Q1 is resolved.
-   - Upsert `inventory` rows from the per-date entries in `roomRateDetailed` (per room × per rate × per date), including restrictions.
-2. Build `src/app/api/cloudbeds/webhooks/route.ts` — receives Cloudbeds webhooks, verifies signature, queues invalidation. Exact event names + signature verification depend on **open questions Q3 + Q4** below.
-3. Cold-start path: when `/api/availability` is called for a property and `inventory` has no rows for the requested dates, run `syncInventoryForProperty` synchronously then schedule it into the rolling job.
-4. 6-hourly safety-net: cron entry that calls `syncInventoryForProperty(p.id, 90)` for every property.
-5. Subscribe to Cloudbeds webhooks per property (call their subscribe endpoint after OAuth — exact endpoint name TBD per Q4).
+   - Resolve `cloudbedsPropertyId` from the property (already stored in DB after OAuth).
+   - Fetch `getRoomTypes` (v1.3) → upsert `roomTypes` keyed by `cloudbedsRoomTypeId` (= Cloudbeds `roomTypeID`).
+   - Fetch `getRatePlans` (v1.3) with `startDate`, `endDate` (as `YYYY-MM-DD`), `detailedRates: true` → flatten and upsert.
+       - The response is *one row per (rate, room) combination*. A "master" rate (one created directly in CB, e.g. the BAR) appears with just `rateID`, `roomTypeID`, pricing, no `ratePlanID`/`ratePlanNamePublic`. A "derived" rate (e.g. "Non refundable -10%") appears with `ratePlanID`, `ratePlanNamePublic`, `ratePlanNamePrivate`, `derivedType`, `derivedValue`, `baseRate`, `ratePlanAddOns`, and `isDerived: true`.
+       - Use `rateID` as the stable key in our `ratePlans` table (`cloudbedsRateId`). For master rates with no public name, synthesise a display name from `roomTypeName` ("Standard Rate") — most hotels will configure proper derived rates anyway.
+       - **Seed `isRefundable`** with a heuristic: `false` if `ratePlanNamePublic` matches `/non[- ]?ref/i`, otherwise `true`. The admin UI overrides per-rate (Q1 resolution).
+       - Leave `cancellationPolicy` `null` until set in the admin UI.
+   - Upsert `inventory` rows from each rate's `roomRateDetailed[]` array (one entry per date in the requested range): `roomTypeId`, `ratePlanId`, `date`, `unitsAvailable` (= `roomsAvailable`), `price` (= `rate`), `minLos`, `maxLos`, `closedToArrival`, `closedToDeparture`, `cutOff`.
+   - Idempotent: every run upserts on (`propertyId`, `roomTypeId`, `ratePlanId`, `date`).
+2. Build `src/app/api/cloudbeds/webhooks/route.ts` — receives Cloudbeds webhooks, verifies signature (TBD — see "Still open" in Step 5; ship without verification on a hard-to-guess path until Manuel confirms), and on relevant events (`reservation/created`, `reservation/status_changed`, `availability/closeout_changed`, etc.) calls `syncInventoryForProperty` for the affected property. Lightweight: webhook handler doesn't sync inline, it just enqueues / fires off the call.
+3. Cold-start path: when `/api/availability` is called for a property and `inventory` has no rows for the requested dates, run `syncInventoryForProperty` synchronously, then return availability.
+4. 6-hourly safety-net: cron entry (Railway cron or `node-cron` process) that calls `syncInventoryForProperty(p.id, 90)` for every connected property.
+5. Subscribe to Cloudbeds webhooks per property: after OAuth completes, `POST /api/v1.3/postWebhook` once per event we care about. Persist subscription IDs so we can `deleteWebhook` later if the property disconnects.
 
 Deliverable: when a rate or availability changes in Cloudbeds, our `inventory` reflects it within seconds via webhook. Worst case (webhook missed), it self-heals within 6 hours.
 
@@ -151,20 +167,38 @@ Deliverable: when a rate or availability changes in Cloudbeds, our `inventory` r
 
 Goal: replace the hardcoded `AVAILABLE_EXTRAS` in `src/components/booking/ExtrasPanel.tsx:11` with per-property data from Cloudbeds.
 
-**Blocked on open questions Q2 + Q5:** the smoke test got `Scope required for this call was not granted by property` from `getItems` / `getItemCategories`. Need the right scope name + confirmation that items is the right home for our extras model (vs. `ratePlanAddOns`).
+Source: `GET https://api.cloudbeds.com/addons/v1/addons` with header `x-property-id: <cloudbedsPropertyId>`. Scope: `read:addon` (already in `SCOPES`). Response shape:
 
-Once unblocked:
+```json
+{
+  "offset": 0,
+  "limit": 100,
+  "data": [
+    {
+      "id": "234169",
+      "name": "Continental Breakfast",
+      "description": "Croissants and Juice",
+      "productId": "1281127",
+      "price": { "amount": "1000", "currencyCode": "USD" }
+    }
+  ]
+}
+```
 
-1. Add a `propertyExtras` cache table (or jsonb column on `properties` if simpler — decide based on whether we want per-extra rows): `cloudbedsItemId`, `categoryId`, `name`, `description`, `price`, `priceType`, `currency`. Refreshed alongside inventory in Step 6 (extras don't change as fast, but piggybacking is cheap).
-2. Create `src/lib/cloudbeds/sync-extras.ts` — fetches `getItems` / `getItemCategories`, upserts into `propertyExtras`.
-3. Add `/api/extras?propertyId=…` route that returns the cached extras list.
-4. Update `ExtrasPanel.tsx`:
-   - Replace `AVAILABLE_EXTRAS` constant with a `useEffect` fetch from `/api/extras`.
-   - Make the panel render from the fetched list.
-   - Update `StickyBookingBar.tsx` (which currently imports `AVAILABLE_EXTRAS` directly) to take the extras list as a prop or read from the same source.
-5. The existing rooms client at `src/app/rooms/rooms-client.tsx:97-98` reads `AVAILABLE_EXTRAS.find(...)` to compute extras totals — rewire to use the fetched list.
+`price.amount` is a string in **minor units** — divide by 100 for display. `currencyCode` may not match the property currency in test accounts; trust the property's `currency` field at booking time, not the addon's.
 
-Deliverable: extras shown to the guest are pulled from the property's Cloudbeds setup. No hardcoded list.
+1. Add a `propertyExtras` table: `id` (uuid), `propertyId` (uuid → properties.id), `cloudbedsAddonId` (text, e.g. `"234169"`), `cloudbedsProductId` (text), `name` (text), `description` (text, nullable), `priceMinorUnits` (integer), `currency` (text), `lastSyncedAt` (timestamp). Index on `propertyId`.
+2. Create `src/lib/cloudbeds/sync-extras.ts` — `syncExtrasForProperty(propertyId)`:
+    - Page through `/addons/v1/addons` until `data.length < limit`.
+    - Upsert into `propertyExtras` keyed on (`propertyId`, `cloudbedsAddonId`).
+    - Soft-delete (or hard-delete) rows whose `cloudbedsAddonId` no longer appears, so removed addons disappear from the booking flow.
+    - Called from the Step 6 sync loop and on the cold-start path.
+3. Add `GET /api/extras?propertyId=…` route returning `[{ id, name, description, priceMinorUnits, currency }]`. Cached at the framework level for ~60s (extras rarely change mid-day).
+4. Update `ExtrasPanel.tsx` — replace the `AVAILABLE_EXTRAS` constant with a `useEffect` fetch from `/api/extras`. The panel currently renders icons + price formatted as `£${price}` — switch to `priceMinorUnits / 100` and use the property's currency formatter. Drop the hardcoded `image` field — addons don't carry images. Use a default icon by category-name match if needed.
+5. Update `StickyBookingBar.tsx` (imports `AVAILABLE_EXTRAS` directly) to take the extras list as a prop from the parent rooms client, instead of importing the constant.
+6. Rewire `src/app/rooms/rooms-client.tsx:97-98` (`AVAILABLE_EXTRAS.find(...)` for totals) to use the fetched list.
+
+Deliverable: extras shown to the guest are pulled from the property's Cloudbeds catalog. No hardcoded list. New addons added in CB appear within one sync cycle (or immediately on cold-start).
 
 ---
 
@@ -304,23 +338,11 @@ Day-one work, not a follow-up.
 
 ---
 
-## Open questions — Cloudbeds API discovery
+## Open questions — launch carry
 
-Karol is investigating these directly via the Cloudbeds dashboard + dev portal — no need to involve Manuel. Block Steps 6 / 7 on the relevant answers.
+Resolved Q1, Q2, Q3, Q5 are folded into Steps 6 / 7 above. One left:
 
-- **Q1 — Cancellation policy + `isRefundable` source.** `getRatePlans` (with `detailedRates: true`) doesn't return cancellation policy fields. Probed `/getCancellationPolicies`, `/getRatePlanDetails`, `/getPolicies` — all 404. The smoke test ran against a partner test account where rate plans aren't fully configured, so missing data may simply be missing config. Two paths:
-    - Set up a real rate plan with a cancellation policy in Cloudbeds, re-run the smoke test, and inspect what comes through. Likely there's a field we haven't seen yet.
-    - If the API genuinely doesn't expose policy at all: configure cancellation policy + `isRefundable` in our admin UI per rate plan; snapshot to `bookings.cancellationPolicySnapshot` at booking time. (`ratePlans.cancellationPolicy` + `ratePlans.isRefundable` schema fields stay either way — only the population path changes.)
-
-- **Q2 — Items scope name.** `getItems` / `getItemCategories` returned `Scope required for this call was not granted by property`. Our current scopes don't include any item-related entry. Need to check the dev portal scope list for the right names (likely `read:item` / `write:item`) and add them to both the dev portal config + `SCOPES` in `src/app/api/cloudbeds/oauth/start/route.ts`. Re-OAuth required afterwards (old tokens won't carry the new scopes).
-
-- **Q3 — Are items property-feature-gated?** The error message says "by property", which could mean per-property feature toggle vs. just app-level scope. Confirm in Cloudbeds — if some properties don't expose items at all, the extras workstream needs a fallback (e.g. our own minimal extras catalog when Cloudbeds doesn't have one).
-
-- **Q4 — Webhook subscription endpoint + event names.** `getWebhooks` works (returns subscriptions list, currently empty). We need the corresponding subscribe endpoint name (likely `postWebhook`) plus the exact event names for `reservation/created`, `rate_status_changed`, etc. Check the dev portal webhook docs.
-
-- **Q5 — `ratePlanAddOns` vs `getItems` for breakfast / similar.** The detailed rate plan response includes a `ratePlanAddOns` array (empty in the test account). It's possible breakfast and similar package add-ons live attached to rate plans rather than as standalone items. If yes, our extras model needs to distinguish "rate-bundled add-ons" (already priced into the rate the guest sees) from "standalone extras" (items the guest opts into).
-
-When answers come in, fold the resolved fields back into Steps 6 / 7 and remove from this list.
+- **Webhook signature verification.** `postWebhook` exists, scopes inherit from the resource (we have `read:reservation` + `read:rate`), 34 event names confirmed in Cloudbeds docs. Public docs don't publish the signature header name or hash algorithm. Path: ask Manuel during Step 6, or test live by subscribing and inspecting an inbound payload's headers. Until verified, the webhook handler runs without sig verification on a hard-to-guess path — fine for dev, must be fixed before production.
 
 ---
 

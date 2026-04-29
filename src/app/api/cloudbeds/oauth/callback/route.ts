@@ -4,6 +4,7 @@ import { properties } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { encryptToken, verifyOauthState } from "@/lib/crypto";
 import { exchangeCodeForTokens } from "@/lib/cloudbeds/client";
+import { subscribeWebhooksForProperty } from "@/lib/cloudbeds/webhook-subscriptions";
 
 interface CloudbedsHotel {
   propertyID: string;
@@ -80,6 +81,16 @@ export async function GET(req: NextRequest) {
       ...(cloudbedsPropertyId ? { cloudbedsPropertyId } : {}),
     })
     .where(eq(properties.id, verified.propertyId));
+
+  // Auto-subscribe to webhooks so the property starts receiving live events
+  // immediately. Fire and forget — the OAuth redirect shouldn't wait on N
+  // postWebhook calls (~10 events × ~500ms each). subscribeWebhooksForProperty
+  // is idempotent, so on repeat OAuth (e.g. scope change) we won't double-up.
+  if (cloudbedsPropertyId) {
+    void subscribeWebhooksForProperty(verified.propertyId).catch((err) => {
+      console.error("Cloudbeds webhook subscribe failed:", err);
+    });
+  }
 
   return NextResponse.redirect(
     `${publicOrigin()}/admin/properties/${verified.propertyId}?cloudbeds=connected`

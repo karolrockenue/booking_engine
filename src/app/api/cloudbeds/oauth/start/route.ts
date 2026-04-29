@@ -3,6 +3,7 @@ import { verifyAdmin } from "@/lib/admin-auth";
 import { signOauthState } from "@/lib/crypto";
 
 const SCOPES = [
+  "read:addon",
   "read:currency",
   "read:dataInsightsGuests",
   "read:dataInsightsOccupancy",

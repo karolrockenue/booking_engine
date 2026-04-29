@@ -18,6 +18,7 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 
 const API_BASE = "https://hotels.cloudbeds.com/api/v1.3";
+const NEW_API_BASE = "https://api.cloudbeds.com";
 const TMP_DIR = "./tmp/cloudbeds-smoke";
 
 interface CallResult {
@@ -32,15 +33,21 @@ async function call(
   propertyId: string,
   label: string,
   endpoint: string,
-  query: Record<string, string> = {}
+  query: Record<string, string> = {},
+  opts: { base?: string; extraHeaders?: Record<string, string> } = {}
 ): Promise<CallResult> {
   const token = await getValidAccessToken(propertyId);
-  const url = new URL(API_BASE + endpoint);
+  const base = opts.base ?? API_BASE;
+  const url = new URL(base + endpoint);
   for (const [k, v] of Object.entries(query)) url.searchParams.set(k, v);
 
   const start = Date.now();
   const res = await fetch(url, {
-    headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: "application/json",
+      ...(opts.extraHeaders ?? {}),
+    },
   });
   const ms = Date.now() - start;
   const text = await res.text();
@@ -176,6 +183,18 @@ async function main() {
   await call(property.id, "getItemCategories", "/getItemCategories", {
     propertyID: cloudbedsPropertyId,
   });
+
+  // 6b. New API: /addons/v1/addons — likely the proper home for our extras
+  await call(
+    property.id,
+    "addons_v1",
+    "/addons/v1/addons",
+    {},
+    {
+      base: NEW_API_BASE,
+      extraHeaders: { "x-property-id": cloudbedsPropertyId },
+    }
+  );
 
   // 7. Taxes & fees (for tax handling later)
   await call(property.id, "getTaxesAndFees", "/getTaxesAndFees", {

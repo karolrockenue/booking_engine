@@ -236,6 +236,36 @@ export const bookings = pgTable("bookings", {
   ),
 });
 
+// --- Cloudbeds webhook subscriptions ---
+//
+// One row per (property, object, action) — Cloudbeds requires one subscribe
+// call per event type. We persist the returned subscription ID so we can
+// unsubscribe later (e.g. when a property disconnects).
+
+export const cloudbedsWebhookSubscriptions = pgTable(
+  "cloudbeds_webhook_subscriptions",
+  {
+    id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+    propertyId: uuid("property_id")
+      .references(() => properties.id)
+      .notNull(),
+    cloudbedsSubscriptionId: text("cloudbeds_subscription_id").notNull(),
+    object: text("object").notNull(),
+    action: text("action").notNull(),
+    endpointUrl: text("endpoint_url").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).default(
+      sql`NOW()`
+    ),
+  },
+  (table) => [
+    uniqueIndex("cloudbeds_webhooks_property_event_idx").on(
+      table.propertyId,
+      table.object,
+      table.action
+    ),
+  ]
+);
+
 // --- Per-night rate breakdown for bookings ---
 
 export const bookingDayRates = pgTable("booking_day_rates", {

@@ -5,16 +5,19 @@ import { eq } from "drizzle-orm";
 import { syncInventoryForProperty } from "@/lib/cloudbeds/sync-inventory";
 
 // Cloudbeds webhook event names that should invalidate our inventory cache.
-// Inferred from the public docs (34 events total). When in doubt, sync — it's
-// cheap and idempotent.
+// Cross-checked against the official events reference. When in doubt, sync —
+// it's cheap and idempotent.
 const INVENTORY_INVALIDATING_EVENTS = new Set([
   "reservation/created",
   "reservation/status_changed",
   "reservation/dates_changed",
   "reservation/accommodation_status_changed",
+  "reservation/accommodation_type_changed",
   "reservation/deleted",
   "availability/closeout_changed",
-  "rate/changed",
+  "api_queue_task/rate_status_changed",
+  "roomblock/created",
+  "roomblock/removed",
 ]);
 
 interface WebhookPayload {

@@ -1,7 +1,7 @@
 # Hotel Website + Booking Engine Platform — Reference
 
-> **Last updated:** 2026-04-28
-> **Status:** Core platform built and deployed. Design overhaul complete. Cloudbeds rebuild in flight: B2U deleted, schema migrated, OAuth + token storage live, partner-account smoke test passed. Currently blocked on a handful of open questions about cancellation policy fields, items scope, and webhook subscription — see the "Open questions — Cloudbeds API discovery" section in `TODO.md`. Stripe Connect not yet started. See `TODO.md` for the live build plan.
+> **Last updated:** 2026-04-29
+> **Status:** Core platform built and deployed. Design overhaul complete. Cloudbeds rebuild Phase 1–2 done: schema migrated, OAuth working, inventory + rate plans + webhooks live and syncing in production. Step 6 (inventory sync) fully shipped; Step 7 (extras catalog) next. Stripe Connect not yet started. See `TODO.md` for the live build plan.
 
 This doc is a **snapshot of the current platform** — what's built, how it's organised, the design conventions that hold across pages. For the forward plan (rebuild steps, sequencing, design questions), see `TODO.md`.
 
@@ -73,7 +73,7 @@ Next.js middleware reads `Host` header → resolves property from DB → serves 
 | **Hosting** | Railway Pro | ✅ Deployed |
 | **UI Library** | Radix UI (popovers), react-day-picker (calendar), Lucide (icons) | ✅ Built |
 | **Font** | Inter (via Google Fonts) | ✅ Live |
-| **PMS Integration** | Cloudbeds REST API (OAuth2) | 🟡 In progress |
+| **PMS Integration** | Cloudbeds REST API (OAuth2) | 🟢 Inventory + webhooks live, extras + write paths next |
 | **Payments** | Stripe Connect (Express, direct charges) | 🔲 Not started |
 | **Image Storage** | Cloudflare R2 (planned) | 🔲 Not started |
 | **DNS/Domains** | Cloudflare (planned) | 🔲 Not started |
@@ -174,26 +174,27 @@ All rendered via CSS custom properties. Components read from `useTheme()` contex
 - Admin: ThemeEditor
 - PageRenderer (JSON config → component composition)
 
-### Database Schema (8 tables, all live on Neon)
+### Database Schema (live on Neon)
 
-> Schema is being reworked alongside the integration rebuild — see `TODO.md` Step 3 for the migration plan. Current shape:
-
-- `properties` — multi-tenant config, theme JSONB, domain, integration IDs
+- `properties` — multi-tenant config, theme JSONB, domain, encrypted Cloudbeds tokens, `cloudbedsPropertyId`, Stripe fields (still empty)
 - `pages` — page layouts per property (JSON composition)
 - `content_blocks` — key-value content per property
 - `images` — image references per property
-- `room_types` — mirrored from Cloudbeds
-- `rate_plans` — mirrored from Cloudbeds, linked to room types
-- `inventory` — ARI cache (date × room × rate → units, price, restrictions)
-- `bookings` + `booking_day_rates` — guest bookings with nightly breakdown
+- `room_types` — mirrored from Cloudbeds (`otaRoomId` = Cloudbeds `roomTypeID`, numeric)
+- `rate_plans` — mirrored from Cloudbeds (`otaRateId` = Cloudbeds `rateID`); `isRefundable` + `cancellationPolicy` are admin-managed (not in CB API), seeded from a name heuristic on first sync
+- `inventory` — ARI cache (date × room × rate → units, rate, restrictions); upserted by `syncInventoryForProperty`
+- `bookings` + `booking_day_rates` + `booking_extras` — guest bookings with nightly breakdown and folio extras (extras table populated when booking flow lands in Step 11)
+- `payment_events` — Stripe + auto-charge audit trail (empty until Phase 3)
+- `cloudbeds_webhook_subscriptions` — one row per (property, object, action); persisted so we can `deleteWebhook` on disconnect
 
 ### Test Data
 
-**The Kensington Arms** (slug: `demo`, GBP)
-- 3 rooms: Classic Double, Deluxe Suite, Superior Twin
-- 4 rate plans per room: Flexible Room Only, Flexible + Breakfast, Non-Refundable Room Only, Non-Refundable + Breakfast
-- 90 days of inventory with weekend surcharges (+20%)
-- Breakfast rates +12%, Non-Refundable -12%
+**The Kensington Arms** (slug: `demo`, GBP, `cloudbedsPropertyId=302817`) — connected to Cloudbeds
+- 3 room types from CB: Single Room, Double Room, Triple Room
+- 8 rate plans from CB: 3 master rates (Standard) + 2 derived (`Non refundable -10%`) + 3 master ("Direct Rate - 72h cancelation")
+- 720 inventory rows (8 plans × 90 days) auto-synced
+- 8 webhook subscriptions live (10 with read:roomBlock now enabled — re-OAuth + re-subscribe to pick up the missing two)
+- Old hand-seeded room types / rate plans cleaned up (script: `cleanup-demo-seed.ts`)
 - Hero image: boutique hotel room (from House on Warwick)
 - Font: Inter
 - Theme: Navy (#2C3E50) primary, warm border (#E5E0D8)
@@ -208,7 +209,16 @@ All rendered via CSS custom properties. Components read from `useTheme()` contex
 - **Railway URL:** `https://booking-engine-production-b11b.up.railway.app`
 - **Admin panel:** `/admin` (token: `change-me-before-deploy` — needs changing before sharing)
 - **Dev convenience:** `?property=urbanstay` switches property on localhost or Railway URL
-- **Environment variables:** `DATABASE_URL`, `ADMIN_TOKEN` set on Railway. Cloudbeds + Stripe vars added during the rebuild (see `TODO.md`).
+- **Environment variables on Railway:**
+  - `DATABASE_URL`, `ADMIN_TOKEN` — core
+  - `CLOUDBEDS_CLIENT_ID`, `CLOUDBEDS_CLIENT_SECRET`, `CLOUDBEDS_REDIRECT_URI`, `CLOUDBEDS_TOKEN_KEY` — OAuth + AES-GCM token encryption
+  - `CRON_SECRET` — Bearer token for `/api/cron/inventory-sync`
+  - `CLOUDBEDS_WEBHOOK_URL` — optional override for the URL passed to `postWebhook`; falls back to `${origin of CLOUDBEDS_REDIRECT_URI}/api/cloudbeds/webhooks` if unset
+- **Railway services in the project:**
+  - `booking-engine` — main Next.js app
+  - `inspiring-trust` — cron service running `0 */6 * * *` UTC; image `alpine:latest`, start command runs `apk add --no-cache curl && curl -fS -X POST -H "Authorization: Bearer $CRON_SECRET" <url>` against `/api/cron/inventory-sync`. Logs visible in Railway → service → Deployments.
+- **Cloudbeds OAuth scopes currently requested** (`SCOPES` in `src/app/api/cloudbeds/oauth/start/route.ts`):
+  `read:addon, read:currency, read:dataInsightsGuests, read:dataInsightsOccupancy, read:dataInsightsReservations, read:guest, write:guest, read:hotel, read:rate, write:rate, read:reservation, write:reservation, read:room, read:taxesAndFees, read:user`. **Adding any new scope requires re-OAuth on every connected property** — old tokens don't carry it.
 
 ---
 
@@ -242,10 +252,15 @@ src/
 │   │   ├── properties/[id]/page.tsx # Property editor
 │   │   └── bookings/page.tsx       # Bookings list
 │   └── api/
-│       ├── availability/route.ts
-│       ├── bookings/route.ts       # Currently stubs Cloudbeds — TODO Step 11 rewrites
-│       ├── b2u/                    # ⚠ B2U routes — being deleted in TODO Step 2
-│       └── admin/                  # Admin CRUD endpoints
+│       ├── availability/route.ts            # Cold-starts inventory sync if window is empty
+│       ├── bookings/route.ts                # Currently stubs Cloudbeds — TODO Step 11 rewrites
+│       ├── cloudbeds/
+│       │   ├── oauth/start/route.ts         # Admin-only, redirects to Cloudbeds authorize
+│       │   ├── oauth/callback/route.ts      # Token exchange + auto-subscribes webhooks
+│       │   └── webhooks/route.ts            # Receives Cloudbeds events, fires sync
+│       ├── cron/
+│       │   └── inventory-sync/route.ts      # Bearer-protected, runs full sweep (Railway cron)
+│       └── admin/                           # Admin CRUD endpoints
 ├── components/
 │   ├── layout/                     # ThemeProvider, NavBar, Footer
 │   ├── website/                    # HeroSection
@@ -259,16 +274,25 @@ src/
 │   ├── schema.ts                   # Drizzle schema (8 tables — being reworked)
 │   └── index.ts                    # Neon connection
 ├── lib/
-│   ├── theme.ts                    # PropertyTheme type + CSS vars
-│   ├── get-property.ts             # Multi-tenant resolver
-│   ├── admin-auth.ts               # Bearer token check
-│   └── b2u-auth.ts                 # ⚠ B2U auth — being deleted in TODO Step 2
+│   ├── theme.ts                          # PropertyTheme type + CSS vars
+│   ├── get-property.ts                   # Multi-tenant resolver
+│   ├── admin-auth.ts                     # Bearer token check
+│   ├── crypto.ts                         # AES-256-GCM token at-rest encryption + signed OAuth state
+│   └── cloudbeds/
+│       ├── client.ts                     # OAuth refresh + cloudbeds(propertyId, path) v1.3 wrapper
+│       ├── sync-inventory.ts             # Pulls room types / rate plans / inventory; idempotent batched upsert
+│       └── webhook-subscriptions.ts      # subscribe / unsubscribe / track in DB
 ├── scripts/
-│   ├── seed.ts                     # Kensington Arms test data
-│   ├── seed-second.ts              # UrbanStay test data
-│   ├── seed-rate-plans.ts          # 4 rate plans per room + inventory
-│   ├── update-font.ts              # Update property font in DB
-│   └── update-themes.ts            # Theme migration script
+│   ├── seed.ts                           # Kensington Arms test data (legacy — Cloudbeds is now source of truth for demo)
+│   ├── seed-second.ts                    # UrbanStay test data (no Cloudbeds connection)
+│   ├── seed-rate-plans.ts                # 4 rate plans per room + inventory (legacy — for non-CB properties)
+│   ├── cloudbeds-smoke.ts                # Read-only smoke test against all CB endpoints we use
+│   ├── cloudbeds-sync.ts                 # Manual trigger for inventory sync
+│   ├── cloudbeds-subscribe.ts            # Manual trigger for webhook subscription
+│   ├── check-inventory.ts                # DB inspection helper
+│   ├── cleanup-demo-seed.ts              # One-shot script that removed old hand-seeded rows from demo
+│   ├── update-font.ts                    # Update property font in DB
+│   └── update-themes.ts                  # Theme migration script
 └── middleware.ts                    # Host header + ?property= override
 ```
 
@@ -304,7 +328,19 @@ railway up
 npx drizzle-kit push
 ```
 
-### Seed rate plans (4 per room)
+### Cloudbeds operational scripts
+
+```bash
+# Run all of these with: set -a && source .env.local && set +a && npx tsx <script>
+src/scripts/cloudbeds-smoke.ts demo        # Read-only; saves raw responses to tmp/cloudbeds-smoke/
+src/scripts/cloudbeds-sync.ts demo 90      # Run full inventory sync for 90 days
+src/scripts/cloudbeds-subscribe.ts demo    # Subscribe webhooks (idempotent)
+src/scripts/check-inventory.ts demo        # Inspect DB state + most recent updatedAt
+```
+
+For `cloudbeds-subscribe.ts`, prefix with `CLOUDBEDS_WEBHOOK_URL=https://<railway-url>/api/cloudbeds/webhooks` if your `.env.local` doesn't have either that var or `CLOUDBEDS_REDIRECT_URI` set — the script needs a publicly reachable URL to register with Cloudbeds.
+
+### Seed legacy properties (UrbanStay only — demo is Cloudbeds-driven)
 ```bash
 source .env.local && export $(grep -v '^#' .env.local | xargs) && npx tsx src/scripts/seed-rate-plans.ts
 ```

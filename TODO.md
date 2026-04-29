@@ -136,32 +136,47 @@ set -a && source .env.local && set +a && npx tsx src/scripts/cloudbeds-smoke.ts 
 - *Items vs addons* — v1.3 `getItems` / `getItemCategories` are dead-ends for our use case (require POS scopes that aren't part of the public partner integration). Use `GET /addons/v1/addons` on the new API host for the read-only catalog. We still call v1.3 `postCustomItem` to attach extras to a reservation in Step 11 — but that needs `read:reservation`/`write:reservation` (which we have), not an item-specific scope.
 - *`ratePlanAddOns`* — empty in our test data; deprioritised. If it turns out to be the right home for rate-bundled extras (e.g. "this rate includes breakfast"), revisit during Step 7.
 
-**Still open — launch carry, not blocking dev work:**
+**Webhook security model — confirmed by reading the official Cloudbeds webhook docs:**
 
-- *Webhook signature verification* — `postWebhook` exists, 34 event names confirmed in docs, scopes inherited per resource (we have `read:reservation` + `read:rate`). But the docs don't publish the signature header name or hash algorithm. Need to ask Manuel or test live before Step 6 ships to production. Until then, the webhook handler can run without sig verification on a non-public path.
+Cloudbeds **does not sign webhooks**. There is no signature header, no HMAC, no shared secret. The official docs cover payload format, retries, the 2-second processing budget, and event reference — and never mention signing. Security therefore comes from:
 
-**Deferred — needs a sandbox / proper test setup:** `postReservation`, `postCustomItem`, `postPayment` write tests, webhook subscription via `postWebhook`.
+- **URL obscurity** — current path is `/api/cloudbeds/webhooks`. Could be moved to `/api/cloudbeds/webhooks/<random-token>` for stronger obscurity if we ever feel exposed.
+- **Property-ID cross-check** — every payload contains `propertyID` (or `propertyId` — Cloudbeds spells it both ways across events; our handler accepts either). We look it up against the `properties` table and ignore unknown properties.
+- **IP allowlisting (optional, future)** — confirmed source IP `35.93.165.6` from a real inbound delivery. Cloudbeds may publish a list of webhook source IPs.
+- **Idempotent sync** — Cloudbeds notes events are at-least-once delivered. Our `syncInventoryForProperty` is idempotent so replays are no-ops.
 
-### Step 6: Inventory sync
+**Deferred — needs a sandbox / proper test setup:** `postReservation`, `postCustomItem`, `postPayment` write tests.
 
-Goal: the existing `inventory` table gets populated from Cloudbeds, with webhooks for invalidation and a 6-hourly safety-net poll.
+### Step 6: Inventory sync — DONE 🟢
 
-1. Build `src/lib/cloudbeds/sync-inventory.ts` — `syncInventoryForProperty(propertyId, days = 90)`:
-   - Resolve `cloudbedsPropertyId` from the property (already stored in DB after OAuth).
-   - Fetch `getRoomTypes` (v1.3) → upsert `roomTypes` keyed by `cloudbedsRoomTypeId` (= Cloudbeds `roomTypeID`).
-   - Fetch `getRatePlans` (v1.3) with `startDate`, `endDate` (as `YYYY-MM-DD`), `detailedRates: true` → flatten and upsert.
-       - The response is *one row per (rate, room) combination*. A "master" rate (one created directly in CB, e.g. the BAR) appears with just `rateID`, `roomTypeID`, pricing, no `ratePlanID`/`ratePlanNamePublic`. A "derived" rate (e.g. "Non refundable -10%") appears with `ratePlanID`, `ratePlanNamePublic`, `ratePlanNamePrivate`, `derivedType`, `derivedValue`, `baseRate`, `ratePlanAddOns`, and `isDerived: true`.
-       - Use `rateID` as the stable key in our `ratePlans` table (`cloudbedsRateId`). For master rates with no public name, synthesise a display name from `roomTypeName` ("Standard Rate") — most hotels will configure proper derived rates anyway.
-       - **Seed `isRefundable`** with a heuristic: `false` if `ratePlanNamePublic` matches `/non[- ]?ref/i`, otherwise `true`. The admin UI overrides per-rate (Q1 resolution).
-       - Leave `cancellationPolicy` `null` until set in the admin UI.
-   - Upsert `inventory` rows from each rate's `roomRateDetailed[]` array (one entry per date in the requested range): `roomTypeId`, `ratePlanId`, `date`, `unitsAvailable` (= `roomsAvailable`), `price` (= `rate`), `minLos`, `maxLos`, `closedToArrival`, `closedToDeparture`, `cutOff`.
-   - Idempotent: every run upserts on (`propertyId`, `roomTypeId`, `ratePlanId`, `date`).
-2. Build `src/app/api/cloudbeds/webhooks/route.ts` — receives Cloudbeds webhooks, verifies signature (TBD — see "Still open" in Step 5; ship without verification on a hard-to-guess path until Manuel confirms), and on relevant events (`reservation/created`, `reservation/status_changed`, `availability/closeout_changed`, etc.) calls `syncInventoryForProperty` for the affected property. Lightweight: webhook handler doesn't sync inline, it just enqueues / fires off the call.
-3. Cold-start path: when `/api/availability` is called for a property and `inventory` has no rows for the requested dates, run `syncInventoryForProperty` synchronously, then return availability.
-4. 6-hourly safety-net: cron entry (Railway cron or `node-cron` process) that calls `syncInventoryForProperty(p.id, 90)` for every connected property.
-5. Subscribe to Cloudbeds webhooks per property: after OAuth completes, `POST /api/v1.3/postWebhook` once per event we care about. Persist subscription IDs so we can `deleteWebhook` later if the property disconnects.
+Confirmed working end-to-end in production (2026-04-29).
 
-Deliverable: when a rate or availability changes in Cloudbeds, our `inventory` reflects it within seconds via webhook. Worst case (webhook missed), it self-heals within 6 hours.
+**Shipped:**
+
+- `src/lib/cloudbeds/sync-inventory.ts` → `syncInventoryForProperty(propertyId, days = 90)` and `syncInventoryForAllConnectedProperties(days)`.
+    - Pulls `getRoomTypes` + `getRatePlans` (with `detailedRates: true`) and flattens into our `roomTypes`, `ratePlans`, `inventory` tables. Master rates (`isDerived: false`, no `ratePlanID`) get a synthesised name like `"Double Room Standard"`. Derived rates use `ratePlanNamePrivate` if present.
+    - **`isRefundable` heuristic:** seeded `false` if `ratePlanNamePublic` matches `/non[- ]?ref/i`, otherwise `true`. **Sync only seeds on insert; updates do not clobber `isRefundable` or `cancellationPolicy`.** Admin UI overrides take precedence forever after.
+    - **Bulk upsert per rate plan** (`db.insert(...).values(arrayOfRows).onConflictDoUpdate(...)` with `excluded.column_name` references). 90 days × 8 rate plans = 720 rows synced in ~3 seconds.
+    - Idempotent: re-running adds zero rows. Backfills `cloudbedsPropertyId` on the property if it's missing (covers properties OAuth'd before that field was persisted).
+- `src/app/api/cloudbeds/webhooks/route.ts` — receives webhooks, returns 200 in <600ms (well under the 2-second Cloudbeds budget), fires `void syncInventoryForProperty(...)` background. Handles 10 events (see file). Accepts both `propertyID` and `propertyId` field names since Cloudbeds spells it both ways.
+- `src/app/api/availability/route.ts` cold-start path: if a connected property has no inventory rows in the requested window, runs the sync synchronously before computing availability.
+- `src/app/api/cron/inventory-sync/route.ts` — Bearer-token-protected (`CRON_SECRET`) endpoint that runs the full sweep.
+- `src/app/api/cloudbeds/oauth/callback/route.ts` now (a) persists `cloudbedsPropertyId` after token exchange and (b) auto-calls `subscribeWebhooksForProperty(...)` fire-and-forget so newly connected properties immediately receive events.
+- `src/lib/cloudbeds/webhook-subscriptions.ts` → `subscribeWebhooksForProperty` and `unsubscribeWebhooksForProperty`. Persists subscription IDs in the new `cloudbeds_webhook_subscriptions` table so we can `deleteWebhook` later. Idempotent (skips already-subscribed events).
+- New table: `cloudbeds_webhook_subscriptions` with unique index on (`propertyId`, `object`, `action`).
+- Railway cron service `inspiring-trust` runs `0 */6 * * *` UTC against `/api/cron/inventory-sync`. Image `alpine:latest`, start command installs curl on each run. See build plan for full config.
+
+**Verified live:**
+
+- Demo property: 3 room types, 8 rate plans, 720 inventory rows, all from Cloudbeds.
+- Real Cloudbeds webhook landed (`User-Agent: CloudBeds-Webhooks/4.0.0`, `srcIp: 35.93.165.6`), handler returned 200 in 591ms, sync ran 4s later. End-to-end loop confirmed.
+
+**Carry-forward / known limitations:**
+
+- **Stale-row cleanup pass on sync.** If a hotel deletes a rate plan or room type in Cloudbeds, our DB still holds it — sync only upserts, doesn't delete missing rows. Karol's reasoning was that this is mostly invisible because availability filters on positive `unitsAvailable`, and CB's `getRatePlans` only returns active rates so stale rows never get fresh inventory. True in steady state. But for hygiene, future work: at the end of `syncInventoryForProperty`, identify rate plans that exist in our DB for the property but weren't seen in this Cloudbeds response and delete them (cascade to inventory, block on bookings as `cleanup-demo-seed.ts` does).
+- **`read:roomBlock` scope** — added to dev portal 2026-04-29 but not yet in `SCOPES` array. Add it + re-OAuth the demo property + re-run `cloudbeds-subscribe.ts` to pick up the missing two `roomblock/created` and `roomblock/removed` events.
+- **Webhook URL hardening** — currently `/api/cloudbeds/webhooks` (no token in path). Cloudbeds doesn't sign, so an attacker who knew the URL could spam our handler. Mitigated by property-ID cross-check + idempotent sync, but worth moving to a token-in-path URL before launch.
+- **Cancellation policy admin UI** — schema fields are populated by heuristic only. Until Karol builds a small editor on the property edit page (per-rate-plan `isRefundable` toggle + `{deadlineHours, penaltyType}` JSONB), the heuristic's output is what guests will see. Karol asked for "something basic, single admin only" — low-priority polish.
 
 ### Step 7: Extras catalog sync
 

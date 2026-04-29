@@ -1,19 +1,22 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
 import { ThemeProvider } from "@/components/layout/ThemeProvider";
 import { NavBar } from "@/components/layout/NavBar";
 import { Footer } from "@/components/layout/Footer";
-import {
-  AvailabilityResults,
-  type AvailabilityResult,
-} from "@/components/booking/AvailabilityResults";
+import { AvailabilityResults } from "@/components/booking/AvailabilityResults";
 import { BookingProgress } from "@/components/booking/BookingProgress";
-import { ExtrasPanel, type Extra } from "@/components/booking/ExtrasPanel";
+import { ExtrasPanel } from "@/components/booking/ExtrasPanel";
 import { StickyBookingBar } from "@/components/booking/StickyBookingBar";
 import { PriceCompare } from "@/components/booking/PriceCompare";
+import {
+  useAvailability,
+  useBookingDraft,
+  useExtras,
+  usePersistedDraft,
+} from "@/lib/booking";
 import type { ResolvedProperty } from "@/lib/get-property";
 
 export function RoomsClient({ property }: { property: ResolvedProperty }) {
@@ -26,44 +29,36 @@ export function RoomsClient({ property }: { property: ResolvedProperty }) {
   const roomsCount = parseInt(searchParams.get("rooms") ?? "1");
   const currency = property.currency ?? "GBP";
 
-  const [results, setResults] = useState<AvailabilityResult[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [extras, setExtras] = useState<Extra[]>([]);
-
-  // Selection state
-  const [selectedResult, setSelectedResult] =
-    useState<AvailabilityResult | null>(null);
-  const [selectedExtras, setSelectedExtras] = useState<Set<string>>(
-    new Set()
-  );
-
   useEffect(() => {
-    if (!checkIn || !checkOut) {
-      router.replace("/");
-      return;
-    }
-    // The cascading-render warning here is acceptable: one extra render per
-    // param change is the price of showing a loading state during refetch.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setLoading(true);
-    const params = new URLSearchParams({
+    if (!checkIn || !checkOut) router.replace("/");
+  }, [checkIn, checkOut, router]);
+
+  const { results, loading } = useAvailability({
+    propertyId: property.id,
+    checkIn,
+    checkOut,
+    adults,
+  });
+  const { extras } = useExtras(property.id);
+  const {
+    draft,
+    selectRoom,
+    clearRoom,
+    toggleExtra,
+  } = useBookingDraft(extras);
+
+  // Persist the draft to sessionStorage so /checkout can pick it up without
+  // packing everything into URL params.
+  usePersistedDraft(
+    {
       propertyId: property.id,
       checkIn,
       checkOut,
-      adults: adults.toString(),
-    });
-    fetch(`/api/availability?${params}`)
-      .then((r) => r.json())
-      .then((data) => setResults(data.results ?? []))
-      .finally(() => setLoading(false));
-  }, [checkIn, checkOut, adults, property.id, router]);
-
-  useEffect(() => {
-    fetch(`/api/extras?propertyId=${property.id}`)
-      .then((r) => r.json())
-      .then((data) => setExtras(data.extras ?? []))
-      .catch(() => setExtras([]));
-  }, [property.id]);
+      adults,
+      children,
+    },
+    draft
+  );
 
   const nights =
     checkIn && checkOut
@@ -79,59 +74,9 @@ export function RoomsClient({ property }: { property: ResolvedProperty }) {
     });
   }
 
-  function handleSelect(result: AvailabilityResult) {
-    setSelectedResult(result);
-    setSelectedExtras(new Set());
-  }
-
-  function handleClear() {
-    setSelectedResult(null);
-    setSelectedExtras(new Set());
-  }
-
-  function handleToggleExtra(extraId: string) {
-    setSelectedExtras((prev) => {
-      const next = new Set(prev);
-      if (next.has(extraId)) {
-        next.delete(extraId);
-      } else {
-        next.add(extraId);
-      }
-      return next;
-    });
-  }
-
-  function calcExtrasTotal() {
-    let total = 0;
-    for (const id of selectedExtras) {
-      const extra = extras.find((e) => e.id === id);
-      if (extra) {
-        total += extra.priceMinorUnits / 100;
-      }
-    }
-    return total;
-  }
-
   function handleContinue() {
-    if (!selectedResult) return;
-    const extrasTotal = calcExtrasTotal();
-    const params = new URLSearchParams({
-      checkIn,
-      checkOut,
-      adults: adults.toString(),
-      roomTypeId: selectedResult.roomType.id,
-      ratePlanId: selectedResult.ratePlan.id,
-      roomName: selectedResult.roomType.name,
-      rateName: selectedResult.ratePlan.name,
-      totalPrice: (selectedResult.totalPrice + extrasTotal).toString(),
-      nights: selectedResult.nights.toString(),
-      nightlyRates: JSON.stringify(selectedResult.nightlyRates),
-    });
-    if (selectedExtras.size > 0) {
-      params.set("extras", JSON.stringify(Array.from(selectedExtras)));
-      params.set("extrasTotal", extrasTotal.toString());
-    }
-    router.push(`/checkout?${params}`);
+    if (!draft.result) return;
+    router.push("/checkout");
   }
 
   return (
@@ -142,7 +87,7 @@ export function RoomsClient({ property }: { property: ResolvedProperty }) {
         className="min-h-screen"
         style={{
           backgroundColor: "#F2F2F2",
-          paddingBottom: selectedResult ? "100px" : undefined,
+          paddingBottom: draft.result ? "100px" : undefined,
         }}
       >
         {/* Page header with accent band */}
@@ -246,14 +191,14 @@ export function RoomsClient({ property }: { property: ResolvedProperty }) {
             <AvailabilityResults
               results={results}
               currency={currency}
-              onSelect={handleSelect}
-              selectedRatePlanId={selectedResult?.ratePlan.id}
-              onClearSelection={handleClear}
+              onSelect={selectRoom}
+              selectedRatePlanId={draft.result?.ratePlan.id}
+              onClearSelection={clearRoom}
               selectedSlot={
                 <ExtrasPanel
                   extras={extras}
-                  selectedExtras={selectedExtras}
-                  onToggle={handleToggleExtra}
+                  selectedExtras={draft.extras}
+                  onToggle={toggleExtra}
                   currency={currency}
                 />
               }
@@ -263,18 +208,18 @@ export function RoomsClient({ property }: { property: ResolvedProperty }) {
         </div>
       </main>
 
-      {selectedResult && (
+      {draft.result && (
         <StickyBookingBar
-          roomName={selectedResult.roomType.name}
-          rateName={selectedResult.ratePlan.name}
-          roomPrice={selectedResult.totalPrice}
+          roomName={draft.result.roomType.name}
+          rateName={draft.result.ratePlan.name}
+          roomPrice={draft.result.totalPrice}
           extras={extras}
-          selectedExtras={selectedExtras}
+          selectedExtras={draft.extras}
           nights={nights}
           currency={currency}
           onContinue={handleContinue}
-          onClear={handleClear}
-          onRemoveExtra={handleToggleExtra}
+          onClear={clearRoom}
+          onRemoveExtra={toggleExtra}
         />
       )}
       <Footer />

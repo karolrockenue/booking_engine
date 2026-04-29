@@ -14,27 +14,8 @@ import {
   Flame,
 } from "lucide-react";
 
-interface NightlyRate {
-  date: string;
-  rate: number;
-}
-
-interface AvailabilityResult {
-  roomType: {
-    id: string;
-    name: string;
-    description?: string;
-    maxOccupancy?: number;
-    amenities?: unknown;
-  };
-  ratePlan: {
-    id: string;
-    name: string;
-  };
-  totalPrice: number;
-  nightlyRates: NightlyRate[];
-  nights: number;
-}
+import type { AvailabilityResult, NightlyRate } from "@/lib/booking";
+export type { AvailabilityResult, NightlyRate };
 
 interface AvailabilityResultsProps {
   results: AvailabilityResult[];
@@ -469,5 +450,3 @@ export function AvailabilityResults({
     </div>
   );
 }
-
-export type { AvailabilityResult, NightlyRate };

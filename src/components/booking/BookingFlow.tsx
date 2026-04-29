@@ -262,7 +262,7 @@ export function BookingFlow({
                   checkOut={checkOut}
                   nights={selected.nights}
                   adults={adults}
-                  children={0}
+                  childCount={0}
                   nightlyRates={selected.nightlyRates}
                   totalPrice={selected.totalPrice}
                   currency={currency}
@@ -315,7 +315,7 @@ export function BookingFlow({
                 checkOut={checkOut}
                 nights={selected.nights}
                 adults={adults}
-                children={0}
+                childCount={0}
                 nightlyRates={selected.nightlyRates}
                 totalPrice={selected.totalPrice}
                 currency={currency}

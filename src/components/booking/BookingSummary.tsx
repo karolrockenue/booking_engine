@@ -10,7 +10,7 @@ interface BookingSummaryProps {
   checkOut: string;
   nights: number;
   adults: number;
-  children: number;
+  childCount: number;
   nightlyRates: NightlyRate[];
   totalPrice: number;
   currency?: string;
@@ -24,7 +24,7 @@ export function BookingSummary({
   checkOut,
   nights,
   adults,
-  children,
+  childCount,
   nightlyRates,
   totalPrice,
   currency = "GBP",
@@ -95,7 +95,7 @@ export function BookingSummary({
           <span>Guests</span>
           <span style={{ color: "var(--color-text)" }}>
             {adults} adult{adults !== 1 ? "s" : ""}
-            {children > 0 ? `, ${children} child${children !== 1 ? "ren" : ""}` : ""}
+            {childCount > 0 ? `, ${childCount} child${childCount !== 1 ? "ren" : ""}` : ""}
           </span>
         </div>
       </div>

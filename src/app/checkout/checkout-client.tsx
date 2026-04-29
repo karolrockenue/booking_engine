@@ -1,18 +1,27 @@
 "use client";
 
-import { useState } from "react";
-import { useSearchParams, useRouter } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { ThemeProvider } from "@/components/layout/ThemeProvider";
 import { NavBar } from "@/components/layout/NavBar";
 import { Footer } from "@/components/layout/Footer";
 import {
   GuestDetailsForm,
-  type GuestDetails,
+  type GuestDetails as GuestDetailsForm$Details,
 } from "@/components/booking/GuestDetailsForm";
 import { BookingSummary } from "@/components/booking/BookingSummary";
 import { BookingProgress } from "@/components/booking/BookingProgress";
 import { CreditCard, Lock, ShieldCheck, User, ArrowLeft } from "lucide-react";
 import type { ResolvedProperty } from "@/lib/get-property";
+import {
+  clearPersistedDraft,
+  loadPersistedDraft,
+  savePersistedConfirmation,
+  submitBooking,
+  SubmitBookingError,
+  type PersistedBookingDraft,
+} from "@/lib/booking";
+import { useExtras } from "@/lib/booking";
 
 const inputStyle: React.CSSProperties = {
   fontFamily: "var(--font-body)",
@@ -23,21 +32,30 @@ const inputStyle: React.CSSProperties = {
 };
 
 export function CheckoutClient({ property }: { property: ResolvedProperty }) {
-  const searchParams = useSearchParams();
   const router = useRouter();
 
-  const checkIn = searchParams.get("checkIn") ?? "";
-  const checkOut = searchParams.get("checkOut") ?? "";
-  const adults = parseInt(searchParams.get("adults") ?? "2");
-  const roomTypeId = searchParams.get("roomTypeId") ?? "";
-  const ratePlanId = searchParams.get("ratePlanId") ?? "";
-  const roomName = searchParams.get("roomName") ?? "";
-  const rateName = searchParams.get("rateName") ?? "";
-  const totalPrice = parseFloat(searchParams.get("totalPrice") ?? "0");
-  const nights = parseInt(searchParams.get("nights") ?? "0");
-  const nightlyRates = JSON.parse(searchParams.get("nightlyRates") ?? "[]");
+  const [draft, setDraft] = useState<PersistedBookingDraft | null>(null);
+  const [draftHydrated, setDraftHydrated] = useState(false);
 
-  const [guestDetails, setGuestDetails] = useState<GuestDetails>({
+  // Load the draft on mount. sessionStorage is browser-only, so do it in an
+  // effect rather than during render.
+  useEffect(() => {
+    const loaded = loadPersistedDraft();
+    setDraft(loaded);
+    setDraftHydrated(true);
+  }, []);
+
+  useEffect(() => {
+    if (draftHydrated && (!draft || !draft.result)) {
+      router.replace("/");
+    }
+  }, [draftHydrated, draft, router]);
+
+  // Pull live extra catalog so we can resolve selected IDs into priced rows
+  // for the booking submission.
+  const { extras } = useExtras(property.id);
+
+  const [guestDetails, setGuestDetails] = useState<GuestDetailsForm$Details>({
     firstName: "",
     lastName: "",
     email: "",
@@ -54,13 +72,24 @@ export function CheckoutClient({ property }: { property: ResolvedProperty }) {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  if (!checkIn || !roomTypeId) {
-    if (typeof window !== "undefined") router.replace("/");
-    return null;
-  }
-
   const currency = property.currency ?? "GBP";
   const symbol = currency === "GBP" ? "£" : currency === "EUR" ? "€" : "$";
+
+  const totals = useMemo(() => {
+    if (!draft?.result) {
+      return { extrasTotal: 0, total: 0, nights: 0 };
+    }
+    const selectedExtras = extras.filter((e) => draft.extras.includes(e.id));
+    const extrasTotal = selectedExtras.reduce(
+      (sum, e) => sum + e.priceMinorUnits / 100,
+      0
+    );
+    return {
+      extrasTotal,
+      total: draft.result.totalPrice + extrasTotal,
+      nights: draft.result.nights,
+    };
+  }, [draft, extras]);
 
   function formatCardNumber(value: string) {
     const digits = value.replace(/\D/g, "").slice(0, 16);
@@ -74,39 +103,76 @@ export function CheckoutClient({ property }: { property: ResolvedProperty }) {
   }
 
   async function handleSubmit() {
+    if (!draft?.result) return;
     setSubmitting(true);
     setError(null);
     try {
-      const res = await fetch("/api/bookings", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          propertyId: property.id, roomTypeId, ratePlanId, checkIn, checkOut,
-          adults, children: 0,
-          guestFirst: guestDetails.firstName, guestLast: guestDetails.lastName,
-          guestEmail: guestDetails.email,
-          guestPhone: guestDetails.phone || undefined,
-          guestCountry: guestDetails.country || undefined,
-          nightlyRates, totalPrice, currency,
-        }),
+      const selectedExtras = extras.filter((e) => draft.extras.includes(e.id));
+      const result = await submitBooking({
+        propertyId: property.id,
+        result: draft.result,
+        extras: selectedExtras,
+        guest: {
+          firstName: guestDetails.firstName,
+          lastName: guestDetails.lastName,
+          email: guestDetails.email,
+          phone: guestDetails.phone,
+          country: guestDetails.country,
+        },
+        checkIn: draft.checkIn,
+        checkOut: draft.checkOut,
+        adults: draft.adults,
+        children: draft.children,
+        currency,
       });
-      const data = await res.json();
-      if (!res.ok) { setError(data.error ?? "Something went wrong."); return; }
-      const params = new URLSearchParams({
-        orderId: data.orderId, firstName: guestDetails.firstName, email: guestDetails.email,
-        roomName, rateName, checkIn, checkOut,
-        nights: nights.toString(), adults: adults.toString(),
-        totalPrice: totalPrice.toString(), nightlyRates: JSON.stringify(nightlyRates),
+
+      savePersistedConfirmation({
+        orderId: result.orderId,
+        bookingId: result.bookingId,
+        cloudbedsReservationId: result.cloudbedsReservationId,
+        firstName: guestDetails.firstName,
+        email: guestDetails.email,
+        roomName: draft.result.roomType.name,
+        rateName: draft.result.ratePlan.name,
+        checkIn: draft.checkIn,
+        checkOut: draft.checkOut,
+        nights: draft.result.nights,
+        adults: draft.adults,
+        totalPrice: totals.total,
+        nightlyRates: draft.result.nightlyRates,
+        currency,
       });
-      router.push(`/confirmation?${params}`);
-    } catch {
-      setError("Something went wrong. Please try again.");
+      clearPersistedDraft();
+      router.push(`/confirmation?orderId=${encodeURIComponent(result.orderId)}`);
+    } catch (e) {
+      const msg =
+        e instanceof SubmitBookingError
+          ? e.message
+          : e instanceof Error
+            ? e.message
+            : "Something went wrong. Please try again.";
+      setError(msg);
     } finally {
       setSubmitting(false);
     }
   }
 
-  const isValid = guestDetails.firstName && guestDetails.lastName && guestDetails.email && guestDetails.country;
+  if (!draftHydrated || !draft?.result) {
+    return null;
+  }
+
+  const roomName = draft.result.roomType.name;
+  const rateName = draft.result.ratePlan.name;
+  const checkIn = draft.checkIn;
+  const checkOut = draft.checkOut;
+  const adults = draft.adults;
+  const nights = totals.nights;
+
+  const isValid =
+    guestDetails.firstName &&
+    guestDetails.lastName &&
+    guestDetails.email &&
+    guestDetails.country;
 
   return (
     <ThemeProvider theme={property.theme}>
@@ -188,7 +254,7 @@ export function CheckoutClient({ property }: { property: ResolvedProperty }) {
                 </div>
                 <div className="bg-white p-6">
                   <p className="text-xs mb-5" style={{ color: "var(--color-text-muted)" }}>
-                    Your card will be charged <span style={{ fontWeight: 600, color: "var(--color-text)" }}>{symbol}{totalPrice.toFixed(2)}</span> upon confirmation.
+                    Your card will be charged <span style={{ fontWeight: 600, color: "var(--color-text)" }}>{symbol}{totals.total.toFixed(2)}</span> upon confirmation.
                   </p>
 
                   <div className="flex flex-col gap-4">
@@ -242,7 +308,7 @@ export function CheckoutClient({ property }: { property: ResolvedProperty }) {
                 }}
               >
                 <ShieldCheck className="w-4 h-4" />
-                {submitting ? "Processing..." : `Pay ${symbol}${totalPrice.toFixed(2)} & Confirm`}
+                {submitting ? "Processing..." : `Pay ${symbol}${totals.total.toFixed(2)} & Confirm`}
               </button>
               <p className="text-center text-[11px] -mt-3" style={{ color: "var(--color-text-muted)" }}>
                 By confirming, you agree to the <a href="#" className="underline">booking terms</a> and <a href="#" className="underline">cancellation policy</a>.
@@ -264,9 +330,9 @@ export function CheckoutClient({ property }: { property: ResolvedProperty }) {
                     checkOut={checkOut}
                     nights={nights}
                     adults={adults}
-                    children={0}
-                    nightlyRates={nightlyRates}
-                    totalPrice={totalPrice}
+                    childCount={0}
+                    nightlyRates={draft.result.nightlyRates}
+                    totalPrice={totals.total}
                     currency={currency}
                   />
                 </div>

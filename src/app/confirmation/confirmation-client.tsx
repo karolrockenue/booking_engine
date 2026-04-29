@@ -1,13 +1,18 @@
 "use client";
 
+import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { ThemeProvider } from "@/components/layout/ThemeProvider";
 import { NavBar } from "@/components/layout/NavBar";
 import { Footer } from "@/components/layout/Footer";
-import { BookingSummary } from "@/components/booking/BookingSummary";
 import { BookingProgress } from "@/components/booking/BookingProgress";
 import { CheckCircle2, Mail, Copy } from "lucide-react";
 import type { ResolvedProperty } from "@/lib/get-property";
+import {
+  loadPersistedConfirmation,
+  type PersistedConfirmation,
+} from "@/lib/booking";
 
 export function ConfirmationClient({
   property,
@@ -15,20 +20,43 @@ export function ConfirmationClient({
   property: ResolvedProperty;
 }) {
   const searchParams = useSearchParams();
-
   const orderId = searchParams.get("orderId") ?? "";
-  const firstName = searchParams.get("firstName") ?? "";
-  const email = searchParams.get("email") ?? "";
-  const roomName = searchParams.get("roomName") ?? "";
-  const rateName = searchParams.get("rateName") ?? "";
-  const checkIn = searchParams.get("checkIn") ?? "";
-  const checkOut = searchParams.get("checkOut") ?? "";
-  const nights = parseInt(searchParams.get("nights") ?? "0");
-  const adults = parseInt(searchParams.get("adults") ?? "2");
-  const totalPrice = parseFloat(searchParams.get("totalPrice") ?? "0");
-  const nightlyRates = JSON.parse(searchParams.get("nightlyRates") ?? "[]");
   const currency = property.currency ?? "GBP";
   const symbol = currency === "GBP" ? "£" : currency === "EUR" ? "€" : "$";
+
+  const [details, setDetails] = useState<PersistedConfirmation | null>(null);
+  const [hydrated, setHydrated] = useState(false);
+
+  useEffect(() => {
+    const loaded = loadPersistedConfirmation();
+    // Only show details if they correspond to the orderId in the URL — guards
+    // against stale sessionStorage from a previous booking. Hydration is a
+    // one-shot synchronous read on mount; the cascading-render warning is the
+    // accepted cost of doing it inside an effect (it has to be — sessionStorage
+    // is browser-only).
+    /* eslint-disable react-hooks/set-state-in-effect */
+    if (loaded && loaded.orderId === orderId) {
+      setDetails(loaded);
+    }
+    setHydrated(true);
+    /* eslint-enable react-hooks/set-state-in-effect */
+  }, [orderId]);
+
+  // If we have no orderId at all, the user got here by accident.
+  if (!orderId) {
+    return (
+      <ThemeProvider theme={property.theme}>
+        <NavBar variant="booking" />
+        <BookingProgress currentStep={4} />
+        <main className="min-h-screen flex items-center justify-center" style={{ backgroundColor: "#F2F2F2" }}>
+          <p className="text-sm" style={{ color: "var(--color-text-muted)" }}>
+            No booking reference found.
+          </p>
+        </main>
+        <Footer />
+      </ThemeProvider>
+    );
+  }
 
   return (
     <ThemeProvider theme={property.theme}>
@@ -59,7 +87,7 @@ export function ConfirmationClient({
             </div>
             <div className="bg-white p-6 text-center">
               <p className="text-lg font-semibold mb-2" style={{ color: "var(--color-text)" }}>
-                Thank you, {firstName}!
+                Thank you{details?.firstName ? `, ${details.firstName}` : ""}!
               </p>
               <p className="text-sm mb-6" style={{ color: "var(--color-text-muted)" }}>
                 Your reservation has been confirmed. We look forward to welcoming you.
@@ -81,92 +109,98 @@ export function ConfirmationClient({
                 </button>
               </div>
 
-              {email && (
+              {details?.email && (
                 <div className="flex items-center justify-center gap-2 text-sm" style={{ color: "var(--color-text-muted)" }}>
                   <Mail className="w-4 h-4" />
-                  <p>Confirmation sent to <strong style={{ color: "var(--color-text)" }}>{email}</strong></p>
+                  <p>Confirmation sent to <strong style={{ color: "var(--color-text)" }}>{details.email}</strong></p>
                 </div>
               )}
             </div>
           </div>
 
-          {/* ── Stay Details Card ── */}
-          <div className="rounded-md overflow-hidden mb-6" style={{ border: "1px solid #E5E0D8" }}>
-            <div className="px-6 py-4" style={{ backgroundColor: "var(--color-primary)" }}>
-              <h3 className="text-sm font-semibold text-white">Stay Details</h3>
-            </div>
-            <div className="bg-white p-6">
-              <div className="grid grid-cols-2 gap-y-4 gap-x-8 text-sm">
-                <div>
-                  <p className="text-[10px] uppercase tracking-wider mb-1" style={{ color: "var(--color-text-muted)" }}>Hotel</p>
-                  <p className="font-semibold" style={{ color: "var(--color-text)" }}>{property.name}</p>
+          {/* Details only render if we have them in sessionStorage; otherwise
+              we show a compact "thanks, see your email" view since the URL
+              alone doesn't carry stay details (by design — privacy + URL
+              hygiene). */}
+          {hydrated && details && (
+            <>
+              <div className="rounded-md overflow-hidden mb-6" style={{ border: "1px solid #E5E0D8" }}>
+                <div className="px-6 py-4" style={{ backgroundColor: "var(--color-primary)" }}>
+                  <h3 className="text-sm font-semibold text-white">Stay Details</h3>
                 </div>
-                <div>
-                  <p className="text-[10px] uppercase tracking-wider mb-1" style={{ color: "var(--color-text-muted)" }}>Room</p>
-                  <p className="font-semibold" style={{ color: "var(--color-text)" }}>{roomName}</p>
-                </div>
-                <div>
-                  <p className="text-[10px] uppercase tracking-wider mb-1" style={{ color: "var(--color-text-muted)" }}>Check-in</p>
-                  <p className="font-semibold" style={{ color: "var(--color-text)" }}>
-                    {new Date(checkIn).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", year: "numeric" })}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-[10px] uppercase tracking-wider mb-1" style={{ color: "var(--color-text-muted)" }}>Check-out</p>
-                  <p className="font-semibold" style={{ color: "var(--color-text)" }}>
-                    {new Date(checkOut).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", year: "numeric" })}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-[10px] uppercase tracking-wider mb-1" style={{ color: "var(--color-text-muted)" }}>Duration</p>
-                  <p className="font-semibold" style={{ color: "var(--color-text)" }}>{nights} night{nights !== 1 ? "s" : ""}</p>
-                </div>
-                <div>
-                  <p className="text-[10px] uppercase tracking-wider mb-1" style={{ color: "var(--color-text-muted)" }}>Rate</p>
-                  <p className="font-semibold" style={{ color: "var(--color-text)" }}>{rateName}</p>
-                </div>
-                <div>
-                  <p className="text-[10px] uppercase tracking-wider mb-1" style={{ color: "var(--color-text-muted)" }}>Guests</p>
-                  <p className="font-semibold" style={{ color: "var(--color-text)" }}>{adults} adult{adults !== 1 ? "s" : ""}</p>
-                </div>
-                <div>
-                  <p className="text-[10px] uppercase tracking-wider mb-1" style={{ color: "var(--color-text-muted)" }}>Total Paid</p>
-                  <p className="text-xl font-bold" style={{ color: "var(--color-text)" }}>{symbol}{totalPrice.toFixed(2)}</p>
+                <div className="bg-white p-6">
+                  <div className="grid grid-cols-2 gap-y-4 gap-x-8 text-sm">
+                    <div>
+                      <p className="text-[10px] uppercase tracking-wider mb-1" style={{ color: "var(--color-text-muted)" }}>Hotel</p>
+                      <p className="font-semibold" style={{ color: "var(--color-text)" }}>{property.name}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] uppercase tracking-wider mb-1" style={{ color: "var(--color-text-muted)" }}>Room</p>
+                      <p className="font-semibold" style={{ color: "var(--color-text)" }}>{details.roomName}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] uppercase tracking-wider mb-1" style={{ color: "var(--color-text-muted)" }}>Check-in</p>
+                      <p className="font-semibold" style={{ color: "var(--color-text)" }}>
+                        {new Date(details.checkIn).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", year: "numeric" })}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] uppercase tracking-wider mb-1" style={{ color: "var(--color-text-muted)" }}>Check-out</p>
+                      <p className="font-semibold" style={{ color: "var(--color-text)" }}>
+                        {new Date(details.checkOut).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", year: "numeric" })}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] uppercase tracking-wider mb-1" style={{ color: "var(--color-text-muted)" }}>Duration</p>
+                      <p className="font-semibold" style={{ color: "var(--color-text)" }}>{details.nights} night{details.nights !== 1 ? "s" : ""}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] uppercase tracking-wider mb-1" style={{ color: "var(--color-text-muted)" }}>Rate</p>
+                      <p className="font-semibold" style={{ color: "var(--color-text)" }}>{details.rateName}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] uppercase tracking-wider mb-1" style={{ color: "var(--color-text-muted)" }}>Guests</p>
+                      <p className="font-semibold" style={{ color: "var(--color-text)" }}>{details.adults} adult{details.adults !== 1 ? "s" : ""}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] uppercase tracking-wider mb-1" style={{ color: "var(--color-text-muted)" }}>Total Paid</p>
+                      <p className="text-xl font-bold" style={{ color: "var(--color-text)" }}>{symbol}{details.totalPrice.toFixed(2)}</p>
+                    </div>
+                  </div>
                 </div>
               </div>
-            </div>
-          </div>
 
-          {/* ── Nightly Breakdown Card ── */}
-          <div className="rounded-md overflow-hidden mb-8" style={{ border: "1px solid #E5E0D8" }}>
-            <div className="px-6 py-4" style={{ backgroundColor: "var(--color-primary)" }}>
-              <h3 className="text-sm font-semibold text-white">Nightly Breakdown</h3>
-            </div>
-            <div className="bg-white">
-              {nightlyRates.map((nr: { date: string; rate: number }, i: number) => (
-                <div
-                  key={nr.date}
-                  className="px-6 py-3 flex items-center justify-between text-sm"
-                  style={{ borderBottom: i < nightlyRates.length - 1 ? "1px solid #f0f0f0" : "none" }}
-                >
-                  <span style={{ color: "var(--color-text-muted)" }}>
-                    {new Date(nr.date).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" })}
-                  </span>
-                  <span className="font-semibold" style={{ color: "var(--color-text)" }}>
-                    {symbol}{nr.rate.toFixed(2)}
-                  </span>
+              <div className="rounded-md overflow-hidden mb-8" style={{ border: "1px solid #E5E0D8" }}>
+                <div className="px-6 py-4" style={{ backgroundColor: "var(--color-primary)" }}>
+                  <h3 className="text-sm font-semibold text-white">Nightly Breakdown</h3>
                 </div>
-              ))}
-              <div className="px-6 py-4 flex items-center justify-between" style={{ borderTop: "1px solid #E5E0D8", backgroundColor: "#fafafa" }}>
-                <span className="text-sm font-semibold uppercase tracking-wider" style={{ color: "var(--color-text)" }}>Total</span>
-                <span className="text-lg font-bold" style={{ color: "var(--color-text)" }}>{symbol}{totalPrice.toFixed(2)}</span>
+                <div className="bg-white">
+                  {details.nightlyRates.map((nr, i) => (
+                    <div
+                      key={nr.date}
+                      className="px-6 py-3 flex items-center justify-between text-sm"
+                      style={{ borderBottom: i < details.nightlyRates.length - 1 ? "1px solid #f0f0f0" : "none" }}
+                    >
+                      <span style={{ color: "var(--color-text-muted)" }}>
+                        {new Date(nr.date).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" })}
+                      </span>
+                      <span className="font-semibold" style={{ color: "var(--color-text)" }}>
+                        {symbol}{nr.rate.toFixed(2)}
+                      </span>
+                    </div>
+                  ))}
+                  <div className="px-6 py-4 flex items-center justify-between" style={{ borderTop: "1px solid #E5E0D8", backgroundColor: "#fafafa" }}>
+                    <span className="text-sm font-semibold uppercase tracking-wider" style={{ color: "var(--color-text)" }}>Total</span>
+                    <span className="text-lg font-bold" style={{ color: "var(--color-text)" }}>{symbol}{details.totalPrice.toFixed(2)}</span>
+                  </div>
+                </div>
               </div>
-            </div>
-          </div>
+            </>
+          )}
 
           {/* ── Return ── */}
           <div className="text-center">
-            <a
+            <Link
               href="/"
               className="inline-block px-8 py-3 text-sm uppercase tracking-wider rounded transition-colors"
               style={{
@@ -177,7 +211,7 @@ export function ConfirmationClient({
               }}
             >
               Return to Homepage
-            </a>
+            </Link>
           </div>
         </div>
       </main>

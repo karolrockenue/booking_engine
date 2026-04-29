@@ -1,12 +1,7 @@
 "use client";
 
-export interface Extra {
-  id: string;
-  name: string;
-  description: string | null;
-  priceMinorUnits: number;
-  currency: string;
-}
+import type { Extra } from "@/lib/booking";
+export type { Extra };
 
 interface ExtrasPanelProps {
   extras: Extra[];

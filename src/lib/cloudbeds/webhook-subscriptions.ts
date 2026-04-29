@@ -203,12 +203,14 @@ export async function unsubscribeWebhooksForProperty(
       const token = await getValidAccessToken(propertyId);
       const url = new URL(DELETE_WEBHOOK_URL);
 
-      // Cloudbeds' deleteWebhook requires endpointUrl in addition to the
-      // subscription ID — undocumented but enforced (returns 200 with
-      // success:false and "Parameter endpointUrl is required" otherwise).
+      // Cloudbeds' deleteWebhook requires the full subscription triple
+      // (endpointUrl + object + action) in addition to the subscription ID —
+      // undocumented but enforced (returns 200 with success:false otherwise).
       const body = new URLSearchParams({
         subscriptionID: sub.cloudbedsSubscriptionId,
         endpointUrl: sub.endpointUrl,
+        object: sub.object,
+        action: sub.action,
       });
 
       const res = await fetch(url, {

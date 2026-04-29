@@ -16,7 +16,6 @@ const SCOPES = [
   "read:reservation",
   "write:reservation",
   "read:room",
-  "read:roomBlock",
   "read:taxesAndFees",
   "read:user",
 ].join(" ");

@@ -9,6 +9,14 @@ import { getValidAccessToken } from "./client";
 // Events we subscribe to per property. Matches what the webhook handler at
 // /api/cloudbeds/webhooks treats as inventory-invalidating, plus a couple of
 // reservation-shape events we'll want for booking sync later.
+//
+// roomblock/created and roomblock/removed deliberately excluded — postWebhook
+// returns "scope not granted by property" even with read:roomBlock enabled in
+// the dev portal and re-OAuth carrying the scope. Likely a property-feature
+// gate. Room blocks are OOO/maintenance only; CB's getRatePlans already
+// reflects what's saleable, so missing these events doesn't cost us anything.
+// Revisit if a real hotel uses room blocks heavily and the cron's 6h window
+// causes noticeable staleness.
 const SUBSCRIBED_EVENTS: Array<{ object: string; action: string }> = [
   { object: "reservation", action: "created" },
   { object: "reservation", action: "status_changed" },
@@ -18,8 +26,6 @@ const SUBSCRIBED_EVENTS: Array<{ object: string; action: string }> = [
   { object: "reservation", action: "deleted" },
   { object: "availability", action: "closeout_changed" },
   { object: "api_queue_task", action: "rate_status_changed" },
-  { object: "roomblock", action: "created" },
-  { object: "roomblock", action: "removed" },
 ];
 
 const POST_WEBHOOK_URL = "https://hotels.cloudbeds.com/api/v1.3/postWebhook";

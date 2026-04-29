@@ -193,7 +193,7 @@ All rendered via CSS custom properties. Components read from `useTheme()` contex
 - 3 room types from CB: Single Room, Double Room, Triple Room
 - 8 rate plans from CB: 3 master rates (Standard) + 2 derived (`Non refundable -10%`) + 3 master ("Direct Rate - 72h cancelation")
 - 720 inventory rows (8 plans × 90 days) auto-synced
-- 8 webhook subscriptions live (10 with read:roomBlock now enabled — re-OAuth + re-subscribe to pick up the missing two)
+- 8 webhook subscriptions live (reservation/* × 6, availability/closeout_changed, api_queue_task/rate_status_changed)
 - Old hand-seeded room types / rate plans cleaned up (script: `cleanup-demo-seed.ts`)
 - Hero image: boutique hotel room (from House on Warwick)
 - Font: Inter

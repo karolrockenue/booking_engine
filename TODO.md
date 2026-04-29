@@ -355,9 +355,9 @@ Day-one work, not a follow-up.
 
 ## Open questions — launch carry
 
-Resolved Q1, Q2, Q3, Q5 are folded into Steps 6 / 7 above. One left:
+All five original Cloudbeds-discovery questions (Q1–Q5) are resolved and folded into Steps 5–7. The only Cloudbeds-API thing carried forward is documented as a Step 6 follow-up (`roomblock/*` events; see Step 6 for context).
 
-- **Webhook signature verification.** `postWebhook` exists, scopes inherit from the resource (we have `read:reservation` + `read:rate`), 34 event names confirmed in Cloudbeds docs. Public docs don't publish the signature header name or hash algorithm. Path: ask Manuel during Step 6, or test live by subscribing and inspecting an inbound payload's headers. Until verified, the webhook handler runs without sig verification on a hard-to-guess path — fine for dev, must be fixed before production.
+Webhook signature verification is **not** an open question — confirmed by the official Cloudbeds webhook docs that Cloudbeds doesn't sign webhooks at all. See Step 5 "Webhook security model" for the full rationale and our mitigations.
 
 ---
 

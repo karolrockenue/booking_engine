@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
 import { ThemeProvider } from "@/components/layout/ThemeProvider";
 import { NavBar } from "@/components/layout/NavBar";
@@ -10,10 +11,7 @@ import {
   type AvailabilityResult,
 } from "@/components/booking/AvailabilityResults";
 import { BookingProgress } from "@/components/booking/BookingProgress";
-import {
-  ExtrasPanel,
-  AVAILABLE_EXTRAS,
-} from "@/components/booking/ExtrasPanel";
+import { ExtrasPanel, type Extra } from "@/components/booking/ExtrasPanel";
 import { StickyBookingBar } from "@/components/booking/StickyBookingBar";
 import { PriceCompare } from "@/components/booking/PriceCompare";
 import type { ResolvedProperty } from "@/lib/get-property";
@@ -30,6 +28,7 @@ export function RoomsClient({ property }: { property: ResolvedProperty }) {
 
   const [results, setResults] = useState<AvailabilityResult[]>([]);
   const [loading, setLoading] = useState(true);
+  const [extras, setExtras] = useState<Extra[]>([]);
 
   // Selection state
   const [selectedResult, setSelectedResult] =
@@ -43,6 +42,9 @@ export function RoomsClient({ property }: { property: ResolvedProperty }) {
       router.replace("/");
       return;
     }
+    // The cascading-render warning here is acceptable: one extra render per
+    // param change is the price of showing a loading state during refetch.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true);
     const params = new URLSearchParams({
       propertyId: property.id,
@@ -54,7 +56,14 @@ export function RoomsClient({ property }: { property: ResolvedProperty }) {
       .then((r) => r.json())
       .then((data) => setResults(data.results ?? []))
       .finally(() => setLoading(false));
-  }, [checkIn, checkOut, adults, property.id]);
+  }, [checkIn, checkOut, adults, property.id, router]);
+
+  useEffect(() => {
+    fetch(`/api/extras?propertyId=${property.id}`)
+      .then((r) => r.json())
+      .then((data) => setExtras(data.extras ?? []))
+      .catch(() => setExtras([]));
+  }, [property.id]);
 
   const nights =
     checkIn && checkOut
@@ -95,12 +104,9 @@ export function RoomsClient({ property }: { property: ResolvedProperty }) {
   function calcExtrasTotal() {
     let total = 0;
     for (const id of selectedExtras) {
-      const extra = AVAILABLE_EXTRAS.find((e) => e.id === id);
+      const extra = extras.find((e) => e.id === id);
       if (extra) {
-        total +=
-          extra.priceType === "per_night"
-            ? extra.price * nights
-            : extra.price;
+        total += extra.priceMinorUnits / 100;
       }
     }
     return total;
@@ -184,7 +190,7 @@ export function RoomsClient({ property }: { property: ResolvedProperty }) {
                   </span>
                 </p>
               </div>
-              <a
+              <Link
                 href="/"
                 className="text-sm px-4 py-2 rounded transition-colors self-start"
                 style={{
@@ -200,7 +206,7 @@ export function RoomsClient({ property }: { property: ResolvedProperty }) {
                 }
               >
                 Change dates
-              </a>
+              </Link>
             </div>
           </div>
         </div>
@@ -245,9 +251,9 @@ export function RoomsClient({ property }: { property: ResolvedProperty }) {
               onClearSelection={handleClear}
               selectedSlot={
                 <ExtrasPanel
+                  extras={extras}
                   selectedExtras={selectedExtras}
                   onToggle={handleToggleExtra}
-                  nights={nights}
                   currency={currency}
                 />
               }
@@ -262,6 +268,7 @@ export function RoomsClient({ property }: { property: ResolvedProperty }) {
           roomName={selectedResult.roomType.name}
           rateName={selectedResult.ratePlan.name}
           roomPrice={selectedResult.totalPrice}
+          extras={extras}
           selectedExtras={selectedExtras}
           nights={nights}
           currency={currency}

@@ -2,12 +2,13 @@
 
 import { X, ShoppingBag, ArrowRight } from "lucide-react";
 import { useTheme } from "@/components/layout/ThemeProvider";
-import { AVAILABLE_EXTRAS } from "./ExtrasPanel";
+import type { Extra } from "./ExtrasPanel";
 
 interface StickyBookingBarProps {
   roomName: string;
   rateName: string;
   roomPrice: number;
+  extras: Extra[];
   selectedExtras: Set<string>;
   nights: number;
   currency: string;
@@ -20,21 +21,20 @@ export function StickyBookingBar({
   roomName,
   rateName,
   roomPrice,
+  extras,
   selectedExtras,
   nights,
   currency,
   onContinue,
-  onClear,
   onRemoveExtra,
 }: StickyBookingBarProps) {
   const theme = useTheme();
   const symbol =
-    currency === "GBP" ? "\u00A3" : currency === "EUR" ? "\u20AC" : "$";
+    currency === "GBP" ? "£" : currency === "EUR" ? "€" : "$";
 
-  const extraItems = AVAILABLE_EXTRAS.filter((e) => selectedExtras.has(e.id));
+  const extraItems = extras.filter((e) => selectedExtras.has(e.id));
   const extrasTotal = extraItems.reduce(
-    (sum, e) =>
-      sum + (e.priceType === "per_night" ? e.price * nights : e.price),
+    (sum, e) => sum + e.priceMinorUnits / 100,
     0
   );
   const total = roomPrice + extrasTotal;
@@ -66,14 +66,14 @@ export function StickyBookingBar({
               <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                 <span className="text-xs text-white/50">{rateName}</span>
                 {extraItems.map((extra) => {
-                  const price = extra.priceType === "per_night" ? extra.price * nights : extra.price;
+                  const price = extra.priceMinorUnits / 100;
                   return (
                     <span
                       key={extra.id}
                       className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full"
                       style={{ backgroundColor: "rgba(255,255,255,0.15)", color: "rgba(255,255,255,0.9)" }}
                     >
-                      {extra.name} +{symbol}{price}
+                      {extra.name} +{symbol}{price.toFixed(2)}
                       <button
                         onClick={() => onRemoveExtra(extra.id)}
                         className="ml-0.5 rounded-full flex items-center justify-center"
@@ -146,14 +146,14 @@ export function StickyBookingBar({
           {extraItems.length > 0 && (
             <div className="flex items-center gap-1.5 flex-wrap mb-3">
               {extraItems.map((extra) => {
-                const price = extra.priceType === "per_night" ? extra.price * nights : extra.price;
+                const price = extra.priceMinorUnits / 100;
                 return (
                   <span
                     key={extra.id}
                     className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full"
                     style={{ backgroundColor: "rgba(255,255,255,0.15)", color: "rgba(255,255,255,0.9)" }}
                   >
-                    {extra.name} +{symbol}{price}
+                    {extra.name} +{symbol}{price.toFixed(2)}
                     <button
                       onClick={() => onRemoveExtra(extra.id)}
                       className="ml-0.5 rounded-full flex items-center justify-center"

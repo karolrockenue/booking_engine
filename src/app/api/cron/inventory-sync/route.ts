@@ -29,8 +29,17 @@ export async function POST(req: NextRequest) {
         roomTypes: acc.roomTypes + r.roomTypesUpserted,
         ratePlans: acc.ratePlans + r.ratePlansUpserted,
         inventoryRows: acc.inventoryRows + r.inventoryRowsUpserted,
+        extrasUpserted: acc.extrasUpserted + r.extrasUpserted,
+        extrasDeleted: acc.extrasDeleted + r.extrasDeleted,
       }),
-      { properties: 0, roomTypes: 0, ratePlans: 0, inventoryRows: 0 }
+      {
+        properties: 0,
+        roomTypes: 0,
+        ratePlans: 0,
+        inventoryRows: 0,
+        extrasUpserted: 0,
+        extrasDeleted: 0,
+      }
     );
     return NextResponse.json({ ok: true, totals, results });
   } catch (e) {

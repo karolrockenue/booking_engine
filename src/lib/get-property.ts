@@ -25,7 +25,7 @@ export async function resolveProperty(): Promise<ResolvedProperty | null> {
     headersList.get("x-property-host") ?? headersList.get("host") ?? "";
   const domain = host.split(":")[0]; // strip port
 
-  // In dev, also check for x-property-slug (set by middleware from ?property= param)
+  // In dev, also check for x-property-slug (set by proxy from ?property= param)
   const slugOverride = headersList.get("x-property-slug");
 
   let property;

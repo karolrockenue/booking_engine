@@ -3,7 +3,7 @@ import {
   properties,
   cloudbedsWebhookSubscriptions,
 } from "@/db/schema";
-import { and, eq, inArray } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { getValidAccessToken } from "./client";
 
 // Events we subscribe to per property. Matches what the webhook handler at
@@ -46,10 +46,16 @@ interface DeleteWebhookResponse {
 function resolveEndpointUrl(): string {
   const explicit = process.env.CLOUDBEDS_WEBHOOK_URL;
   if (explicit) return explicit;
-  // Fall back to the OAuth callback's origin — same domain in practice.
+  // Fall back to building from origin + token. Cloudbeds doesn't sign
+  // webhooks, so the token in the path is the entry gate (see the [token]
+  // route handler).
+  const token = process.env.CLOUDBEDS_WEBHOOK_TOKEN;
+  if (!token) {
+    throw new Error("CLOUDBEDS_WEBHOOK_TOKEN not configured");
+  }
   const redirectUri = process.env.CLOUDBEDS_REDIRECT_URI;
   if (redirectUri) {
-    return `${new URL(redirectUri).origin}/api/cloudbeds/webhooks`;
+    return `${new URL(redirectUri).origin}/api/cloudbeds/webhooks/${token}`;
   }
   throw new Error(
     "Webhook endpoint URL not configured: set CLOUDBEDS_WEBHOOK_URL or CLOUDBEDS_REDIRECT_URI"
@@ -197,8 +203,12 @@ export async function unsubscribeWebhooksForProperty(
       const token = await getValidAccessToken(propertyId);
       const url = new URL(DELETE_WEBHOOK_URL);
 
+      // Cloudbeds' deleteWebhook requires endpointUrl in addition to the
+      // subscription ID — undocumented but enforced (returns 200 with
+      // success:false and "Parameter endpointUrl is required" otherwise).
       const body = new URLSearchParams({
         subscriptionID: sub.cloudbedsSubscriptionId,
+        endpointUrl: sub.endpointUrl,
       });
 
       const res = await fetch(url, {

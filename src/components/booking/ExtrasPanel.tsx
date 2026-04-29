@@ -3,37 +3,28 @@
 export interface Extra {
   id: string;
   name: string;
-  description: string;
-  price: number;
-  priceType: "per_stay" | "per_night";
+  description: string | null;
+  priceMinorUnits: number;
+  currency: string;
 }
 
-export const AVAILABLE_EXTRAS: Extra[] = [
-  { id: "early-checkin", name: "Early Check-in", description: "Guaranteed from 12:00 noon", price: 25, priceType: "per_stay" },
-  { id: "late-checkout", name: "Late Check-out", description: "Stay until 14:00", price: 25, priceType: "per_stay" },
-  { id: "parking", name: "Parking", description: "Secure on-site parking", price: 15, priceType: "per_night" },
-  { id: "champagne", name: "Champagne on Arrival", description: "Bottle of Moët in your room", price: 45, priceType: "per_stay" },
-  { id: "airport-transfer", name: "Airport Transfer", description: "Private car from Heathrow", price: 60, priceType: "per_stay" },
-  { id: "spa-credit", name: "Spa Credit", description: "£50 towards any treatment", price: 50, priceType: "per_stay" },
-];
-
 interface ExtrasPanelProps {
+  extras: Extra[];
   selectedExtras: Set<string>;
   onToggle: (extraId: string) => void;
-  nights: number;
   currency: string;
-  totalPrice?: number;
-  onContinue?: () => void;
 }
 
 export function ExtrasPanel({
+  extras,
   selectedExtras,
   onToggle,
-  nights,
   currency,
 }: ExtrasPanelProps) {
   const symbol =
-    currency === "GBP" ? "\u00A3" : currency === "EUR" ? "\u20AC" : "$";
+    currency === "GBP" ? "£" : currency === "EUR" ? "€" : "$";
+
+  if (extras.length === 0) return null;
 
   return (
     <div>
@@ -46,12 +37,9 @@ export function ExtrasPanel({
       </div>
 
       <div>
-        {AVAILABLE_EXTRAS.map((extra, i) => {
+        {extras.map((extra, i) => {
           const selected = selectedExtras.has(extra.id);
-          const extraTotal =
-            extra.priceType === "per_night"
-              ? extra.price * nights
-              : extra.price;
+          const price = extra.priceMinorUnits / 100;
 
           return (
             <button
@@ -63,7 +51,7 @@ export function ExtrasPanel({
                 backgroundColor: selected ? "#f7f9fb" : "transparent",
                 cursor: "pointer",
                 border: "none",
-                borderBottom: i < AVAILABLE_EXTRAS.length - 1 ? "1px solid #f0f0f0" : "none",
+                borderBottom: i < extras.length - 1 ? "1px solid #f0f0f0" : "none",
               }}
             >
               {/* Toggle */}
@@ -87,19 +75,16 @@ export function ExtrasPanel({
                 >
                   {extra.name}
                 </p>
-                <p className="text-[11px]" style={{ color: "var(--color-text-muted)" }}>
-                  {extra.description}
-                </p>
+                {extra.description && (
+                  <p className="text-[11px]" style={{ color: "var(--color-text-muted)" }}>
+                    {extra.description}
+                  </p>
+                )}
               </div>
 
               {/* Price */}
               <p className="text-[13px] font-medium shrink-0" style={{ color: "var(--color-text)" }}>
-                +{symbol}{extraTotal}
-                {extra.priceType === "per_night" && (
-                  <span className="text-[10px] font-normal ml-1" style={{ color: "var(--color-text-muted)" }}>
-                    ({symbol}{extra.price}/nt)
-                  </span>
-                )}
+                +{symbol}{price.toFixed(2)}
               </p>
             </button>
           );

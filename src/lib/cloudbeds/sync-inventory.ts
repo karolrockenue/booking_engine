@@ -2,6 +2,7 @@ import { db } from "@/db";
 import { properties, roomTypes, ratePlans, inventory } from "@/db/schema";
 import { eq, sql } from "drizzle-orm";
 import { cloudbeds } from "./client";
+import { syncExtrasForProperty } from "./sync-extras";
 
 interface CloudbedsRoomType {
   roomTypeID: string;
@@ -65,6 +66,8 @@ export interface SyncResult {
   roomTypesUpserted: number;
   ratePlansUpserted: number;
   inventoryRowsUpserted: number;
+  extrasUpserted: number;
+  extrasDeleted: number;
   rangeStart: string;
   rangeEnd: string;
   durationMs: number;
@@ -257,12 +260,30 @@ export async function syncInventoryForProperty(
     inventoryRowsUpserted += rows.length;
   }
 
+  // 3. Extras catalog. Failure here shouldn't kill the inventory sync — the
+  // booking flow can still operate with a stale extras list.
+  let extrasUpserted = 0;
+  let extrasDeleted = 0;
+  try {
+    const extrasResult = await syncExtrasForProperty(propertyId);
+    extrasUpserted = extrasResult.upserted;
+    extrasDeleted = extrasResult.deleted;
+  } catch (e) {
+    console.error(
+      `syncExtrasForProperty(${propertyId}) failed: ${
+        e instanceof Error ? e.message : String(e)
+      }`
+    );
+  }
+
   return {
     propertyId,
     cloudbedsPropertyId,
     roomTypesUpserted: rtRes.data.length,
     ratePlansUpserted,
     inventoryRowsUpserted,
+    extrasUpserted,
+    extrasDeleted,
     rangeStart,
     rangeEnd,
     durationMs: Date.now() - start,

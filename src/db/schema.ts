@@ -179,6 +179,34 @@ export const inventory = pgTable(
   ]
 );
 
+// --- Property extras (Cloudbeds addons catalog, mirrored per property) ---
+
+export const propertyExtras = pgTable(
+  "property_extras",
+  {
+    id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+    propertyId: uuid("property_id")
+      .references(() => properties.id)
+      .notNull(),
+    cloudbedsAddonId: text("cloudbeds_addon_id").notNull(),
+    cloudbedsProductId: text("cloudbeds_product_id"),
+    name: text("name").notNull(),
+    description: text("description"),
+    priceMinorUnits: integer("price_minor_units").notNull(),
+    currency: text("currency").notNull(),
+    lastSyncedAt: timestamp("last_synced_at", { withTimezone: true }).default(
+      sql`NOW()`
+    ),
+  },
+  (table) => [
+    uniqueIndex("property_extras_property_addon_idx").on(
+      table.propertyId,
+      table.cloudbedsAddonId
+    ),
+    index("property_extras_property_idx").on(table.propertyId),
+  ]
+);
+
 // --- Bookings ---
 //
 // Status lifecycle (not strictly sequential — pms_synced and paid can occur in

@@ -50,6 +50,19 @@ async function main() {
       `  ${i.date}  rate=${i.rate}  units=${i.unitsAvailable}  minStay=${i.minStay}  cArr=${i.closedArrival}  cDep=${i.closedDeparture}`
     );
   }
+
+  const recent = await db
+    .select({ updatedAt: inventory.updatedAt })
+    .from(inventory)
+    .where(eq(inventory.propertyId, p.id))
+    .orderBy(sql`${inventory.updatedAt} DESC NULLS LAST`)
+    .limit(1);
+  if (recent[0]?.updatedAt) {
+    const ageMs = Date.now() - recent[0].updatedAt.getTime();
+    console.log(
+      `\nMost recent inventory updatedAt: ${recent[0].updatedAt.toISOString()} (${Math.round(ageMs / 1000)}s ago)`
+    );
+  }
 }
 
 main()

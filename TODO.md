@@ -1,8 +1,20 @@
 # Build Plan
 
-A sequenced plan to take the booking engine from its current state (B2U-built, mock payments, hardcoded extras) to launch-ready (Cloudbeds REST API, Stripe Connect, Flex auto-charge).
+A sequenced plan to take the booking engine to launch-ready (Cloudbeds REST API, Stripe Connect, Flex auto-charge, per-hotel bespoke front-ends).
 
 Earlier steps are concrete because the work is well-scoped. Later steps are looser because the design will be informed by what we learn earlier (especially the sandbox smoke-test in Step 5 and the Stripe Connect setup in Phase 3). Tighten them up as we go.
+
+**Phase status (2026-04-29):**
+
+| Phase | Steps | Status |
+|---|---|---|
+| 1. Foundation | 1, 2, 3 | ✅ Done |
+| 2. Cloudbeds REST API | 4, 5, 6, 7 | ✅ Done |
+| 2.5 Per-hotel front-end architecture | Headless hooks, sessionStorage drafts | ✅ Hooks done; `src/hotels/<slug>/` scaffold pending |
+| 3. Stripe Connect | 8, 9, 10 | ⛔ Gated on Stripe account setup |
+| 4. Booking flow rewrite | 11, 12 | ⛔ Gated on Phase 3 |
+| 5. Flex auto-charge | 13, 14, 15 | ⛔ Gated on Phase 3 |
+| 6. Cancellation + launch hardening | 16, 17 | 🟡 Partially done — quick wins shipped (`ADMIN_TOKEN`, dev-route 404, proxy rename, lint, webhook URL hardening); R2 / domains / room descriptions / JSON-LD / `next/font` still TODO |
 
 ---
 
@@ -173,47 +185,104 @@ Confirmed working end-to-end in production (2026-04-29).
 
 **Carry-forward / known limitations:**
 
-- **Stale-row cleanup pass on sync.** If a hotel deletes a rate plan or room type in Cloudbeds, our DB still holds it — sync only upserts, doesn't delete missing rows. Karol's reasoning was that this is mostly invisible because availability filters on positive `unitsAvailable`, and CB's `getRatePlans` only returns active rates so stale rows never get fresh inventory. True in steady state. But for hygiene, future work: at the end of `syncInventoryForProperty`, identify rate plans that exist in our DB for the property but weren't seen in this Cloudbeds response and delete them (cascade to inventory, block on bookings as `cleanup-demo-seed.ts` does).
+- **Stale-row cleanup pass on sync.** If a hotel deletes a rate plan or room type in Cloudbeds, our DB still holds it — sync only upserts, doesn't delete missing rows. Karol's reasoning was that this is mostly invisible because availability filters on positive `unitsAvailable`, and CB's `getRatePlans` only returns active rates so stale rows never get fresh inventory. True in steady state. But for hygiene, future work: at the end of `syncInventoryForProperty`, identify rate plans that exist in our DB for the property but weren't seen in this Cloudbeds response and delete them (cascade to inventory, block on bookings as `cleanup-demo-seed.ts` does). *(Note: `syncExtrasForProperty` already does this for the addon catalog — use that as the pattern.)*
 - **`roomblock/created` / `roomblock/removed` webhooks — abandoned for now.** Added `read:roomBlock` to `SCOPES`, re-OAuth completed (consent screen skipped because previous scopes already granted; new scope checked in URL = `read%3AroomBlock` present), but `postWebhook` still returned `"Scope required for this call was not granted by property."` Same wording as the original `getItems` failure, but unlike that one (which `read:addon` resolved cleanly), this didn't unblock. Likely a property-feature gate on the partner test account, or Cloudbeds silently dropping an unrecognised scope. Reverted both `SCOPES` and `SUBSCRIBED_EVENTS` to remove the dead entries. Room blocks are OOO/maintenance only; `getRatePlans` already reflects what's saleable so we don't lose anything. Revisit if a real hotel relies on room blocks and the 6h cron window causes noticeable staleness.
-- **Webhook URL hardening** — currently `/api/cloudbeds/webhooks` (no token in path). Cloudbeds doesn't sign, so an attacker who knew the URL could spam our handler. Mitigated by property-ID cross-check + idempotent sync, but worth moving to a token-in-path URL before launch.
+- ~~**Webhook URL hardening**~~ — DONE 2026-04-29. Webhook handler is now at `/api/cloudbeds/webhooks/[token]` with `CLOUDBEDS_WEBHOOK_TOKEN` env var; mismatch returns 404. Token compared with `timingSafeEqual`. Live subscriptions rotated via `cloudbeds-rotate-webhooks.ts`. Note for future: Cloudbeds' `deleteWebhook` requires the full triple (`subscriptionID` + `endpointUrl` + `object` + `action`) — undocumented but enforced.
 - **Cancellation policy admin UI** — schema fields are populated by heuristic only. Until Karol builds a small editor on the property edit page (per-rate-plan `isRefundable` toggle + `{deadlineHours, penaltyType}` JSONB), the heuristic's output is what guests will see. Karol asked for "something basic, single admin only" — low-priority polish.
 
-### Step 7: Extras catalog sync
+### Step 7: Extras catalog sync — DONE 🟢
 
-Goal: replace the hardcoded `AVAILABLE_EXTRAS` in `src/components/booking/ExtrasPanel.tsx:11` with per-property data from Cloudbeds.
+Confirmed working end-to-end in production (2026-04-29).
 
-Source: `GET https://api.cloudbeds.com/addons/v1/addons` with header `x-property-id: <cloudbedsPropertyId>`. Scope: `read:addon` (already in `SCOPES`). Response shape:
+**Shipped:**
 
-```json
-{
-  "offset": 0,
-  "limit": 100,
-  "data": [
-    {
-      "id": "234169",
-      "name": "Continental Breakfast",
-      "description": "Croissants and Juice",
-      "productId": "1281127",
-      "price": { "amount": "1000", "currencyCode": "USD" }
-    }
-  ]
-}
+- New `propertyExtras` table per property: `id`, `propertyId`, `cloudbedsAddonId`, `cloudbedsProductId`, `name`, `description`, `priceMinorUnits`, `currency`, `lastSyncedAt`. Unique on (`propertyId`, `cloudbedsAddonId`); indexed on `propertyId`.
+- `src/lib/cloudbeds/sync-extras.ts` → `syncExtrasForProperty(propertyId)` pages `https://api.cloudbeds.com/addons/v1/addons` (different host from v1.3, uses `x-property-id` header), upserts on (`propertyId`, `cloudbedsAddonId`), and **hard-deletes** rows whose `cloudbedsAddonId` no longer appears in CB. Called at the end of `syncInventoryForProperty` and as cold-start from the new `/api/extras` route.
+- `GET /api/extras?propertyId=…` returns `{ extras: [{ id, name, description, priceMinorUnits, currency }] }`. DB read wrapped in `unstable_cache` keyed by `propertyId`, `revalidate: 60`. Cold-start sync runs synchronously if the property is OAuth'd but `propertyExtras` is empty.
+- `ExtrasPanel.tsx` no longer has `AVAILABLE_EXTRAS` or `priceType: per_stay/per_night`. Cloudbeds returns flat-priced addons in **minor units** (string, divide by 100). The panel takes `extras` as a prop and renders prices via the property's currency formatter. The `image` field is gone — addons don't carry images.
+- `StickyBookingBar.tsx` takes `extras` as a prop instead of importing the constant.
+- `rooms-client.tsx` fetches extras via the headless `useExtras(propertyId)` hook.
+
+**Verified live:**
+
+- Demo property: 1 extra in `property_extras` ("Continental Breakfast" addon ID 234169, $10.00 / 1000 minor units, USD per CB partner test account).
+- Cron sync now reports `extrasUpserted` / `extrasDeleted` totals.
+
+**Carry-forward:**
+
+- CB returns USD on the partner test account even though the property currency is GBP. The booking flow uses the **property's** `currency` field at charge time (per spec), not the addon's. When connecting a real hotel, expect their addons' currency to match their property currency in nearly all cases — but don't trust it.
+
+---
+
+## Phase 2.5 — Per-hotel front-end architecture
+
+Karol manages ~40 independent hotels (luxury → near-hostel). They are not a chain. Each must read as its own brand to a guest. Some may share a design (~20 of 40 expected to use one of a small number of shared designs); the rest are fully bespoke.
+
+**Design pipeline:**
+1. Karol designs a hotel website in Claude Design (visual references, full layouts).
+2. Replicates it in Claude Code as a 4-step static HTML mockup (`/`, `/rooms`, `/checkout`, `/confirmation`). Mock-only but pixel-perfect.
+3. Hotel owner signs off.
+4. Mockup is ported to React: each hotel slug gets a directory under `src/hotels/<slug>/` with `Home.tsx`, `Rooms.tsx`, `Checkout.tsx`, `Confirmation.tsx`. Pages either implement bespoke or re-render a shared template at `src/hotels/_templates/<name>/`.
+5. Per-hotel components consume the booking flow's data + state via the headless hooks library. JSX + CSS are bespoke; logic is shared.
+
+### Headless booking hooks (`src/lib/booking/`) — DONE 🟢
+
+Shipped 2026-04-29. Extract data + state + side effects so per-hotel page components own only presentation.
+
+- `types.ts` — canonical `AvailabilityResult`, `Extra`, `BookingDraft`, `GuestDetails`, `NightlyRate`, `PersistedBookingDraft`, `PersistedConfirmation`. `AvailabilityResults.tsx` and `ExtrasPanel.tsx` re-export from here (they used to define their own types).
+- `useAvailability(args)` — cancelable fetch of `/api/availability`, `{ results, loading, error }`.
+- `useExtras(propertyId)` — fetch of `/api/extras`.
+- `useBookingDraft(extras)` — selection state + memoized `extrasTotal` and `grandTotal`.
+- `usePersistedDraft(ctx, draft)` + `loadPersistedDraft()` + `clearPersistedDraft()` — sessionStorage mirror with 30-min TTL.
+- `savePersistedConfirmation()` + `loadPersistedConfirmation()` — same pattern for the booking confirmation, 2h TTL. Survives a refresh on `/confirmation`.
+- `submitBooking(args)` — typed POST to `/api/bookings`. Signature reserves slots for `paymentIntentId` / `setupIntentId` / `paymentMethodId` / `customerId` so when Stripe lands (Step 10/11), `submitBooking` is the **only** place the per-hotel front-ends need to learn the new shape. Throws `SubmitBookingError` with status on non-2xx.
+
+The existing `/rooms`, `/checkout`, `/confirmation` clients are now the canonical pattern: they consume the hooks, persist via sessionStorage, and contain no inline fetch / state-machine logic.
+
+**Bonus: URL-stuffing pattern is gone.** Rooms used to pack `roomTypeId`, `ratePlanId`, `roomName`, `rateName`, `totalPrice`, `nights`, `nightlyRates` into checkout URL params and similar into confirmation URL params. Now the draft lives in sessionStorage and only the `orderId` ends up in the confirmation URL. Cleaner URLs, no race-on-refresh, and `extras` finally propagate from rooms to checkout (the URL-param flow had been silently dropping them).
+
+### Per-hotel directory scaffold — TODO
+
+Not yet implemented. The `src/hotels/<slug>/` and `src/hotels/_templates/<name>/` directory pattern lands when the first real hotel mockup is ready to port.
+
+Plan:
+
+```
+src/hotels/
+  _templates/
+    boutique-1/         # shared design used by N hotels
+      Home.tsx          # receives `config: HotelConfig` prop
+      Rooms.tsx
+      Checkout.tsx
+      Confirmation.tsx
+      theme.css
+  abc-hotel/
+    config.ts           # copy, image paths, hotel slug, theme overrides
+    Home.tsx            # 1-line passthrough: <BoutiqueHome config={abcConfig} />
+    Rooms.tsx           # bespoke override of just this page (optional)
+  xyz-hotel/
+    config.ts
+    Home.tsx            # fully bespoke, no template
+    Rooms.tsx
+    Checkout.tsx
+    Confirmation.tsx
 ```
 
-`price.amount` is a string in **minor units** — divide by 100 for display. `currencyCode` may not match the property currency in test accounts; trust the property's `currency` field at booking time, not the addon's.
+Routes will resolve via `[propertySlug]` dispatch reading the slug, dynamic-importing the right hotel module.
 
-1. Add a `propertyExtras` table: `id` (uuid), `propertyId` (uuid → properties.id), `cloudbedsAddonId` (text, e.g. `"234169"`), `cloudbedsProductId` (text), `name` (text), `description` (text, nullable), `priceMinorUnits` (integer), `currency` (text), `lastSyncedAt` (timestamp). Index on `propertyId`.
-2. Create `src/lib/cloudbeds/sync-extras.ts` — `syncExtrasForProperty(propertyId)`:
-    - Page through `/addons/v1/addons` until `data.length < limit`.
-    - Upsert into `propertyExtras` keyed on (`propertyId`, `cloudbedsAddonId`).
-    - Soft-delete (or hard-delete) rows whose `cloudbedsAddonId` no longer appears, so removed addons disappear from the booking flow.
-    - Called from the Step 6 sync loop and on the cold-start path.
-3. Add `GET /api/extras?propertyId=…` route returning `[{ id, name, description, priceMinorUnits, currency }]`. Cached at the framework level for ~60s (extras rarely change mid-day).
-4. Update `ExtrasPanel.tsx` — replace the `AVAILABLE_EXTRAS` constant with a `useEffect` fetch from `/api/extras`. The panel currently renders icons + price formatted as `£${price}` — switch to `priceMinorUnits / 100` and use the property's currency formatter. Drop the hardcoded `image` field — addons don't carry images. Use a default icon by category-name match if needed.
-5. Update `StickyBookingBar.tsx` (imports `AVAILABLE_EXTRAS` directly) to take the extras list as a prop from the parent rooms client, instead of importing the constant.
-6. Rewire `src/app/rooms/rooms-client.tsx:97-98` (`AVAILABLE_EXTRAS.find(...)` for totals) to use the fetched list.
+**Discipline rules:**
 
-Deliverable: extras shown to the guest are pulled from the property's Cloudbeds catalog. No hardcoded list. New addons added in CB appear within one sync cycle (or immediately on cold-start).
+1. **API contract is sacred.** Per-hotel UI can render however it wants but must speak to `/api/availability`, `/api/extras`, `/api/bookings` with the same shape. Backend validates everything.
+2. **Headless hooks > shared components.** Don't try to build a shared `<RoomCard>` that all 40 hotels theme — that fights the bespoke goal. Per-hotel components consume `useAvailability` + `useBookingDraft` and render results freeform. Exceptions: a few stubborn primitives (date picker, country/phone input, Stripe Elements wrapper) stay shared and hotels override styling via CSS.
+3. **CSS isolation.** Pick one of: CSS Modules, scoped stylesheets, or Tailwind w/ per-hotel layers — global CSS will leak across 40 hotels. Pick before hotel #2.
+4. **Booking flow stays consistent.** The marketing surface (homepage, hero, gallery, story) is fully bespoke per hotel. The booking flow itself (rooms → checkout → confirmation) is theme-only — same UX, different colours / fonts / copy. Don't reinvent the booking mechanics per hotel: consistency = trust + smaller bug surface.
+
+### When to start porting hotels
+
+Right now the existing `/rooms`, `/checkout`, `/confirmation` are doing double duty as the live demo flow AND the canonical "first hotel" example. When the first real mockup is ready:
+1. Create `src/hotels/demo/` with the existing JSX moved into it.
+2. The `[propertySlug]` route resolves "demo" → `src/hotels/demo/Rooms.tsx`.
+3. The current `src/app/rooms/rooms-client.tsx` becomes the fallback (or gets deleted once every property has its own directory).
 
 ---
 
@@ -328,8 +397,15 @@ Day-one work, not a follow-up.
 
 ### Step 17: Production gates + content + infra
 
-- Change `ADMIN_TOKEN` away from `change-me-before-deploy`.
-- 404 the dev mockup pages (`/bars`, `/compare`, `/compare-live`, `/fonts`, `/rates`, `/enhance`, `/rooms-mockup`, `/pickers`) when `NODE_ENV === 'production'`.
+**Done (2026-04-29 quick-wins pass):**
+
+- ✅ `ADMIN_TOKEN` rotated away from `change-me-before-deploy`. Also dropped `B2U_SHARED_SECRET` from `.env.local` and Railway.
+- ✅ Dev mockup pages (`/bars`, `/compare`, `/compare-live`, `/fonts`, `/rates`, `/enhance`, `/rooms-mockup`, `/pickers`) now 404 in production via `src/proxy.ts`.
+- ✅ `src/middleware.ts` renamed to `src/proxy.ts` (Next.js 16 deprecation), function `middleware` → `proxy`.
+- ✅ Lint cleanup on `rooms-client.tsx` (`<a>` → `<Link>`, router added to effect deps, `setLoading` warning suppressed with rationale).
+
+**Still TODO:**
+
 - Cloudflare R2 image hosting; admin upload UI per property.
 - Custom domains per hotel (Cloudflare DNS → Railway).
 - Real copy + room descriptions in DB (move out of `AvailabilityResults.tsx` `ROOM_DESCRIPTIONS`).

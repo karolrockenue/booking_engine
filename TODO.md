@@ -4,17 +4,17 @@ A sequenced plan to take the booking engine to launch-ready (Cloudbeds REST API,
 
 Earlier steps are concrete because the work is well-scoped. Later steps are looser because the design will be informed by what we learn earlier (especially the sandbox smoke-test in Step 5 and the Stripe Connect setup in Phase 3). Tighten them up as we go.
 
-**Phase status (2026-04-29):**
+**Phase status (2026-05-04):**
 
 | Phase | Steps | Status |
 |---|---|---|
 | 1. Foundation | 1, 2, 3 | ✅ Done |
 | 2. Cloudbeds REST API | 4, 5, 6, 7 | ✅ Done |
 | 2.5 Per-hotel front-end architecture | Headless hooks, sessionStorage drafts | ✅ Hooks done; `src/hotels/<slug>/` scaffold pending |
-| 3. Stripe Connect | 8, 9, 10 | ⛔ Gated on Stripe account setup |
-| 4. Booking flow rewrite | 11, 12 | ⛔ Gated on Phase 3 |
-| 5. Flex auto-charge | 13, 14, 15 | ⛔ Gated on Phase 3 |
-| 6. Cancellation + launch hardening | 16, 17 | 🟡 Partially done — quick wins shipped (`ADMIN_TOKEN`, dev-route 404, proxy rename, lint, webhook URL hardening); R2 / domains / room descriptions / JSON-LD / `next/font` still TODO |
+| 3. Stripe Connect | 8, 9, 10 | ✅ Done — UAE sandbox platform, Standard accounts, Stripe Elements working end-to-end (test card `4242…`) |
+| 4. Booking flow rewrite | 11, 12 | ✅ Done — postReservation/postCustomItem/postPayment + confirmation page polish + SendGrid email all live |
+| 5. Flex auto-charge | 13, 14, 15 | ⛔ Not started |
+| 6. Cancellation + launch hardening | 16, 17 | 🟡 Quick wins shipped earlier; R2 / domains / room descriptions / JSON-LD / `next/font` / availability perf still TODO |
 
 ---
 
@@ -286,73 +286,93 @@ Right now the existing `/rooms`, `/checkout`, `/confirmation` are doing double d
 
 ---
 
-## Phase 3 — Stripe Connect
+## Phase 3 — Stripe Connect — DONE 🟢
 
-(Detail tightens once we've actually configured the platform account and seen the live onboarding shape.)
+Working end-to-end on the **UAE sandbox** as of 2026-05-01. (Real Polish platform account is being opened later this month — see "Carry-forward" below for the swap.)
 
-### Step 8: Stripe platform setup
+### Step 8: Stripe platform setup — DONE 🟢
 
-- Create / configure the Stripe platform account for Rockenue. Enable Stripe Connect with **Express** account type.
-- Decide and document: live vs test mode strategy. Probably: test mode while building, live mode behind a env-var flag for first real hotel.
-- Add env vars: `STRIPE_SECRET_KEY`, `STRIPE_PUBLISHABLE_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_CONNECT_CLIENT_ID`.
-- Webhooks: register the platform's webhook endpoint at `/api/stripe/webhooks` and at minimum subscribe to: `account.updated`, `payment_intent.succeeded`, `payment_intent.payment_failed`, `setup_intent.succeeded`, `setup_intent.setup_failed`, `charge.refunded`, `payment_method.detached`. (More may be added in Phase 5.)
+- UAE sandbox (`ROCKENUE INTERNATIONAL GROUP L.L.C-FZ`) used for dev. Will swap to a Polish platform account when it's live.
+- **Account type: Standard** (NOT Express). Switched from the build-plan default after reviewing tradeoffs — hotels are real businesses; full Stripe Dashboard + ability to connect existing Stripe accounts > simplified Express dashboard. See "Carry-forward".
+- **No `STRIPE_CONNECT_CLIENT_ID` needed.** That's only required for OAuth-based Standard onboarding. Express + accountLinks (which we use) is API-only — `accounts.create({ type: 'standard' })` + `accountLinks.create({ type: 'account_onboarding' })`. Ignored the client_id field in the dashboard.
+- Env vars: `STRIPE_SECRET_KEY`, `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`, `STRIPE_WEBHOOK_SECRET` (still empty locally — Stripe CLI install blocked on outdated Xcode CLT, see follow-up below), `PUBLIC_APP_URL`.
+- Webhook endpoint at `/api/stripe/webhooks` handles `account.updated`, `payment_intent.succeeded/failed`, `setup_intent.succeeded/failed`. Logs payment-related events to `payment_events` table for audit.
 
-Deliverable: Stripe platform configured, webhook endpoint stub returns 200.
+### Step 9: Per-property onboarding — DONE 🟢
 
-### Step 9: Per-property onboarding
+- `POST /api/stripe/connect/start` — admin-only, creates a Standard connected account (idempotent — only on first call) and returns an `accountLink` URL.
+- `GET /api/stripe/connect/start?refresh=1&propertyId=…` — handles Stripe's `refresh_url` callback if the link expires.
+- `GET /api/stripe/connect/return` — the return URL Stripe redirects to after onboarding. Calls `accounts.retrieve`, derives status via `src/lib/stripe/status.ts`, persists `stripeAccountStatus` + `stripeAccountCurrency`.
+- Admin UI on property edit page: "Connect to Stripe" / "Resume onboarding" / "Manage in Stripe" button + status pill + currency-mismatch warning.
+- `account.updated` webhook handler refreshes status when Stripe updates the account out-of-band.
 
-- Admin UI on the property edit page: "Connect to Stripe" → calls our backend, which creates a Stripe Express account (`account.create`), generates an account link (`accountLinks.create`), redirects the hotel rep to Stripe's hosted form.
-- Return URL → `/admin/properties/[id]?stripe=onboarded`.
-- On `account.updated` webhook: pull the connected account's default currency and `capabilities.transfers`, persist `stripeAccountCurrency` and `stripeAccountStatus`. **If the connected account's currency doesn't match `properties.currency`, mark `stripeAccountStatus = 'restricted'` and show a warning in admin** — don't silently mismatch.
-- Apply payout schedule from the property's `payoutSchedule` field via `accounts.update` once the account is active.
+### Step 10: Stripe Elements + dual checkout flow — DONE 🟢
 
-Deliverable: webmaster can onboard a property to Stripe Connect from admin; status reflects Stripe webhook events; currency mismatch is caught.
+Mock card form replaced. Stripe Elements rendering live.
 
-### Step 10: Stripe Elements + dual checkout flow
+- `POST /api/stripe/payment-intent` (NR) — `application_fee_amount` from `properties.platformFeePercent`, `transfer_data.destination = stripeAccountId`, `on_behalf_of = stripeAccountId` (mandatory cross-region — see below), idempotent on `orderId`.
+- `POST /api/stripe/setup-intent` (Flex) — creates platform-side Customer + SetupIntent with `usage: 'off_session'`. The off-session PI in Phase 5 will reference this customer + the saved payment method.
+- `src/components/checkout/StripePaymentSection.tsx` — `<Elements>` + `<PaymentElement>` wrapper. `confirmPayment`/`confirmSetup` with `redirect: 'if_required'` so card payments stay inline.
+- `src/app/checkout/checkout-client.tsx` — generates session orderId once, lazily creates the right intent (PI vs SI) when guest enters their email, branches button label on rate type. Forwards Stripe IDs to `/api/bookings`.
+- `AvailabilityResult.ratePlan.isRefundable` now flows through `/api/availability` → headless hooks → checkout client (so the client knows which intent kind to request).
 
-Replaces the mock card form at `src/app/checkout/checkout-client.tsx:194-213`.
+**Carry-forward (Stripe):**
 
-Two flows, branched on the selected rate plan's `isRefundable`:
-
-**Non-Refundable (`isRefundable: false`):**
-- On `/checkout` mount: call `/api/stripe/payment-intent` (new route) with `propertyId`, `bookingDraft` (room, rate, dates, extras totals). Server creates a `PaymentIntent` with `amount = grandTotal`, `currency = stripeAccountCurrency`, `application_fee_amount`, `transfer_data: { destination: stripeAccountId }`, `statement_descriptor_suffix: "ROCKENUE"`, and idempotency key derived from a generated `orderId`.
-- Render Stripe Elements `PaymentElement` bound to the client_secret.
-- On submit: `stripe.confirmPayment(...)`, 3DS flows in the browser. On success, post to `/api/bookings` (which now does the postReservation work — see Step 11) with the PI id and the booking details.
-
-**Flexible (`isRefundable: true`):**
-- On `/checkout` mount: call `/api/stripe/setup-intent` (new route). Server creates a `Customer` (on the platform, not the connected account, since direct charges still need a saved PM keyed to the destination account — check Stripe docs for the right pattern; **this is the bit most likely to need adjustment after Step 8**). Returns client_secret with `usage: 'off_session'`.
-- Render Stripe Elements bound to the SetupIntent.
-- On submit: `stripe.confirmSetup(...)`, 3DS flows. On success, post to `/api/bookings` with the SetupIntent id, payment method id, customer id, computed `chargeAt = checkIn - cancellationDeadlineHours`.
-
-Both flows pass the booking through to Step 11 where `postReservation` runs.
-
-Deliverable: real payment / card-save flow, end to end, in test mode. Mock form gone.
+- **Polish platform swap.** When the real platform account is opened: swap env vars, re-register webhook endpoint against the new account, re-onboard each property. Test connected accounts and PaymentIntents in UAE are throwaway. `on_behalf_of` keeps working but cross-region rules will differ — Polish (EU) platform has wide cross-border rights so most country combinations should work without further config.
+- **Cross-region requires `on_behalf_of`.** Discovered the hard way: UAE platform → GB connected account fails with *"Cannot create a destination charge for connected accounts in GB because funds would be settled on the platform and the connected account is outside the platform's region"*. Fix: `on_behalf_of: stripeAccountId` makes the connected account the merchant of record so funds settle in their country. Safe to leave on permanently — explicit settlement is a feature even when same-region.
+- **Stripe webhook secret + CLI.** Brew install of Stripe CLI failed (Command Line Tools too outdated). Skipped for now; the happy path works without webhooks because the return route does a synchronous `account.retrieve` and the checkout flow uses `confirmPayment` which is synchronous. To install later: download the binary directly from `https://github.com/stripe/stripe-cli/releases`, then `stripe login` + `stripe listen --forward-to localhost:3000/api/stripe/webhooks` → paste printed `whsec_…` into `STRIPE_WEBHOOK_SECRET`. Production webhook secret comes from the Stripe Dashboard webhook config, not `stripe listen`.
+- **Standard vs Express mid-stream change.** Build plan said Express; we picked Standard. Steps 9–14 in this file may still mention Express in places — read with that in mind.
 
 ---
 
 ## Phase 4 — Booking flow rewrite
 
-(Looser detail — exact shape depends on what Step 5 + Step 10 reveal.)
+### Step 11: postReservation, postCustomItem, postPayment — DONE 🟢
 
-### Step 11: postReservation, postCustomItem, postPayment
+Confirmed working end-to-end against the real Cloudbeds property (2026-05-01).
 
-Rewrite `src/app/api/bookings/route.ts`:
+**Shipped:**
 
-1. Validate the request (existing logic stays).
-2. Re-verify availability (existing logic stays).
-3. Generate internal `orderId` (existing logic stays — used as `thirdPartyIdentifier` and Stripe idempotency key).
-4. Call `postReservation` with guest details, room, rate, dates, `thirdPartyIdentifier: orderId`, `sendEmailConfirmation: false`. Persist `cloudbedsReservationId` on the booking and set `status = 'pms_synced'`.
-5. For each selected extra: call `postCustomItem` with the cached price and quantity. Persist to `bookingExtras`.
-6. NR: call `postPayment` with the PaymentIntent ID in the description, mark `status = 'paid'`. Flex: skip — `postPayment` happens in the auto-charge cron (Phase 5).
-7. Send the confirmation email (Step 12).
-8. Return `{ orderId, cloudbedsReservationId }`.
+- `src/lib/cloudbeds/reservations.ts` — `postReservation`, `postCustomItem`, `postPayment` helpers. Form-encoded POST (NOT JSON, despite v1.3 sometimes accepting both), `propertyID` in query string, returns flat fields at top level (NOT wrapped in `{ data }` like most v1.3 endpoints — surprised us on first run).
+- `src/app/api/bookings/route.ts` rewritten:
+    - Client passes `orderId` (UUID, same one used as Stripe idempotency key + metadata). Drops the previous server-side `BK-DATE-XXX` format.
+    - **Idempotent retry**: existing booking row with the same `orderId` is returned as-is. Covers double-submit, network retry, refresh-after-success.
+    - **Server-side Stripe verification**: retrieves the PaymentIntent (NR) or SetupIntent (Flex) from Stripe and refuses unless `status === 'succeeded'`. Trusts nothing the client sends.
+    - Splits `body.totalPrice` into `roomTotal` + `extrasTotal` correctly so application fee = grandTotal × platformFeePercent (not just room).
+    - Snapshots cancellation policy onto the booking.
+    - Calls `postReservation`, then loops extras into `postCustomItem` (logs per-extra failure but doesn't fail the whole booking — money's already taken; missing folio lines the hotel can fix manually). NR also calls `postPayment` with `description = "Stripe pi_..."` for reconciliation.
+    - Updates booking with `cloudbedsReservationId` + `status = 'pms_synced'`.
+- Cancellation policy admin UI (`src/app/admin/properties/[id]/page.tsx` Rooms tab + `RatePlanPolicyRow` component + `PATCH /api/admin/properties/[id]/rate-plans/[ratePlanId]`). Per-rate-plan toggle for `isRefundable` + `{deadlineHours, penaltyType, penaltyPercent}`. Granularity may be reduced — see "Open design questions: cancellation policy ergonomics" below.
 
-**Carry as a flag — do not implement retry yet:** Stripe charge succeeded, `postReservation` failed. We've taken money, no booking exists in Cloudbeds. Land the happy path first; revisit before launch with a proper "reservation pending" state + retry queue + admin alert + auto-refund fallback.
+**Carry-forward (Step 11):**
 
-### Step 12: Confirmation page + email
+- **Postpartum reservation failure.** Original carry-as-flag still stands: Stripe succeeded but `postReservation` fails → money taken, no PMS reservation. Currently returns 502 with details and the booking row is left in DB. Pre-launch: design retry queue + admin alert + auto-refund fallback.
+- **Per-extra failure handling is silent.** A failed `postCustomItem` is logged but not surfaced to admin. Pre-launch: visible queue / digest of failed extras so the hotel can manually re-add them.
 
-- `/confirmation` (`src/app/confirmation/confirmation-client.tsx`): show `orderId` immediately on submit; once the API response includes `cloudbedsReservationId`, swap the displayed reference. (Both will exist by the time the page renders, since `/api/bookings` blocks on `postReservation`. So this is just "show the cloudbeds one".)
-- Send confirmation email on success. Email always uses `cloudbedsReservationId`. Plain HTML for v1; transactional provider TBD (Resend, Postmark, etc. — pick during this step).
+### Step 12: Confirmation page + email — DONE 🟢
+
+Shipped 2026-05-04. Confirmation page polished + transactional confirmation email going out via SendGrid.
+
+**Shipped:**
+
+- `PersistedConfirmation` (in `src/lib/booking/usePersistedDraft.ts`) gained `lastName`, `rateType`, `roomTotal`, `extrasTotal`, `extras[]` so the confirmation page + email have the data they need without round-tripping the DB. `savePersistedConfirmation` call in `src/app/checkout/checkout-client.tsx` populates them.
+- `src/app/confirmation/confirmation-client.tsx`:
+    - **Reservation Number** (Cloudbeds `cloudbedsReservationId`) is now the primary reference — what the guest quotes on arrival. Internal `orderId` is shown secondary.
+    - **Payment status pill** branches on `rateType`: green "Paid in Full" for NR vs blue "Card on File" for Flex with the per-rate explanatory copy.
+    - **Extras** render as a sub-section in the price breakdown.
+    - "Total Paid" / "Total Due" header label flips by rate type.
+- SendGrid wiring (`@sendgrid/mail` installed):
+    - `src/lib/email/sendgrid.ts` — thin wrapper, hardcoded From `noreply@em4689.market-pulse.io` (uses Karol's existing market-pulse SendGrid domain authentication).
+    - `src/lib/email/booking-confirmation.ts` — HTML + text templates. Subject: `Booking confirmed at {hotel} — {reservationId}`. Branches body copy on `rateType`. Email always references `cloudbedsReservationId` as the canonical booking ref (orderId shown as secondary).
+    - Wired in `src/app/api/bookings/route.ts` — fires after `status = 'pms_synced'`, fail-soft (logs on error, never blocks the response since the booking is already done).
+- `src/scripts/test-confirmation-email.ts` — smoke test that sends one Flex + one NR email to a target address. Run with `set -a && source .env.local && set +a && npx tsx src/scripts/test-confirmation-email.ts <to>`.
+
+**Verified live (2026-05-04):** Both Flex + NR test emails landed cleanly with correct rendering.
+
+**Carry-forward:**
+
+- **Per-hotel sender.** Currently every email comes from `noreply@em4689.market-pulse.io` regardless of which hotel is being booked. When real hotels onboard, replace with the hotel's own authenticated domain — needs a `properties.emailFromAddress` (or similar) field + per-hotel SendGrid sender authentication. Defer until hotel #1 lands.
+- **Per-hotel reply-to.** Same shape — currently defaults to the From address. Should land at the same time as the sender field.
 
 ---
 
@@ -412,6 +432,21 @@ Day-one work, not a follow-up.
 - JSON-LD Hotel schema on each homepage.
 - `next/font` swap for the Google Fonts `<link>` in `layout.tsx`.
 
+### Availability performance — TODO
+
+The `/api/availability` request is noticeably slow (Karol's UX feedback 2026-05-01). Three causes, ranked by impact:
+
+1. **Cold-start sync inside the request.** If a property has no inventory in the requested window, `syncInventoryForProperty` runs synchronously inside the request (~3s for 8 rate plans × 90 days). First user of the day waits for everyone.
+2. **No response cache.** Every request re-runs DB queries from scratch even though inventory only changes via webhook. Repeat hits on the same dates = full recompute every time.
+3. **N+1 query pattern.** Per room type, separate queries for rate plans + inventory.
+
+**Fix plan (in priority order):**
+
+- Wrap `/api/availability` response in `unstable_cache`, keyed by `(propertyId, checkIn, checkOut, adults)`, `revalidate: 30s`, `tags: ['availability:${propertyId}']`. In `webhook-handler.ts` (Cloudbeds events that affect inventory) call `revalidateTag('availability:${propertyId}')` so the cache invalidates instantly when a booking lands.
+- Move cold-start sync out of the request path. Return empty results immediately + trigger sync in the background. Steady state stays warm via the 6h cron + webhook events.
+- Per-hotel pre-rendering (later, when Phase 2.5 lands) — homepage shows "from £X" badges pre-computed at edge with ISR. Full availability call only fires when user picks dates.
+- Collapse N+1 to a single join. Marginal compared to the above two; do last.
+
 ---
 
 ## Out of scope for launch
@@ -439,9 +474,14 @@ Webhook signature verification is **not** an open question — confirmed by the 
 
 ## Open design questions (do not build yet)
 
-- **Reservation creation failure** (Stripe succeeds, `postReservation` fails). Land the happy path in Step 11; design the retry / pending-state / auto-refund flow before launch.
+- **Reservation creation failure** (Stripe succeeds, `postReservation` fails). Happy path landed Step 11; design the retry / pending-state / auto-refund flow before launch.
 - **Error state UX** — payment fails, room sold out between selection and payment, 3DS fails, Cloudbeds down. Decide during Phase 3 / Phase 4.
 - **Address field in checkout** — TBD design.
+- **Cancellation policy ergonomics** — the granular per-rate editor (`isRefundable` + `{deadlineHours, penaltyType, penaltyPercent}`) shipped in Step 11, but at 40 hotels each maintaining policy in *both* Cloudbeds *and* our admin, the duplication is friction. Options to evaluate before launch:
+    - **A. Keep granular** — current shape. Maximum flexibility, maximum hotel-side maintenance burden.
+    - **B. Simplify** — drop per-rate JSONB; keep `isRefundable` per rate (auto-detected from name); add one `cancellationDeadlineHours` per property. Refund logic: refundable + before deadline = full refund; else no refund. Covers ~95% of real direct-booking policies. **Karol's lean.** Hotels maintain real schedule in CB; our system enforces the simplified version for refunds.
+    - **C. Drop entirely** — show "to cancel, contact the hotel" on bookings; no automated refund flow; push Step 16 self-cancel out of v1. Cleanest tech, worst guest UX.
+    - **Underlying constraint:** Cloudbeds REST API doesn't expose policy fields (probed `/getRatePlanDetails`, `/getCancellationPolicies`, `/getCancellationPolicy`, `/getPolicies` — all 404), so we can't auto-sync. Re-probe periodically — if the new modular API at `api.cloudbeds.com` adds policy endpoints, we can swap to read-only sync and retire the editor.
 
 ---
 

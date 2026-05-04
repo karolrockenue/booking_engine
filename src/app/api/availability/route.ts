@@ -159,6 +159,7 @@ export async function GET(req: NextRequest) {
             id: plan.id,
             otaRateId: plan.otaRateId,
             name: plan.namePublic ?? plan.name,
+            isRefundable: plan.isRefundable ?? true,
           },
           totalPrice,
           nightlyRates,

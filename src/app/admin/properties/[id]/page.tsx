@@ -5,6 +5,13 @@ import { useAdminToken } from "../../layout";
 import { ThemeEditor } from "@/components/admin/ThemeEditor";
 import type { PropertyTheme } from "@/lib/theme";
 
+interface CancellationPolicy {
+  deadlineHours?: number;
+  penaltyType?: "first_night" | "full_stay" | "percent" | "none";
+  penaltyPercent?: number;
+  note?: string;
+}
+
 interface Property {
   id: string;
   slug: string;
@@ -40,6 +47,7 @@ interface Property {
     isPublic: boolean | null;
     isRefundable: boolean | null;
     roomTypeId: string | null;
+    cancellationPolicy: CancellationPolicy | null;
   }>;
 }
 
@@ -74,6 +82,7 @@ export default function PropertyDetailPage({
 
   // Cloudbeds OAuth
   const [connecting, setConnecting] = useState(false);
+  const [connectingStripe, setConnectingStripe] = useState(false);
 
   async function handleConnectCloudbeds() {
     setConnecting(true);
@@ -96,6 +105,30 @@ export default function PropertyDetailPage({
     } catch (e) {
       alert("Failed to start Cloudbeds OAuth");
       setConnecting(false);
+    }
+  }
+
+  async function handleConnectStripe() {
+    setConnectingStripe(true);
+    try {
+      const res = await fetch("/api/stripe/connect/start", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ propertyId: id }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.onboardingUrl) {
+        alert(data.error ?? "Failed to start Stripe onboarding");
+        setConnectingStripe(false);
+        return;
+      }
+      window.location.href = data.onboardingUrl;
+    } catch {
+      alert("Failed to start Stripe onboarding");
+      setConnectingStripe(false);
     }
   }
 
@@ -347,7 +380,7 @@ export default function PropertyDetailPage({
                     : "Connect to Cloudbeds"}
               </button>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-3 flex-wrap">
               <span className="text-gray-500">Stripe:</span>
               <span
                 className={`px-2 py-0.5 rounded-full font-medium ${
@@ -355,16 +388,42 @@ export default function PropertyDetailPage({
                     ? "bg-green-100 text-green-700"
                     : property.stripeAccountStatus === "restricted"
                       ? "bg-red-100 text-red-700"
-                      : "bg-gray-100 text-gray-500"
+                      : property.stripeAccountId
+                        ? "bg-yellow-100 text-yellow-700"
+                        : "bg-gray-100 text-gray-500"
                 }`}
               >
-                {property.stripeAccountStatus ?? "not connected"}
+                {property.stripeAccountId
+                  ? (property.stripeAccountStatus ?? "pending")
+                  : "not connected"}
               </span>
               {property.stripeAccountCurrency && (
                 <span className="text-gray-400">
                   · {property.stripeAccountCurrency.toUpperCase()}
                 </span>
               )}
+              {property.stripeAccountCurrency &&
+                property.currency &&
+                property.stripeAccountCurrency.toLowerCase() !==
+                  property.currency.toLowerCase() && (
+                  <span className="text-red-600 text-xs">
+                    ⚠ currency mismatch ({property.currency})
+                  </span>
+                )}
+              <button
+                type="button"
+                onClick={handleConnectStripe}
+                disabled={connectingStripe}
+                className="text-xs px-2 py-0.5 border rounded hover:bg-gray-50 disabled:opacity-50"
+              >
+                {connectingStripe
+                  ? "Redirecting..."
+                  : property.stripeAccountStatus === "active"
+                    ? "Manage in Stripe"
+                    : property.stripeAccountId
+                      ? "Resume onboarding"
+                      : "Connect to Stripe"}
+              </button>
             </div>
           </div>
 
@@ -405,32 +464,28 @@ export default function PropertyDetailPage({
             </div>
           )}
 
-          {/* Rate plans */}
+          {/* Rate plans + cancellation policy editor */}
           {property.ratePlans.length > 0 && (
             <div className="bg-white border rounded-lg overflow-hidden mb-6">
               <div className="px-4 py-3 bg-gray-50 border-b">
-                <h3 className="text-sm font-medium text-gray-600">Rate Plans</h3>
+                <h3 className="text-sm font-medium text-gray-600">
+                  Rate Plans &amp; Cancellation Policies
+                </h3>
+                <p className="text-xs text-gray-500 mt-1">
+                  Snapshotted to each booking at checkout. Edits affect new bookings only.
+                </p>
               </div>
-              <table className="w-full text-sm">
-                <thead className="bg-gray-50 border-b">
-                  <tr>
-                    <th className="text-left px-4 py-3 font-medium text-gray-600">Name</th>
-                    <th className="text-left px-4 py-3 font-medium text-gray-600">OTA Rate ID</th>
-                    <th className="text-left px-4 py-3 font-medium text-gray-600">Public</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {property.ratePlans.map((rp) => (
-                    <tr key={rp.id} className="border-b last:border-0">
-                      <td className="px-4 py-3 text-gray-900">
-                        {rp.namePublic ?? rp.name}
-                      </td>
-                      <td className="px-4 py-3 text-gray-600 font-mono text-xs">{rp.otaRateId}</td>
-                      <td className="px-4 py-3 text-gray-600">{rp.isPublic ? "Yes" : "No"}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <div className="divide-y">
+                {property.ratePlans.map((rp) => (
+                  <RatePlanPolicyRow
+                    key={rp.id}
+                    propertyId={id}
+                    ratePlan={rp}
+                    token={token}
+                    onSaved={fetchProperty}
+                  />
+                ))}
+              </div>
             </div>
           )}
 
@@ -510,6 +565,157 @@ export default function PropertyDetailPage({
           />
         </div>
       )}
+    </div>
+  );
+}
+
+function RatePlanPolicyRow({
+  propertyId,
+  ratePlan,
+  token,
+  onSaved,
+}: {
+  propertyId: string;
+  ratePlan: {
+    id: string;
+    name: string;
+    namePublic: string | null;
+    otaRateId: string;
+    isRefundable: boolean | null;
+    cancellationPolicy: CancellationPolicy | null;
+  };
+  token: string;
+  onSaved: () => void;
+}) {
+  const initialPolicy = ratePlan.cancellationPolicy ?? {};
+  const [isRefundable, setIsRefundable] = useState(
+    ratePlan.isRefundable !== false
+  );
+  const [deadlineHours, setDeadlineHours] = useState<string>(
+    initialPolicy.deadlineHours !== undefined
+      ? String(initialPolicy.deadlineHours)
+      : "72"
+  );
+  const [penaltyType, setPenaltyType] = useState<
+    NonNullable<CancellationPolicy["penaltyType"]>
+  >(initialPolicy.penaltyType ?? "first_night");
+  const [penaltyPercent, setPenaltyPercent] = useState<string>(
+    initialPolicy.penaltyPercent !== undefined
+      ? String(initialPolicy.penaltyPercent)
+      : "50"
+  );
+  const [saving, setSaving] = useState(false);
+
+  const dirty =
+    isRefundable !== (ratePlan.isRefundable !== false) ||
+    String(initialPolicy.deadlineHours ?? "") !== deadlineHours ||
+    (initialPolicy.penaltyType ?? "first_night") !== penaltyType ||
+    String(initialPolicy.penaltyPercent ?? "") !== penaltyPercent;
+
+  async function handleSave() {
+    setSaving(true);
+    try {
+      const policy: CancellationPolicy | null = isRefundable
+        ? {
+            deadlineHours: Number(deadlineHours) || 0,
+            penaltyType,
+            ...(penaltyType === "percent"
+              ? { penaltyPercent: Number(penaltyPercent) || 0 }
+              : {}),
+          }
+        : null;
+
+      await fetch(
+        `/api/admin/properties/${propertyId}/rate-plans/${ratePlan.id}`,
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            isRefundable,
+            cancellationPolicy: policy,
+          }),
+        }
+      );
+      onSaved();
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="px-4 py-3 grid grid-cols-1 md:grid-cols-[1fr_auto] gap-3 items-start">
+      <div>
+        <div className="text-sm font-medium text-gray-900">
+          {ratePlan.namePublic ?? ratePlan.name}
+        </div>
+        <div className="text-xs text-gray-500 font-mono">
+          {ratePlan.otaRateId}
+        </div>
+        <div className="mt-2 flex flex-wrap gap-3 items-center text-xs">
+          <label className="flex items-center gap-1.5 text-gray-700">
+            <input
+              type="checkbox"
+              checked={isRefundable}
+              onChange={(e) => setIsRefundable(e.target.checked)}
+            />
+            Refundable
+          </label>
+          {isRefundable && (
+            <>
+              <label className="flex items-center gap-1.5 text-gray-700">
+                Deadline (hours before check-in)
+                <input
+                  type="number"
+                  value={deadlineHours}
+                  onChange={(e) => setDeadlineHours(e.target.value)}
+                  className="w-16 px-2 py-0.5 border rounded text-gray-900"
+                />
+              </label>
+              <label className="flex items-center gap-1.5 text-gray-700">
+                Penalty
+                <select
+                  value={penaltyType}
+                  onChange={(e) =>
+                    setPenaltyType(
+                      e.target.value as NonNullable<
+                        CancellationPolicy["penaltyType"]
+                      >
+                    )
+                  }
+                  className="px-2 py-0.5 border rounded text-gray-900"
+                >
+                  <option value="none">None</option>
+                  <option value="first_night">First night</option>
+                  <option value="percent">Percent</option>
+                  <option value="full_stay">Full stay</option>
+                </select>
+              </label>
+              {penaltyType === "percent" && (
+                <label className="flex items-center gap-1.5 text-gray-700">
+                  %
+                  <input
+                    type="number"
+                    value={penaltyPercent}
+                    onChange={(e) => setPenaltyPercent(e.target.value)}
+                    className="w-14 px-2 py-0.5 border rounded text-gray-900"
+                  />
+                </label>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+      <button
+        type="button"
+        onClick={handleSave}
+        disabled={!dirty || saving}
+        className="px-3 py-1.5 text-xs bg-gray-900 text-white rounded disabled:opacity-30 self-center"
+      >
+        {saving ? "Saving..." : dirty ? "Save" : "Saved"}
+      </button>
     </div>
   );
 }

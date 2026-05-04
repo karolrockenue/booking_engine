@@ -8,6 +8,7 @@ export {
   savePersistedConfirmation,
   loadPersistedConfirmation,
   type PersistedConfirmation,
+  type PersistedConfirmationExtra,
 } from "./usePersistedDraft";
 export {
   submitBooking,

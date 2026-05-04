@@ -12,20 +12,31 @@ const CONFIRMATION_KEY = "booking-confirmation";
 const TTL_MS = 30 * 60 * 1000; // 30 minutes — long enough for a hesitant guest
 const CONFIRMATION_TTL_MS = 2 * 60 * 60 * 1000; // 2h: covers refresh / forwarding the URL to a partner
 
+export interface PersistedConfirmationExtra {
+  name: string;
+  priceMinorUnits: number;
+  currency: string;
+}
+
 export interface PersistedConfirmation {
   orderId: string;
   bookingId: string;
   cloudbedsReservationId?: string;
   firstName: string;
+  lastName: string;
   email: string;
   roomName: string;
   rateName: string;
+  rateType: "flex" | "nr";
   checkIn: string;
   checkOut: string;
   nights: number;
   adults: number;
+  roomTotal: number;
+  extrasTotal: number;
   totalPrice: number;
   nightlyRates: NightlyRate[];
+  extras: PersistedConfirmationExtra[];
   currency: string;
   savedAt: number;
 }

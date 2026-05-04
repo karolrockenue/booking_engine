@@ -19,6 +19,7 @@ export interface AvailabilityResult {
     id: string;
     otaRateId?: string;
     name: string;
+    isRefundable: boolean;
   };
   totalPrice: number;
   nightlyRates: NightlyRate[];

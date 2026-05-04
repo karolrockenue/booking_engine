@@ -1,62 +1,68 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
-import { bookings, bookingDayRates, inventory, ratePlans } from "@/db/schema";
+import {
+  bookings,
+  bookingDayRates,
+  bookingExtras,
+  inventory,
+  ratePlans,
+  properties,
+  roomTypes,
+} from "@/db/schema";
 import { eq, and, gte, lt } from "drizzle-orm";
+import { getStripe } from "@/lib/stripe/client";
+import {
+  postReservation,
+  postCustomItem,
+  postPayment,
+} from "@/lib/cloudbeds/reservations";
+import { sendBookingConfirmationEmail } from "@/lib/email/booking-confirmation";
 
-function generateOrderId() {
-  const now = new Date();
-  const date = now.toISOString().split("T")[0].replace(/-/g, "");
-  const rand = Math.random().toString(36).substring(2, 7).toUpperCase();
-  return `BK-${date}-${rand}`;
+interface ExtraInput {
+  id: string;
+  name: string;
+  priceMinorUnits: number;
+  currency: string;
+}
+
+interface BookingRequestBody {
+  propertyId: string;
+  orderId: string; // client-generated, same as Stripe metadata.orderId
+  roomTypeId: string;
+  ratePlanId: string;
+  checkIn: string;
+  checkOut: string;
+  adults: number;
+  children: number;
+  guestFirst: string;
+  guestLast: string;
+  guestEmail: string;
+  guestPhone?: string;
+  guestCountry?: string;
+  nightlyRates: Array<{ date: string; rate: number; rateId?: string }>;
+  totalPrice: number;
+  currency: string;
+  extras?: ExtraInput[];
+  paymentIntentId?: string;
+  setupIntentId?: string;
+  paymentMethodId?: string;
+  customerId?: string;
 }
 
 export async function POST(req: NextRequest) {
-  const body = await req.json();
-
-  const {
-    propertyId,
-    roomTypeId,
-    ratePlanId,
-    checkIn,
-    checkOut,
-    adults,
-    children,
-    guestFirst,
-    guestLast,
-    guestEmail,
-    guestPhone,
-    guestCountry,
-    nightlyRates,
-    totalPrice,
-    currency,
-  } = body as {
-    propertyId: string;
-    roomTypeId: string;
-    ratePlanId: string;
-    checkIn: string;
-    checkOut: string;
-    adults: number;
-    children: number;
-    guestFirst: string;
-    guestLast: string;
-    guestEmail: string;
-    guestPhone?: string;
-    guestCountry?: string;
-    nightlyRates: Array<{ date: string; rate: number; rateId?: string }>;
-    totalPrice: number;
-    currency: string;
-  };
+  const body = (await req.json()) as BookingRequestBody;
 
   if (
-    !propertyId ||
-    !roomTypeId ||
-    !ratePlanId ||
-    !checkIn ||
-    !checkOut ||
-    !guestFirst ||
-    !guestLast ||
-    !guestEmail ||
-    !totalPrice
+    !body.propertyId ||
+    !body.orderId ||
+    !body.roomTypeId ||
+    !body.ratePlanId ||
+    !body.checkIn ||
+    !body.checkOut ||
+    !body.guestFirst ||
+    !body.guestLast ||
+    !body.guestEmail ||
+    body.totalPrice === undefined
   ) {
     return NextResponse.json(
       { error: "Missing required fields" },
@@ -64,83 +70,201 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const checkInDate = new Date(checkIn);
-  const checkOutDate = new Date(checkOut);
+  if (!body.paymentIntentId && !body.setupIntentId) {
+    return NextResponse.json(
+      { error: "Missing paymentIntentId or setupIntentId" },
+      { status: 400 }
+    );
+  }
+
+  // Idempotent retry: if a booking with this orderId already exists, return
+  // it. Covers double-submit, network retry, and refresh-after-success.
+  const [existing] = await db
+    .select()
+    .from(bookings)
+    .where(eq(bookings.orderId, body.orderId))
+    .limit(1);
+  if (existing) {
+    return NextResponse.json({
+      success: true,
+      orderId: existing.orderId,
+      bookingId: existing.id,
+      cloudbedsReservationId: existing.cloudbedsReservationId ?? undefined,
+    });
+  }
+
+  const checkInDate = new Date(body.checkIn);
+  const checkOutDate = new Date(body.checkOut);
   const nights =
     (checkOutDate.getTime() - checkInDate.getTime()) / (1000 * 60 * 60 * 24);
 
-  // Re-verify availability before confirming
   const inv = await db
     .select()
     .from(inventory)
     .where(
       and(
-        eq(inventory.propertyId, propertyId),
-        eq(inventory.roomTypeId, roomTypeId),
-        eq(inventory.ratePlanId, ratePlanId),
-        gte(inventory.date, checkIn),
-        lt(inventory.date, checkOut)
+        eq(inventory.propertyId, body.propertyId),
+        eq(inventory.roomTypeId, body.roomTypeId),
+        eq(inventory.ratePlanId, body.ratePlanId),
+        gte(inventory.date, body.checkIn),
+        lt(inventory.date, body.checkOut)
       )
     );
 
-  if (inv.length < nights) {
+  if (inv.length < nights || inv.some((d) => d.unitsAvailable < 1)) {
     return NextResponse.json(
       { error: "Room is no longer available for these dates" },
       { status: 409 }
     );
   }
 
-  for (const day of inv) {
-    if (day.unitsAvailable < 1) {
-      return NextResponse.json(
-        { error: "Room is no longer available for these dates" },
-        { status: 409 }
-      );
-    }
+  const [property] = await db
+    .select()
+    .from(properties)
+    .where(eq(properties.id, body.propertyId))
+    .limit(1);
+  if (!property) {
+    return NextResponse.json({ error: "Property not found" }, { status: 404 });
+  }
+  if (!property.cloudbedsPropertyId) {
+    return NextResponse.json(
+      { error: "Property is not connected to Cloudbeds" },
+      { status: 409 }
+    );
   }
 
-  // Look up the rate plan to derive rateType (flex/nr) for the booking record.
-  // Cloudbeds postReservation + Stripe charge wiring lands in plan Steps 10/11.
+  const [room] = await db
+    .select()
+    .from(roomTypes)
+    .where(eq(roomTypes.id, body.roomTypeId))
+    .limit(1);
+  if (!room) {
+    return NextResponse.json({ error: "Room type not found" }, { status: 404 });
+  }
+
   const [ratePlan] = await db
     .select()
     .from(ratePlans)
-    .where(eq(ratePlans.id, ratePlanId))
+    .where(eq(ratePlans.id, body.ratePlanId))
     .limit(1);
+  if (!ratePlan) {
+    return NextResponse.json({ error: "Rate plan not found" }, { status: 404 });
+  }
 
-  const rateType = ratePlan?.isRefundable === false ? "nr" : "flex";
+  const isRefundable = ratePlan.isRefundable !== false;
+  const rateType: "flex" | "nr" = isRefundable ? "flex" : "nr";
 
-  const orderId = generateOrderId();
-  const roomTotal = totalPrice.toFixed(2);
+  // Server-side Stripe verification: trust nothing the client says.
+  const stripe = getStripe();
+  let initialStatus: "paid" | "payment_authorized";
+
+  if (rateType === "nr") {
+    if (!body.paymentIntentId) {
+      return NextResponse.json(
+        { error: "Non-refundable rate requires paymentIntentId" },
+        { status: 400 }
+      );
+    }
+    try {
+      const pi = await stripe.paymentIntents.retrieve(body.paymentIntentId);
+      if (pi.status !== "succeeded") {
+        return NextResponse.json(
+          { error: `PaymentIntent not succeeded: ${pi.status}` },
+          { status: 409 }
+        );
+      }
+    } catch (err) {
+      console.error("Stripe PaymentIntent retrieve failed:", err);
+      return NextResponse.json(
+        { error: "Could not verify payment" },
+        { status: 502 }
+      );
+    }
+    initialStatus = "paid";
+  } else {
+    if (!body.setupIntentId) {
+      return NextResponse.json(
+        { error: "Refundable rate requires setupIntentId" },
+        { status: 400 }
+      );
+    }
+    try {
+      const si = await stripe.setupIntents.retrieve(body.setupIntentId);
+      if (si.status !== "succeeded") {
+        return NextResponse.json(
+          { error: `SetupIntent not succeeded: ${si.status}` },
+          { status: 409 }
+        );
+      }
+    } catch (err) {
+      console.error("Stripe SetupIntent retrieve failed:", err);
+      return NextResponse.json(
+        { error: "Could not verify saved card" },
+        { status: 502 }
+      );
+    }
+    initialStatus = "payment_authorized";
+  }
+
+  // body.totalPrice is room + extras (client computed). Split it back out so
+  // the booking row records each line correctly.
+  const extrasItems = body.extras ?? [];
+  const extrasTotalNum = extrasItems.reduce(
+    (sum, e) => sum + e.priceMinorUnits / 100,
+    0
+  );
+  const roomTotalNum = body.totalPrice - extrasTotalNum;
+  const grandTotalNum = body.totalPrice;
+
+  const roomTotal = roomTotalNum.toFixed(2);
+  const extrasTotal = extrasTotalNum.toFixed(2);
+  const grandTotal = grandTotalNum.toFixed(2);
+  const feePercent = Number(property.platformFeePercent ?? "3.00");
+  const applicationFee = ((grandTotalNum * feePercent) / 100).toFixed(2);
+
+  // Snapshot the rate plan's current cancellation policy. Even if the admin
+  // edits the policy later, this booking is governed by what was published
+  // at the time the guest paid.
+  const cancellationPolicySnapshot = ratePlan.cancellationPolicy ?? {
+    isRefundable,
+    note: "no policy configured at booking time",
+  };
 
   const [booking] = await db
     .insert(bookings)
     .values({
-      propertyId,
-      orderId,
-      roomTypeId,
-      ratePlanId,
+      propertyId: body.propertyId,
+      orderId: body.orderId,
+      roomTypeId: body.roomTypeId,
+      ratePlanId: body.ratePlanId,
       rateType,
-      checkIn,
-      checkOut,
-      adults: adults ?? 1,
-      children: children ?? 0,
-      guestFirst,
-      guestLast,
-      guestEmail,
-      guestPhone: guestPhone ?? null,
-      guestCountry: guestCountry ?? null,
+      checkIn: body.checkIn,
+      checkOut: body.checkOut,
+      adults: body.adults ?? 1,
+      children: body.children ?? 0,
+      guestFirst: body.guestFirst,
+      guestLast: body.guestLast,
+      guestEmail: body.guestEmail,
+      guestPhone: body.guestPhone ?? null,
+      guestCountry: body.guestCountry ?? null,
       roomTotal,
-      extrasTotal: "0.00",
+      extrasTotal,
       taxesTotal: "0.00",
-      grandTotal: roomTotal,
-      currency: currency ?? "GBP",
-      status: "pending",
+      applicationFee,
+      grandTotal,
+      currency: body.currency ?? "GBP",
+      stripePaymentIntentId: body.paymentIntentId ?? null,
+      stripeSetupIntentId: body.setupIntentId ?? null,
+      stripePaymentMethodId: body.paymentMethodId ?? null,
+      stripeCustomerId: body.customerId ?? null,
+      cancellationPolicySnapshot,
+      status: initialStatus,
     })
     .returning();
 
-  if (nightlyRates && nightlyRates.length > 0) {
+  if (body.nightlyRates && body.nightlyRates.length > 0) {
     await db.insert(bookingDayRates).values(
-      nightlyRates.map((nr) => ({
+      body.nightlyRates.map((nr) => ({
         bookingId: booking.id,
         date: nr.date,
         rate: nr.rate.toFixed(2),
@@ -149,9 +273,146 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // Cloudbeds postReservation. If this fails, the booking row exists with
+  // money taken (NR) or card saved (Flex) but no PMS reservation. Per build
+  // plan: land happy path; the retry/refund recovery flow lands before launch.
+  let cloudbedsReservationId: string | undefined;
+  try {
+    const result = await postReservation(body.propertyId, {
+      cloudbedsPropertyId: property.cloudbedsPropertyId,
+      startDate: body.checkIn,
+      endDate: body.checkOut,
+      guestFirstName: body.guestFirst,
+      guestLastName: body.guestLast,
+      guestEmail: body.guestEmail,
+      guestCountry: body.guestCountry ?? undefined,
+      guestPhone: body.guestPhone ?? undefined,
+      roomTypeID: room.otaRoomId,
+      ratesID: ratePlan.otaRateId,
+      adults: body.adults ?? 1,
+      children: body.children ?? 0,
+      subtotal: body.totalPrice,
+      thirdPartyIdentifier: body.orderId,
+    });
+    cloudbedsReservationId = result.reservationID;
+
+    // Attach each extra as a folio line item. One Cloudbeds call per extra
+    // (no batch endpoint). On partial failure we log + continue — the
+    // reservation exists and most of the booking is good; missing extras
+    // can be added manually by the hotel rather than failing the whole
+    // booking and leaving a charge orphaned.
+    for (const extra of extrasItems) {
+      const unitMajor = extra.priceMinorUnits / 100;
+      try {
+        const { itemID } = await postCustomItem(body.propertyId, {
+          cloudbedsPropertyId: property.cloudbedsPropertyId,
+          reservationID: cloudbedsReservationId,
+          name: extra.name,
+          amount: unitMajor,
+          quantity: 1,
+        });
+        await db.insert(bookingExtras).values({
+          bookingId: booking.id,
+          cloudbedsItemId: itemID || null,
+          name: extra.name,
+          qty: 1,
+          unitPrice: unitMajor.toFixed(2),
+          totalPrice: unitMajor.toFixed(2),
+          currency: extra.currency,
+        });
+      } catch (extraErr) {
+        console.error(
+          `postCustomItem failed for ${extra.name} on reservation ${cloudbedsReservationId}:`,
+          extraErr
+        );
+      }
+    }
+
+    // For NR rates: record the Stripe charge in the Cloudbeds folio so the
+    // hotel's accounting reflects what the guest paid. Failure here doesn't
+    // void the booking — the money is already with Stripe; missing folio
+    // line is a reconciliation problem the hotel can fix manually.
+    if (rateType === "nr" && body.paymentIntentId) {
+      try {
+        await postPayment(body.propertyId, {
+          cloudbedsPropertyId: property.cloudbedsPropertyId,
+          reservationID: cloudbedsReservationId,
+          amount: grandTotalNum,
+          type: "credit",
+          description: `Stripe ${body.paymentIntentId}`,
+        });
+      } catch (payErr) {
+        console.error(
+          `postPayment failed for reservation ${cloudbedsReservationId}:`,
+          payErr
+        );
+      }
+    }
+
+    await db
+      .update(bookings)
+      .set({
+        cloudbedsReservationId,
+        status: "pms_synced",
+      })
+      .where(eq(bookings.id, booking.id));
+
+    // Fire-and-forget confirmation email. Booking is already done; a failed
+    // send is a customer-service problem, not a booking-failure problem.
+    void (async () => {
+      try {
+        await sendBookingConfirmationEmail({
+          to: body.guestEmail,
+          guestFirstName: body.guestFirst,
+          guestLastName: body.guestLast,
+          hotelName: property.name,
+          cloudbedsReservationId: cloudbedsReservationId!,
+          orderId: body.orderId,
+          rateType,
+          roomName: room.name,
+          rateName: ratePlan.name,
+          checkIn: body.checkIn,
+          checkOut: body.checkOut,
+          nights,
+          adults: body.adults ?? 1,
+          currency: body.currency ?? "GBP",
+          roomTotal: roomTotalNum,
+          extrasTotal: extrasTotalNum,
+          grandTotal: grandTotalNum,
+          nightlyRates: (body.nightlyRates ?? []).map((nr) => ({
+            date: nr.date,
+            rate: nr.rate,
+          })),
+          extras: extrasItems.map((e) => ({
+            name: e.name,
+            priceMinorUnits: e.priceMinorUnits,
+          })),
+        });
+      } catch (emailErr) {
+        console.error(
+          `Confirmation email failed for booking ${booking.id} (reservation ${cloudbedsReservationId}):`,
+          emailErr
+        );
+      }
+    })();
+  } catch (err) {
+    console.error("Cloudbeds postReservation failed:", err);
+    const message = err instanceof Error ? err.message : "Unknown error";
+    return NextResponse.json(
+      {
+        success: false,
+        orderId: body.orderId,
+        bookingId: booking.id,
+        error: `Booking saved but Cloudbeds sync failed: ${message}`,
+      },
+      { status: 502 }
+    );
+  }
+
   return NextResponse.json({
     success: true,
-    orderId,
+    orderId: body.orderId,
     bookingId: booking.id,
+    cloudbedsReservationId,
   });
 }

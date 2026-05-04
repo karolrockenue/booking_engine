@@ -2,6 +2,7 @@ import type { AvailabilityResult, Extra, GuestDetails } from "./types";
 
 export interface SubmitBookingArgs {
   propertyId: string;
+  orderId: string; // client-generated UUID, same one used as Stripe idempotency key + metadata
   result: AvailabilityResult;
   extras: Extra[]; // full extra objects for the selected IDs
   guest: GuestDetails;
@@ -10,8 +11,6 @@ export interface SubmitBookingArgs {
   adults: number;
   children: number;
   currency: string;
-  // Slots reserved for Step 10/11 (Stripe). Today's /api/bookings ignores
-  // these; once Stripe lands we'll forward them on the request body.
   paymentIntentId?: string;
   setupIntentId?: string;
   paymentMethodId?: string;
@@ -44,6 +43,7 @@ export async function submitBooking(
 
   const body = {
     propertyId: args.propertyId,
+    orderId: args.orderId,
     roomTypeId: args.result.roomType.id,
     ratePlanId: args.result.ratePlan.id,
     checkIn: args.checkIn,

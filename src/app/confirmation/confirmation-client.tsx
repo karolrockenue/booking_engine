@@ -7,7 +7,7 @@ import { ThemeProvider } from "@/components/layout/ThemeProvider";
 import { NavBar } from "@/components/layout/NavBar";
 import { Footer } from "@/components/layout/Footer";
 import { BookingProgress } from "@/components/booking/BookingProgress";
-import { CheckCircle2, Mail, Copy } from "lucide-react";
+import { CheckCircle2, Mail, Copy, CreditCard, Lock } from "lucide-react";
 import type { ResolvedProperty } from "@/lib/get-property";
 import {
   loadPersistedConfirmation,
@@ -93,20 +93,39 @@ export function ConfirmationClient({
                 Your reservation has been confirmed. We look forward to welcoming you.
               </p>
 
-              {/* Reference */}
-              <div className="inline-flex items-center gap-3 px-5 py-3 rounded-lg mb-6" style={{ backgroundColor: "#f5f5f5" }}>
-                <div className="text-left">
-                  <p className="text-[10px] uppercase tracking-wider" style={{ color: "var(--color-text-muted)" }}>Booking Reference</p>
-                  <p className="text-lg font-bold font-mono" style={{ color: "var(--color-text)" }}>{orderId}</p>
+              {/* References — hotel-facing reservation ID first (what guests
+                  quote on arrival), our internal order ID second. */}
+              <div className="flex flex-wrap items-stretch justify-center gap-3 mb-6">
+                {details?.cloudbedsReservationId && (
+                  <div className="inline-flex items-center gap-3 px-5 py-3 rounded-lg" style={{ backgroundColor: "#f5f5f5" }}>
+                    <div className="text-left">
+                      <p className="text-[10px] uppercase tracking-wider" style={{ color: "var(--color-text-muted)" }}>Reservation Number</p>
+                      <p className="text-lg font-bold font-mono" style={{ color: "var(--color-text)" }}>{details.cloudbedsReservationId}</p>
+                    </div>
+                    <button
+                      onClick={() => navigator.clipboard?.writeText(details.cloudbedsReservationId ?? "")}
+                      className="p-2 rounded hover:bg-gray-200 transition-colors"
+                      style={{ background: "none", border: "none", cursor: "pointer", color: "var(--color-text-muted)" }}
+                      title="Copy reservation number"
+                    >
+                      <Copy className="w-4 h-4" />
+                    </button>
+                  </div>
+                )}
+                <div className="inline-flex items-center gap-3 px-5 py-3 rounded-lg" style={{ backgroundColor: "#f5f5f5" }}>
+                  <div className="text-left">
+                    <p className="text-[10px] uppercase tracking-wider" style={{ color: "var(--color-text-muted)" }}>Order ID</p>
+                    <p className="text-sm font-mono" style={{ color: "var(--color-text)" }}>{orderId}</p>
+                  </div>
+                  <button
+                    onClick={() => navigator.clipboard?.writeText(orderId)}
+                    className="p-2 rounded hover:bg-gray-200 transition-colors"
+                    style={{ background: "none", border: "none", cursor: "pointer", color: "var(--color-text-muted)" }}
+                    title="Copy order ID"
+                  >
+                    <Copy className="w-4 h-4" />
+                  </button>
                 </div>
-                <button
-                  onClick={() => navigator.clipboard?.writeText(orderId)}
-                  className="p-2 rounded hover:bg-gray-200 transition-colors"
-                  style={{ background: "none", border: "none", cursor: "pointer", color: "var(--color-text-muted)" }}
-                  title="Copy reference"
-                >
-                  <Copy className="w-4 h-4" />
-                </button>
               </div>
 
               {details?.email && (
@@ -124,6 +143,47 @@ export function ConfirmationClient({
               hygiene). */}
           {hydrated && details && (
             <>
+              {/* Payment status — distinct pill for Flex (card on file) vs NR
+                  (paid). Drives expectations for what the guest sees on their
+                  statement and when. */}
+              <div className="rounded-md overflow-hidden mb-6" style={{ border: "1px solid #E5E0D8" }}>
+                <div className="px-6 py-4 flex items-center gap-3" style={{ backgroundColor: "var(--color-primary)" }}>
+                  <CreditCard className="w-4 h-4 text-white/70" />
+                  <h3 className="text-sm font-semibold text-white">Payment</h3>
+                </div>
+                <div className="bg-white p-6">
+                  {details.rateType === "nr" ? (
+                    <div className="flex items-start gap-3">
+                      <span
+                        className="text-[10px] uppercase tracking-wider px-2 py-1 rounded font-semibold"
+                        style={{ backgroundColor: "#059669", color: "#fff" }}
+                      >
+                        Paid in Full
+                      </span>
+                      <p className="text-sm" style={{ color: "var(--color-text-muted)" }}>
+                        <strong style={{ color: "var(--color-text)" }}>{symbol}{details.totalPrice.toFixed(2)}</strong>{" "}
+                        was charged to your card. Non-refundable rate.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="flex items-start gap-3">
+                      <span
+                        className="text-[10px] uppercase tracking-wider px-2 py-1 rounded font-semibold flex items-center gap-1"
+                        style={{ backgroundColor: "#0369a1", color: "#fff" }}
+                      >
+                        <Lock className="w-3 h-3" />
+                        Card on File
+                      </span>
+                      <p className="text-sm" style={{ color: "var(--color-text-muted)" }}>
+                        Your card is securely saved. We&apos;ll charge{" "}
+                        <strong style={{ color: "var(--color-text)" }}>{symbol}{details.totalPrice.toFixed(2)}</strong>{" "}
+                        closer to your check-in date, per the cancellation policy.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
               <div className="rounded-md overflow-hidden mb-6" style={{ border: "1px solid #E5E0D8" }}>
                 <div className="px-6 py-4" style={{ backgroundColor: "var(--color-primary)" }}>
                   <h3 className="text-sm font-semibold text-white">Stay Details</h3>
@@ -163,7 +223,7 @@ export function ConfirmationClient({
                       <p className="font-semibold" style={{ color: "var(--color-text)" }}>{details.adults} adult{details.adults !== 1 ? "s" : ""}</p>
                     </div>
                     <div>
-                      <p className="text-[10px] uppercase tracking-wider mb-1" style={{ color: "var(--color-text-muted)" }}>Total Paid</p>
+                      <p className="text-[10px] uppercase tracking-wider mb-1" style={{ color: "var(--color-text-muted)" }}>{details.rateType === "nr" ? "Total Paid" : "Total Due"}</p>
                       <p className="text-xl font-bold" style={{ color: "var(--color-text)" }}>{symbol}{details.totalPrice.toFixed(2)}</p>
                     </div>
                   </div>
@@ -172,14 +232,14 @@ export function ConfirmationClient({
 
               <div className="rounded-md overflow-hidden mb-8" style={{ border: "1px solid #E5E0D8" }}>
                 <div className="px-6 py-4" style={{ backgroundColor: "var(--color-primary)" }}>
-                  <h3 className="text-sm font-semibold text-white">Nightly Breakdown</h3>
+                  <h3 className="text-sm font-semibold text-white">Price Breakdown</h3>
                 </div>
                 <div className="bg-white">
-                  {details.nightlyRates.map((nr, i) => (
+                  {details.nightlyRates.map((nr) => (
                     <div
                       key={nr.date}
                       className="px-6 py-3 flex items-center justify-between text-sm"
-                      style={{ borderBottom: i < details.nightlyRates.length - 1 ? "1px solid #f0f0f0" : "none" }}
+                      style={{ borderBottom: "1px solid #f0f0f0" }}
                     >
                       <span style={{ color: "var(--color-text-muted)" }}>
                         {new Date(nr.date).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" })}
@@ -189,6 +249,28 @@ export function ConfirmationClient({
                       </span>
                     </div>
                   ))}
+                  {details.extras.length > 0 && (
+                    <>
+                      <div
+                        className="px-6 py-2 text-[10px] uppercase tracking-wider"
+                        style={{ color: "var(--color-text-muted)", backgroundColor: "#fafafa", borderBottom: "1px solid #f0f0f0" }}
+                      >
+                        Extras
+                      </div>
+                      {details.extras.map((extra, i) => (
+                        <div
+                          key={`${extra.name}-${i}`}
+                          className="px-6 py-3 flex items-center justify-between text-sm"
+                          style={{ borderBottom: "1px solid #f0f0f0" }}
+                        >
+                          <span style={{ color: "var(--color-text-muted)" }}>{extra.name}</span>
+                          <span className="font-semibold" style={{ color: "var(--color-text)" }}>
+                            {symbol}{(extra.priceMinorUnits / 100).toFixed(2)}
+                          </span>
+                        </div>
+                      ))}
+                    </>
+                  )}
                   <div className="px-6 py-4 flex items-center justify-between" style={{ borderTop: "1px solid #E5E0D8", backgroundColor: "#fafafa" }}>
                     <span className="text-sm font-semibold uppercase tracking-wider" style={{ color: "var(--color-text)" }}>Total</span>
                     <span className="text-lg font-bold" style={{ color: "var(--color-text)" }}>{symbol}{details.totalPrice.toFixed(2)}</span>

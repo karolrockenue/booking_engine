@@ -47,6 +47,7 @@ interface PersistContext {
   checkOut: string;
   adults: number;
   children: number;
+  specialRequests?: string;
 }
 
 /**
@@ -70,6 +71,7 @@ export function usePersistedDraft(
       children: ctx.children,
       result: draft.result,
       extras: Array.from(draft.extras),
+      specialRequests: ctx.specialRequests,
       savedAt: Date.now(),
     };
 
@@ -85,6 +87,7 @@ export function usePersistedDraft(
     ctx.checkOut,
     ctx.adults,
     ctx.children,
+    ctx.specialRequests,
     draft.result,
     draft.extras,
   ]);

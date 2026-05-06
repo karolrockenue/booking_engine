@@ -45,3 +45,14 @@ next-env.d.ts
 
 # scratch / smoke test output (may contain Cloudbeds response data)
 /tmp/
+
+# Portico — local design references (huge image bundles, do not ship)
+/design/
+/design_handoff_*/
+
+# Loose root images (originals; resized versions live in public/portico/)
+/Portico Logo.JPG
+/portico-logo.png
+/portico-logo-white.png
+/PorticoHotel_*.jpg
+/Screenshot*.png

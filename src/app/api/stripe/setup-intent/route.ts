@@ -24,12 +24,15 @@ export async function POST(req: NextRequest) {
     guestLast,
   } = body;
 
-  if (!propertyId || !ratePlanId || !orderId || !guestEmail) {
+  if (!propertyId || !ratePlanId || !orderId) {
     return NextResponse.json(
-      { error: "propertyId, ratePlanId, orderId, guestEmail required" },
+      { error: "propertyId, ratePlanId, orderId required" },
       { status: 400 }
     );
   }
+  // guestEmail is captured later via submitBooking; the Stripe customer can be
+  // created without one and the email backfilled at booking submit time. This
+  // lets the payment Element render immediately on /checkout.
 
   const [property] = await db
     .select()
@@ -74,7 +77,7 @@ export async function POST(req: NextRequest) {
     // account at charge time.
     const customer = await stripe.customers.create(
       {
-        email: guestEmail,
+        email: guestEmail || undefined,
         name: [guestFirst, guestLast].filter(Boolean).join(" ") || undefined,
         metadata: { orderId, propertyId },
       },

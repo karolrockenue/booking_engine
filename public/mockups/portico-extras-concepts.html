@@ -1,0 +1,716 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Portico — Extras display concepts</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;1,400;1,500&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --serif: 'Cormorant Garamond', 'Times New Roman', serif;
+    --sans: 'Inter', -apple-system, system-ui, sans-serif;
+
+    /* Portico Direction C — Dark */
+    --bg: #101a1c;
+    --bg2: #15252a;
+    --ink: #ece5d4;
+    --ink-soft: rgba(236, 229, 212, 0.6);
+    --rule: rgba(236, 229, 212, 0.16);
+    --accent: #c87b58;
+    --accent-ink: #101a1c;
+    --accent-soft: rgba(200, 123, 88, 0.22);
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-weight: 400;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .toc {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    padding: 14px 48px;
+    background: rgba(16, 26, 28, 0.92);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--rule);
+    display: flex;
+    align-items: center;
+    gap: 26px;
+    flex-wrap: wrap;
+    font-size: 10px;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+  }
+  .toc strong {
+    color: var(--accent);
+    font-weight: 500;
+    margin-right: 12px;
+  }
+  .toc a {
+    color: var(--ink-soft);
+    text-decoration: none;
+    transition: color 150ms ease;
+  }
+  .toc a:hover { color: var(--ink); }
+
+  .concept {
+    border-bottom: 1px solid var(--rule);
+    padding: 80px 48px;
+  }
+  .concept-head {
+    max-width: 1180px;
+    margin: 0 auto 48px;
+    display: grid;
+    grid-template-columns: minmax(180px, 1fr) 3fr;
+    gap: 56px;
+    align-items: end;
+  }
+  .concept-eyebrow {
+    font-size: 10px;
+    letter-spacing: 0.32em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+  .concept-title {
+    font-family: var(--serif);
+    font-size: clamp(34px, 4vw, 48px);
+    line-height: 1.05;
+    letter-spacing: -0.018em;
+    font-weight: 400;
+    margin: 0;
+  }
+  .concept-title em { font-style: italic; color: var(--accent); }
+  .concept-note {
+    grid-column: 1 / -1;
+    font-size: 12px;
+    color: var(--ink-soft);
+    line-height: 1.6;
+    max-width: 700px;
+  }
+  .concept-body {
+    max-width: 1180px;
+    margin: 0 auto;
+  }
+
+  /* ───── 1. Toggle list (current live) ───── */
+  .c1-row {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 24px;
+    padding: 22px 0;
+    border-bottom: 1px solid var(--rule);
+    background: transparent;
+    color: var(--ink);
+    text-align: left;
+    font-family: inherit;
+    border-top: none;
+    border-left: none;
+    border-right: none;
+    cursor: pointer;
+  }
+  .c1-toggle {
+    width: 44px;
+    height: 22px;
+    border: 1px solid var(--rule);
+    background: transparent;
+    position: relative;
+    flex-shrink: 0;
+    transition: background 150ms ease, border-color 150ms ease;
+  }
+  .c1-toggle::after {
+    content: '';
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 16px;
+    height: 16px;
+    background: var(--ink);
+    transition: left 180ms ease, background 150ms ease;
+  }
+  .c1-row[aria-pressed='true'] .c1-toggle {
+    background: var(--accent);
+    border-color: var(--accent);
+  }
+  .c1-row[aria-pressed='true'] .c1-toggle::after {
+    left: 22px;
+    background: var(--accent-ink);
+  }
+  .c1-name { font-size: 16px; font-weight: 500; margin-bottom: 4px; }
+  .c1-desc { font-size: 13px; line-height: 1.55; color: var(--ink-soft); }
+  .c1-price { font-size: 17px; font-variant-numeric: tabular-nums; font-weight: 500; min-width: 80px; text-align: right; }
+  .c1-row[aria-pressed='true'] .c1-price { color: var(--accent); }
+  .c1-state { font-size: 9px; letter-spacing: 0.2em; text-transform: uppercase; color: var(--ink-soft); margin-top: 2px; text-align: right; }
+
+  /* ───── 2. Image card grid ───── */
+  .c2-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 1px;
+    background: var(--rule);
+    border-top: 1px solid var(--rule);
+    border-bottom: 1px solid var(--rule);
+  }
+  .c2-card {
+    background: var(--bg);
+    display: flex;
+    flex-direction: column;
+    cursor: pointer;
+    transition: background 150ms ease;
+    color: var(--ink);
+  }
+  .c2-card:hover { background: var(--bg2); }
+  .c2-card[aria-pressed='true'] {
+    background: var(--bg2);
+    outline: 1px solid var(--accent);
+    outline-offset: -1px;
+  }
+  .c2-img {
+    aspect-ratio: 4 / 3;
+    background-size: cover;
+    background-position: center;
+  }
+  .c2-info { padding: 22px 22px 24px; flex: 1; display: flex; flex-direction: column; }
+  .c2-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 10px;
+    gap: 16px;
+  }
+  .c2-name {
+    font-family: var(--serif);
+    font-size: 26px;
+    line-height: 1;
+    margin: 0;
+    font-weight: 400;
+    letter-spacing: -0.005em;
+  }
+  .c2-price {
+    font-size: 15px;
+    color: var(--ink-soft);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .c2-card[aria-pressed='true'] .c2-price { color: var(--accent); }
+  .c2-desc {
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--ink-soft);
+    margin: 0 0 18px;
+    flex: 1;
+  }
+  .c2-cta {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 10px;
+    letter-spacing: 0.26em;
+    text-transform: uppercase;
+    border-bottom: 1px solid var(--accent);
+    color: var(--accent);
+    padding-bottom: 2px;
+    align-self: flex-start;
+    transition: opacity 150ms ease;
+  }
+  .c2-card[aria-pressed='true'] .c2-cta { color: var(--ink); border-color: var(--ink); }
+
+  /* ───── 3. Quick chips ───── */
+  .c3-wrap { display: flex; flex-wrap: wrap; gap: 12px; padding: 8px 0 16px; }
+  .c3-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 14px;
+    padding: 14px 22px;
+    border: 1px solid var(--rule);
+    background: transparent;
+    color: var(--ink);
+    cursor: pointer;
+    transition: all 150ms ease;
+    font-family: inherit;
+  }
+  .c3-chip:hover { border-color: var(--ink-soft); }
+  .c3-chip[aria-pressed='true'] {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--accent-ink);
+  }
+  .c3-name { font-size: 14px; font-weight: 500; }
+  .c3-price { font-size: 13px; font-variant-numeric: tabular-nums; opacity: 0.7; }
+  .c3-mark {
+    width: 20px; height: 20px;
+    border: 1px solid var(--rule);
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 13px; line-height: 1;
+    transition: all 150ms ease;
+  }
+  .c3-chip[aria-pressed='true'] .c3-mark {
+    background: var(--accent-ink);
+    color: var(--accent);
+    border-color: var(--accent-ink);
+  }
+  .c3-foot {
+    margin-top: 16px;
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+  }
+
+  /* ───── 4. Quantity stepper rows ───── */
+  .c4-row {
+    display: grid;
+    grid-template-columns: 1fr auto auto;
+    gap: 32px;
+    align-items: center;
+    padding: 22px 0;
+    border-bottom: 1px solid var(--rule);
+  }
+  .c4-info { min-width: 0; }
+  .c4-name { font-size: 16px; font-weight: 500; margin-bottom: 4px; }
+  .c4-desc { font-size: 13px; line-height: 1.55; color: var(--ink-soft); }
+  .c4-price { font-size: 17px; font-variant-numeric: tabular-nums; min-width: 80px; text-align: right; }
+  .c4-stepper { display: inline-flex; align-items: center; gap: 14px; }
+  .c4-btn {
+    width: 32px; height: 32px;
+    background: transparent;
+    border: 1px solid var(--rule);
+    color: var(--ink);
+    font-size: 16px; line-height: 1;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 150ms ease;
+  }
+  .c4-btn:hover:not(:disabled) { border-color: var(--ink); }
+  .c4-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+  .c4-qty {
+    min-width: 28px;
+    text-align: center;
+    font-size: 18px;
+    font-variant-numeric: tabular-nums;
+    font-weight: 500;
+  }
+  .c4-row[data-qty='0'] .c4-qty { color: var(--ink-soft); }
+
+  /* ───── 5. Editorial split (image left, list right) ───── */
+  .c5-split {
+    display: grid;
+    grid-template-columns: 1fr 1.1fr;
+    gap: 1px;
+    background: var(--rule);
+    border-top: 1px solid var(--rule);
+    border-bottom: 1px solid var(--rule);
+  }
+  .c5-cinema {
+    background-size: cover;
+    background-position: center;
+    background-color: var(--bg2);
+    min-height: 480px;
+    position: relative;
+  }
+  .c5-cinema::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(180deg, rgba(0,0,0,0.05), rgba(0,0,0,0.55));
+  }
+  .c5-cinema-text {
+    position: absolute;
+    bottom: 32px;
+    left: 32px;
+    right: 32px;
+    color: #fff;
+    z-index: 2;
+  }
+  .c5-cinema-eyebrow {
+    font-size: 10px; letter-spacing: 0.32em; text-transform: uppercase;
+    opacity: 0.85; margin-bottom: 10px;
+  }
+  .c5-cinema-title {
+    font-family: var(--serif);
+    font-size: 34px;
+    line-height: 1.05;
+    letter-spacing: -0.01em;
+    font-weight: 400;
+  }
+  .c5-list { background: var(--bg); padding: 32px 36px; }
+  .c5-row {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: center;
+    gap: 18px;
+    padding: 16px 0;
+    border-bottom: 1px solid var(--rule);
+    cursor: pointer;
+    background: transparent;
+    border-top: none; border-left: none; border-right: none;
+    color: var(--ink);
+    text-align: left;
+    font-family: inherit;
+    width: 100%;
+  }
+  .c5-thumb {
+    width: 56px; height: 56px;
+    background-size: cover;
+    background-position: center;
+    background-color: var(--bg2);
+    flex-shrink: 0;
+  }
+  .c5-name { font-size: 15px; font-weight: 500; margin-bottom: 3px; }
+  .c5-desc { font-size: 12px; line-height: 1.4; color: var(--ink-soft); }
+  .c5-meta { text-align: right; font-variant-numeric: tabular-nums; }
+  .c5-price { font-size: 15px; font-weight: 500; }
+  .c5-add {
+    margin-top: 4px; font-size: 9px; letter-spacing: 0.2em; text-transform: uppercase;
+    color: var(--accent);
+  }
+  .c5-row[aria-pressed='true'] {
+    background: rgba(200, 123, 88, 0.08);
+  }
+  .c5-row[aria-pressed='true'] .c5-add {
+    color: var(--ink); opacity: 0.6;
+  }
+
+  /* Verdict footer */
+  .verdict {
+    padding: 64px 48px;
+    text-align: center;
+    color: var(--ink-soft);
+    font-size: 12px;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+  }
+  .verdict strong { color: var(--accent); font-weight: 500; }
+
+  /* Responsive */
+  @media (max-width: 920px) {
+    .concept { padding: 56px 24px; }
+    .concept-head { grid-template-columns: 1fr; gap: 14px; }
+    .c2-grid { grid-template-columns: 1fr; }
+    .c5-split { grid-template-columns: 1fr; }
+    .c5-cinema { min-height: 280px; }
+    .c4-row { grid-template-columns: 1fr; gap: 12px; }
+  }
+</style>
+</head>
+<body>
+
+<nav class="toc">
+  <strong>Concepts</strong>
+  <a href="#c1">01 Toggle list</a>
+  <a href="#c2">02 Card grid</a>
+  <a href="#c3">03 Chips</a>
+  <a href="#c4">04 Quantity steppers</a>
+  <a href="#c5">05 Editorial split</a>
+</nav>
+
+<!-- ════════ 01 ════════ -->
+<section class="concept" id="c1">
+  <div class="concept-head">
+    <div class="concept-eyebrow">01</div>
+    <h2 class="concept-title">Toggle <em>list</em>.</h2>
+    <p class="concept-note">
+      Quiet, scannable. One row per add-on with a sliding ink toggle. This is what currently ships on the Portico booking page. Best when extras are a flat list and the room itself is the visual anchor above.
+    </p>
+  </div>
+  <div class="concept-body">
+    <button class="c1-row" aria-pressed="true" onclick="this.setAttribute('aria-pressed', this.getAttribute('aria-pressed') === 'true' ? 'false' : 'true')">
+      <span class="c1-toggle"></span>
+      <div style="flex: 1;">
+        <div class="c1-name">Champagne on arrival</div>
+        <div class="c1-desc">Half-bottle of Veuve Clicquot, chilled, in the room.</div>
+      </div>
+      <div>
+        <div class="c1-price">£45</div>
+        <div class="c1-state">Added</div>
+      </div>
+    </button>
+
+    <button class="c1-row" aria-pressed="false" onclick="this.setAttribute('aria-pressed', this.getAttribute('aria-pressed') === 'true' ? 'false' : 'true')">
+      <span class="c1-toggle"></span>
+      <div style="flex: 1;">
+        <div class="c1-name">Breakfast in bed</div>
+        <div class="c1-desc">Continental tray, your room, 8–10am.</div>
+      </div>
+      <div>
+        <div class="c1-price">£28</div>
+        <div class="c1-state">Add</div>
+      </div>
+    </button>
+
+    <button class="c1-row" aria-pressed="false" onclick="this.setAttribute('aria-pressed', this.getAttribute('aria-pressed') === 'true' ? 'false' : 'true')">
+      <span class="c1-toggle"></span>
+      <div style="flex: 1;">
+        <div class="c1-name">Late checkout</div>
+        <div class="c1-desc">Until 2pm — subject to availability.</div>
+      </div>
+      <div>
+        <div class="c1-price">£35</div>
+        <div class="c1-state">Add</div>
+      </div>
+    </button>
+
+    <button class="c1-row" aria-pressed="false" onclick="this.setAttribute('aria-pressed', this.getAttribute('aria-pressed') === 'true' ? 'false' : 'true')">
+      <span class="c1-toggle"></span>
+      <div style="flex: 1;">
+        <div class="c1-name">Airport transfer · LHR</div>
+        <div class="c1-desc">Black-cab style sedan, one way, 24h notice.</div>
+      </div>
+      <div>
+        <div class="c1-price">£72</div>
+        <div class="c1-state">Add</div>
+      </div>
+    </button>
+  </div>
+</section>
+
+<!-- ════════ 02 ════════ -->
+<section class="concept" id="c2">
+  <div class="concept-head">
+    <div class="concept-eyebrow">02</div>
+    <h2 class="concept-title">Card <em>grid</em>.</h2>
+    <p class="concept-note">
+      Editorial three-column grid. Each add-on gets its own image — same treatment as the rooms above the panel. Best when extras are visually distinctive (food, experiences) and the property has photography for them. Heavy on real estate.
+    </p>
+  </div>
+  <div class="concept-body">
+    <div class="c2-grid">
+      <button class="c2-card" aria-pressed="true" onclick="this.setAttribute('aria-pressed', this.getAttribute('aria-pressed') === 'true' ? 'false' : 'true')">
+        <div class="c2-img" style="background-image: url('/portico/PorticoHotel_0521.jpg')"></div>
+        <div class="c2-info">
+          <div class="c2-row">
+            <h3 class="c2-name">Champagne on arrival</h3>
+            <span class="c2-price">£45</span>
+          </div>
+          <p class="c2-desc">Half-bottle of Veuve Clicquot, chilled, in the room. Set ready for the moment you walk in.</p>
+          <span class="c2-cta">Added ✓</span>
+        </div>
+      </button>
+
+      <button class="c2-card" aria-pressed="false" onclick="this.setAttribute('aria-pressed', this.getAttribute('aria-pressed') === 'true' ? 'false' : 'true')">
+        <div class="c2-img" style="background-image: url('/portico/PorticoHotel_0510.jpg')"></div>
+        <div class="c2-info">
+          <div class="c2-row">
+            <h3 class="c2-name">Breakfast in bed</h3>
+            <span class="c2-price">£28</span>
+          </div>
+          <p class="c2-desc">Continental tray brought to your room, anytime between 8 and 10am.</p>
+          <span class="c2-cta">Add →</span>
+        </div>
+      </button>
+
+      <button class="c2-card" aria-pressed="false" onclick="this.setAttribute('aria-pressed', this.getAttribute('aria-pressed') === 'true' ? 'false' : 'true')">
+        <div class="c2-img" style="background-image: url('/portico/PorticoHotel_0517.jpg')"></div>
+        <div class="c2-info">
+          <div class="c2-row">
+            <h3 class="c2-name">Late checkout</h3>
+            <span class="c2-price">£35</span>
+          </div>
+          <p class="c2-desc">Stay in the room until 2pm. Subject to availability on the day.</p>
+          <span class="c2-cta">Add →</span>
+        </div>
+      </button>
+    </div>
+  </div>
+</section>
+
+<!-- ════════ 03 ════════ -->
+<section class="concept" id="c3">
+  <div class="concept-head">
+    <div class="concept-eyebrow">03</div>
+    <h2 class="concept-title">Quick <em>chips</em>.</h2>
+    <p class="concept-note">
+      Horizontal chip selection — fast, low-commitment. Perfect when extras are short-named and don't need long descriptions to sell themselves. Frees up vertical space; the room blocks remain the page's focus.
+    </p>
+  </div>
+  <div class="concept-body">
+    <div class="c3-wrap">
+      <button class="c3-chip" aria-pressed="true" onclick="this.setAttribute('aria-pressed', this.getAttribute('aria-pressed') === 'true' ? 'false' : 'true')">
+        <span class="c3-mark">✓</span>
+        <span class="c3-name">Champagne on arrival</span>
+        <span class="c3-price">+£45</span>
+      </button>
+      <button class="c3-chip" aria-pressed="false" onclick="this.setAttribute('aria-pressed', this.getAttribute('aria-pressed') === 'true' ? 'false' : 'true')">
+        <span class="c3-mark">+</span>
+        <span class="c3-name">Breakfast in bed</span>
+        <span class="c3-price">+£28</span>
+      </button>
+      <button class="c3-chip" aria-pressed="false" onclick="this.setAttribute('aria-pressed', this.getAttribute('aria-pressed') === 'true' ? 'false' : 'true')">
+        <span class="c3-mark">+</span>
+        <span class="c3-name">Late checkout</span>
+        <span class="c3-price">+£35</span>
+      </button>
+      <button class="c3-chip" aria-pressed="false" onclick="this.setAttribute('aria-pressed', this.getAttribute('aria-pressed') === 'true' ? 'false' : 'true')">
+        <span class="c3-mark">+</span>
+        <span class="c3-name">Airport transfer · LHR</span>
+        <span class="c3-price">+£72</span>
+      </button>
+      <button class="c3-chip" aria-pressed="false" onclick="this.setAttribute('aria-pressed', this.getAttribute('aria-pressed') === 'true' ? 'false' : 'true')">
+        <span class="c3-mark">+</span>
+        <span class="c3-name">Pet bed</span>
+        <span class="c3-price">+£15</span>
+      </button>
+      <button class="c3-chip" aria-pressed="false" onclick="this.setAttribute('aria-pressed', this.getAttribute('aria-pressed') === 'true' ? 'false' : 'true')">
+        <span class="c3-mark">+</span>
+        <span class="c3-name">Cot</span>
+        <span class="c3-price">+£10</span>
+      </button>
+    </div>
+    <div class="c3-foot">Tap to add · long-press for details</div>
+  </div>
+</section>
+
+<!-- ════════ 04 ════════ -->
+<section class="concept" id="c4">
+  <div class="concept-head">
+    <div class="concept-eyebrow">04</div>
+    <h2 class="concept-title">Quantity <em>steppers</em>.</h2>
+    <p class="concept-note">
+      Each row carries a 0/1/2/3+ stepper instead of a binary toggle. Right when extras are quantity-aware (number of breakfasts, bottles, transfers) — turns "are these worth the bother of two flows?" into one flow. Most flexible; slightly heavier visually.
+    </p>
+  </div>
+  <div class="concept-body">
+    <div class="c4-row" data-qty="2">
+      <div class="c4-info">
+        <div class="c4-name">Breakfast in bed</div>
+        <div class="c4-desc">Continental tray brought to your room.</div>
+      </div>
+      <div class="c4-stepper">
+        <button class="c4-btn" onclick="updateQty(this.parentElement.parentElement, -1)">−</button>
+        <span class="c4-qty">2</span>
+        <button class="c4-btn" onclick="updateQty(this.parentElement.parentElement, 1)">+</button>
+      </div>
+      <div class="c4-price">£28 ea</div>
+    </div>
+    <div class="c4-row" data-qty="0">
+      <div class="c4-info">
+        <div class="c4-name">Champagne on arrival</div>
+        <div class="c4-desc">Half-bottle of Veuve Clicquot, chilled.</div>
+      </div>
+      <div class="c4-stepper">
+        <button class="c4-btn" disabled onclick="updateQty(this.parentElement.parentElement, -1)">−</button>
+        <span class="c4-qty">0</span>
+        <button class="c4-btn" onclick="updateQty(this.parentElement.parentElement, 1)">+</button>
+      </div>
+      <div class="c4-price">£45 ea</div>
+    </div>
+    <div class="c4-row" data-qty="1">
+      <div class="c4-info">
+        <div class="c4-name">Airport transfer · LHR</div>
+        <div class="c4-desc">Black-cab style sedan, one way.</div>
+      </div>
+      <div class="c4-stepper">
+        <button class="c4-btn" onclick="updateQty(this.parentElement.parentElement, -1)">−</button>
+        <span class="c4-qty">1</span>
+        <button class="c4-btn" onclick="updateQty(this.parentElement.parentElement, 1)">+</button>
+      </div>
+      <div class="c4-price">£72 ea</div>
+    </div>
+    <div class="c4-row" data-qty="0">
+      <div class="c4-info">
+        <div class="c4-name">Late checkout</div>
+        <div class="c4-desc">Stay until 2pm.</div>
+      </div>
+      <div class="c4-stepper">
+        <button class="c4-btn" disabled onclick="updateQty(this.parentElement.parentElement, -1)">−</button>
+        <span class="c4-qty">0</span>
+        <button class="c4-btn" onclick="updateQty(this.parentElement.parentElement, 1)">+</button>
+      </div>
+      <div class="c4-price">£35</div>
+    </div>
+  </div>
+</section>
+
+<!-- ════════ 05 ════════ -->
+<section class="concept" id="c5">
+  <div class="concept-head">
+    <div class="concept-eyebrow">05</div>
+    <h2 class="concept-title">Editorial <em>split</em>.</h2>
+    <p class="concept-note">
+      Cinematic image left, scrollable add-on list right with thumbnails. Treats extras as a curated experience the same way the homepage hero treats the property. Strong brand statement; least space-efficient. Works on desktop, stacks on mobile.
+    </p>
+  </div>
+  <div class="concept-body">
+    <div class="c5-split">
+      <div class="c5-cinema" style="background-image: url('/portico/PorticoHotel_0511.jpg')">
+        <div class="c5-cinema-text">
+          <div class="c5-cinema-eyebrow">Curate your stay</div>
+          <div class="c5-cinema-title">Small touches.<br/>Lasting <em style="color: #c87b58;">memories</em>.</div>
+        </div>
+      </div>
+      <div class="c5-list">
+        <button class="c5-row" aria-pressed="true" onclick="this.setAttribute('aria-pressed', this.getAttribute('aria-pressed') === 'true' ? 'false' : 'true')">
+          <div class="c5-thumb" style="background-image: url('/portico/PorticoHotel_0521.jpg')"></div>
+          <div>
+            <div class="c5-name">Champagne on arrival</div>
+            <div class="c5-desc">Half-bottle of Veuve Clicquot, chilled, in the room.</div>
+          </div>
+          <div class="c5-meta">
+            <div class="c5-price">£45</div>
+            <div class="c5-add">Added</div>
+          </div>
+        </button>
+        <button class="c5-row" aria-pressed="false" onclick="this.setAttribute('aria-pressed', this.getAttribute('aria-pressed') === 'true' ? 'false' : 'true')">
+          <div class="c5-thumb" style="background-image: url('/portico/PorticoHotel_0510.jpg')"></div>
+          <div>
+            <div class="c5-name">Breakfast in bed</div>
+            <div class="c5-desc">Continental tray, your room, 8–10am.</div>
+          </div>
+          <div class="c5-meta">
+            <div class="c5-price">£28</div>
+            <div class="c5-add">Add →</div>
+          </div>
+        </button>
+        <button class="c5-row" aria-pressed="false" onclick="this.setAttribute('aria-pressed', this.getAttribute('aria-pressed') === 'true' ? 'false' : 'true')">
+          <div class="c5-thumb" style="background-image: url('/portico/PorticoHotel_0517.jpg')"></div>
+          <div>
+            <div class="c5-name">Late checkout</div>
+            <div class="c5-desc">Stay until 2pm — subject to availability.</div>
+          </div>
+          <div class="c5-meta">
+            <div class="c5-price">£35</div>
+            <div class="c5-add">Add →</div>
+          </div>
+        </button>
+        <button class="c5-row" aria-pressed="false" onclick="this.setAttribute('aria-pressed', this.getAttribute('aria-pressed') === 'true' ? 'false' : 'true')">
+          <div class="c5-thumb" style="background-image: url('/portico/PorticoHotel_0518-1.jpg')"></div>
+          <div>
+            <div class="c5-name">Airport transfer · LHR</div>
+            <div class="c5-desc">Black-cab style sedan, one way, 24h notice.</div>
+          </div>
+          <div class="c5-meta">
+            <div class="c5-price">£72</div>
+            <div class="c5-add">Add →</div>
+          </div>
+        </button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="verdict">
+  Pick one — tell me <strong>01 / 02 / 03 / 04 / 05</strong>
+</div>
+
+<script>
+  function updateQty(row, delta) {
+    const qtyEl = row.querySelector('.c4-qty');
+    const minusBtn = row.querySelector('.c4-btn');
+    const current = parseInt(qtyEl.textContent, 10);
+    const next = Math.max(0, Math.min(9, current + delta));
+    qtyEl.textContent = next;
+    row.dataset.qty = next;
+    minusBtn.disabled = next === 0;
+  }
+</script>
+
+</body>
+</html>

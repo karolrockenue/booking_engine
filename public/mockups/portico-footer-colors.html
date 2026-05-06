@@ -1,0 +1,299 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Portico — Footer colour concepts</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;1,400;1,500&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --serif: 'Cormorant Garamond', 'Times New Roman', serif;
+    --sans: 'Inter', -apple-system, system-ui, sans-serif;
+    --page-bg: #faf8f3;
+    --page-ink: #1f1c18;
+    --page-ink-soft: #6b6258;
+    --page-rule: rgba(31,28,24,0.13);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--page-bg);
+    color: var(--page-ink);
+    font-family: var(--sans);
+  }
+
+  .toc {
+    position: sticky; top: 0; z-index: 100;
+    padding: 14px 48px;
+    background: rgba(250,248,243,0.92);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--page-rule);
+    display: flex; align-items: center; gap: 26px; flex-wrap: wrap;
+    font-size: 10px; letter-spacing: 0.22em; text-transform: uppercase;
+    color: var(--page-ink-soft);
+  }
+  .toc strong { color: var(--page-ink); font-weight: 500; margin-right: 12px; }
+  .toc a { color: var(--page-ink-soft); text-decoration: none; }
+  .toc a:hover { color: var(--page-ink); }
+
+  .label {
+    max-width: 1280px; margin: 0 auto;
+    padding: 56px 56px 16px;
+    display: grid; grid-template-columns: minmax(180px,1fr) 3fr;
+    gap: 56px; align-items: end;
+  }
+  .label-eyebrow { font-size: 10px; letter-spacing: 0.32em; text-transform: uppercase; }
+  .label-title {
+    font-family: var(--serif);
+    font-size: clamp(28px,3.4vw,40px);
+    line-height: 1.05; letter-spacing: -0.018em; font-weight: 400; margin: 0;
+  }
+  .label-title em { font-style: italic; }
+  .label-note {
+    grid-column: 1 / -1;
+    font-size: 12px; color: var(--page-ink-soft); line-height: 1.6; max-width: 760px;
+  }
+  .swatches {
+    display: flex; gap: 10px; align-items: center; margin-top: 4px;
+    font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase;
+    color: var(--page-ink-soft); font-variant-numeric: tabular-nums;
+  }
+  .swatch {
+    width: 22px; height: 22px; border: 1px solid var(--page-rule);
+  }
+
+  /* Footer block — same shape across all variants, only colours change */
+  .footer {
+    font-family: var(--sans);
+  }
+  .footer-grid {
+    max-width: 1280px; margin: 0 auto;
+    padding: 64px 56px 40px;
+    display: grid;
+    grid-template-columns: 1.4fr 1fr 1fr 1fr;
+    gap: 48px;
+  }
+  .footer-mark {
+    height: 48px; display: block; margin-bottom: 18px;
+  }
+  .footer-tag {
+    font-family: var(--serif); font-style: italic;
+    font-size: 16px; line-height: 1.5; max-width: 340px; margin: 0 0 18px;
+  }
+  .footer-cta {
+    display: inline-block;
+    padding: 12px 22px;
+    font-size: 10px; letter-spacing: 0.28em; text-transform: uppercase;
+    text-decoration: none; font-weight: 500;
+  }
+  .footer-col-label {
+    font-size: 10px; letter-spacing: 0.32em; text-transform: uppercase;
+    padding-bottom: 10px; margin-bottom: 14px;
+    font-weight: 500;
+  }
+  .footer-line { font-size: 14px; line-height: 1.6; }
+  .footer-line.spaced { margin-top: 14px; }
+  .footer-strip {
+    max-width: 1280px; margin: 0 auto;
+    padding: 20px 56px 36px;
+    display: flex; justify-content: space-between; align-items: center;
+    gap: 24px; flex-wrap: wrap;
+    font-size: 10px; letter-spacing: 0.26em; text-transform: uppercase;
+  }
+  .footer-strip-links { display: flex; gap: 18px; }
+  .footer-strip-links a { text-decoration: none; }
+
+  /* ── Variants ── */
+  .v-teal      { background: #0e4a4a; --on: #faf8f3; --on-mute: rgba(250,248,243,0.55); --on-rule: rgba(250,248,243,0.16); --cta-bg: #faf8f3; --cta-ink: #0e4a4a; }
+  .v-terracotta{ background: #c87b58; --on: #1f1c18; --on-mute: rgba(31,28,24,0.55); --on-rule: rgba(31,28,24,0.16); --cta-bg: #1f1c18; --cta-ink: #c87b58; }
+  .v-cinematic { background: #15252a; --on: #ece5d4; --on-mute: rgba(236,229,212,0.55); --on-rule: rgba(236,229,212,0.16); --cta-bg: #ece5d4; --cta-ink: #15252a; }
+  .v-ink       { background: #1f1c18; --on: #faf8f3; --on-mute: rgba(250,248,243,0.5);  --on-rule: rgba(250,248,243,0.14); --cta-bg: #c87b58; --cta-ink: #1f1c18; }
+  .v-burgundy  { background: #5a2828; --on: #faf2e8; --on-mute: rgba(250,242,232,0.55); --on-rule: rgba(250,242,232,0.16); --cta-bg: #faf2e8; --cta-ink: #5a2828; }
+
+  .footer { color: var(--on); }
+  .footer-tag { color: var(--on); opacity: 0.85; }
+  .footer-cta { background: var(--cta-bg); color: var(--cta-ink); }
+  .footer-col-label { color: var(--on-mute); border-bottom: 1px solid var(--on-rule); }
+  .footer-line { color: var(--on); opacity: 0.95; }
+  .footer-line a { color: inherit; text-decoration: none; }
+  .footer-strip { border-top: 1px solid var(--on-rule); color: var(--on-mute); }
+  .footer-strip-links a { color: var(--on-mute); }
+
+  @media (max-width: 920px) {
+    .footer-grid { grid-template-columns: 1fr 1fr; gap: 32px; padding: 48px 28px 28px; }
+  }
+  @media (max-width: 560px) {
+    .footer-grid { grid-template-columns: 1fr; }
+  }
+
+  .verdict {
+    padding: 64px 48px;
+    text-align: center;
+    color: var(--page-ink-soft);
+    font-size: 12px; letter-spacing: 0.22em; text-transform: uppercase;
+  }
+  .verdict strong { color: var(--page-ink); font-weight: 500; }
+</style>
+</head>
+<body>
+
+<nav class="toc">
+  <strong>Footer colours</strong>
+  <a href="#v1">01 Deep teal (current)</a>
+  <a href="#v2">02 Terracotta</a>
+  <a href="#v3">03 Cinematic dark</a>
+  <a href="#v4">04 Ink black</a>
+  <a href="#v5">05 Burgundy</a>
+</nav>
+
+<section id="v1">
+  <div class="label">
+    <div class="label-eyebrow">01</div>
+    <h2 class="label-title">Deep <em>teal</em> · current</h2>
+    <p class="label-note">
+      The ivory theme's accent colour. Cool, herbaceous. Reads as "premium spa" — works with the existing brand language but you said you don't love it. Keeping the swatches here for reference.
+      <span class="swatches">
+        <span class="swatch" style="background:#0e4a4a"></span> #0e4a4a · ivory ink on teal
+      </span>
+    </p>
+  </div>
+</section>
+<div class="footer v-teal">
+  <div class="footer-grid">
+    <div>
+      <img src="/portico/portico-logo-white.png" alt="The Portico Hotel" class="footer-mark"/>
+      <p class="footer-tag">A jewel-box behind a Paddington portico. Seventy-three rooms across five floors of W2.</p>
+      <a class="footer-cta" href="#">Book a room →</a>
+    </div>
+    <div><div class="footer-col-label">Visit</div><div class="footer-line">32 Sussex Gardens</div><div class="footer-line">Paddington</div><div class="footer-line">London W2 1UJ</div><div class="footer-line spaced">Reception · 24 hours</div></div>
+    <div><div class="footer-col-label">Reservations</div><div class="footer-line"><a href="#">+44 20 7402 0190</a></div><div class="footer-line"><a href="#">stay@theporticohotel.com</a></div><div class="footer-line spaced"><a href="#">hello@theporticohotel.com</a></div></div>
+    <div><div class="footer-col-label">Fine print</div><div class="footer-line"><a href="#">Terms & conditions</a></div><div class="footer-line"><a href="#">Privacy</a></div><div class="footer-line"><a href="#">Cookies</a></div><div class="footer-line"><a href="#">Accessibility</a></div><div class="footer-line"><a href="#">Press</a></div></div>
+  </div>
+  <div class="footer-strip">
+    <span>© 2026 The Portico Hotel · All rights reserved</span>
+    <div class="footer-strip-links"><a href="#">Instagram</a><a href="#">Journal</a><a href="#">Newsletter</a></div>
+  </div>
+</div>
+
+<section id="v2">
+  <div class="label">
+    <div class="label-eyebrow">02</div>
+    <h2 class="label-title">Terracotta — the <em>dark theme's</em> leading colour.</h2>
+    <p class="label-note">
+      Warm, earthy. Echoes the now-retired dark variant. Reads as "Portuguese tile, Aesop catalogue, autumn". Strongest contrast against the ivory page; turns the footer into a punctuation mark you can't ignore.
+      <span class="swatches">
+        <span class="swatch" style="background:#c87b58"></span> #c87b58 · ink-black on terracotta
+      </span>
+    </p>
+  </div>
+</section>
+<div class="footer v-terracotta">
+  <div class="footer-grid">
+    <div>
+      <img src="/portico/portico-logo.png" alt="The Portico Hotel" class="footer-mark" style="filter: none;"/>
+      <p class="footer-tag">A jewel-box behind a Paddington portico. Seventy-three rooms across five floors of W2.</p>
+      <a class="footer-cta" href="#">Book a room →</a>
+    </div>
+    <div><div class="footer-col-label">Visit</div><div class="footer-line">32 Sussex Gardens</div><div class="footer-line">Paddington</div><div class="footer-line">London W2 1UJ</div><div class="footer-line spaced">Reception · 24 hours</div></div>
+    <div><div class="footer-col-label">Reservations</div><div class="footer-line"><a href="#">+44 20 7402 0190</a></div><div class="footer-line"><a href="#">stay@theporticohotel.com</a></div><div class="footer-line spaced"><a href="#">hello@theporticohotel.com</a></div></div>
+    <div><div class="footer-col-label">Fine print</div><div class="footer-line"><a href="#">Terms & conditions</a></div><div class="footer-line"><a href="#">Privacy</a></div><div class="footer-line"><a href="#">Cookies</a></div><div class="footer-line"><a href="#">Accessibility</a></div><div class="footer-line"><a href="#">Press</a></div></div>
+  </div>
+  <div class="footer-strip">
+    <span>© 2026 The Portico Hotel · All rights reserved</span>
+    <div class="footer-strip-links"><a href="#">Instagram</a><a href="#">Journal</a><a href="#">Newsletter</a></div>
+  </div>
+</div>
+
+<section id="v3">
+  <div class="label">
+    <div class="label-eyebrow">03</div>
+    <h2 class="label-title">Cinematic <em>dark</em> — already used in the flow.</h2>
+    <p class="label-note">
+      The exact colour your checkout summary panel and sticky basket bar are using right now (<code>summaryBg</code>). Picking this means the brand has just one dark surface — repeated three times. Most "designed".
+      <span class="swatches">
+        <span class="swatch" style="background:#15252a"></span> #15252a · bone-ivory ink on dark teal
+      </span>
+    </p>
+  </div>
+</section>
+<div class="footer v-cinematic">
+  <div class="footer-grid">
+    <div>
+      <img src="/portico/portico-logo-white.png" alt="The Portico Hotel" class="footer-mark"/>
+      <p class="footer-tag">A jewel-box behind a Paddington portico. Seventy-three rooms across five floors of W2.</p>
+      <a class="footer-cta" href="#">Book a room →</a>
+    </div>
+    <div><div class="footer-col-label">Visit</div><div class="footer-line">32 Sussex Gardens</div><div class="footer-line">Paddington</div><div class="footer-line">London W2 1UJ</div><div class="footer-line spaced">Reception · 24 hours</div></div>
+    <div><div class="footer-col-label">Reservations</div><div class="footer-line"><a href="#">+44 20 7402 0190</a></div><div class="footer-line"><a href="#">stay@theporticohotel.com</a></div><div class="footer-line spaced"><a href="#">hello@theporticohotel.com</a></div></div>
+    <div><div class="footer-col-label">Fine print</div><div class="footer-line"><a href="#">Terms & conditions</a></div><div class="footer-line"><a href="#">Privacy</a></div><div class="footer-line"><a href="#">Cookies</a></div><div class="footer-line"><a href="#">Accessibility</a></div><div class="footer-line"><a href="#">Press</a></div></div>
+  </div>
+  <div class="footer-strip">
+    <span>© 2026 The Portico Hotel · All rights reserved</span>
+    <div class="footer-strip-links"><a href="#">Instagram</a><a href="#">Journal</a><a href="#">Newsletter</a></div>
+  </div>
+</div>
+
+<section id="v4">
+  <div class="label">
+    <div class="label-eyebrow">04</div>
+    <h2 class="label-title">Ink <em>black</em> · with terracotta CTA.</h2>
+    <p class="label-note">
+      Near-black warm ground (the ivory theme's text colour, flipped). CTA inverts to terracotta — quietly reintroduces the dark-theme accent as a one-glance highlight. Most editorial / The Standard / Nomad.
+      <span class="swatches">
+        <span class="swatch" style="background:#1f1c18"></span> #1f1c18 · ivory ink, terracotta CTA
+      </span>
+    </p>
+  </div>
+</section>
+<div class="footer v-ink">
+  <div class="footer-grid">
+    <div>
+      <img src="/portico/portico-logo-white.png" alt="The Portico Hotel" class="footer-mark"/>
+      <p class="footer-tag">A jewel-box behind a Paddington portico. Seventy-three rooms across five floors of W2.</p>
+      <a class="footer-cta" href="#">Book a room →</a>
+    </div>
+    <div><div class="footer-col-label">Visit</div><div class="footer-line">32 Sussex Gardens</div><div class="footer-line">Paddington</div><div class="footer-line">London W2 1UJ</div><div class="footer-line spaced">Reception · 24 hours</div></div>
+    <div><div class="footer-col-label">Reservations</div><div class="footer-line"><a href="#">+44 20 7402 0190</a></div><div class="footer-line"><a href="#">stay@theporticohotel.com</a></div><div class="footer-line spaced"><a href="#">hello@theporticohotel.com</a></div></div>
+    <div><div class="footer-col-label">Fine print</div><div class="footer-line"><a href="#">Terms & conditions</a></div><div class="footer-line"><a href="#">Privacy</a></div><div class="footer-line"><a href="#">Cookies</a></div><div class="footer-line"><a href="#">Accessibility</a></div><div class="footer-line"><a href="#">Press</a></div></div>
+  </div>
+  <div class="footer-strip">
+    <span>© 2026 The Portico Hotel · All rights reserved</span>
+    <div class="footer-strip-links"><a href="#">Instagram</a><a href="#">Journal</a><a href="#">Newsletter</a></div>
+  </div>
+</div>
+
+<section id="v5">
+  <div class="label">
+    <div class="label-eyebrow">05</div>
+    <h2 class="label-title">Burgundy / <em>wine</em>.</h2>
+    <p class="label-note">
+      Sophisticated, Old-World. Reads as "private members' club, oxblood leather, library". Different mood entirely — moves the brand away from spa-teal towards something sturdier.
+      <span class="swatches">
+        <span class="swatch" style="background:#5a2828"></span> #5a2828 · cream ink on wine
+      </span>
+    </p>
+  </div>
+</section>
+<div class="footer v-burgundy">
+  <div class="footer-grid">
+    <div>
+      <img src="/portico/portico-logo-white.png" alt="The Portico Hotel" class="footer-mark"/>
+      <p class="footer-tag">A jewel-box behind a Paddington portico. Seventy-three rooms across five floors of W2.</p>
+      <a class="footer-cta" href="#">Book a room →</a>
+    </div>
+    <div><div class="footer-col-label">Visit</div><div class="footer-line">32 Sussex Gardens</div><div class="footer-line">Paddington</div><div class="footer-line">London W2 1UJ</div><div class="footer-line spaced">Reception · 24 hours</div></div>
+    <div><div class="footer-col-label">Reservations</div><div class="footer-line"><a href="#">+44 20 7402 0190</a></div><div class="footer-line"><a href="#">stay@theporticohotel.com</a></div><div class="footer-line spaced"><a href="#">hello@theporticohotel.com</a></div></div>
+    <div><div class="footer-col-label">Fine print</div><div class="footer-line"><a href="#">Terms & conditions</a></div><div class="footer-line"><a href="#">Privacy</a></div><div class="footer-line"><a href="#">Cookies</a></div><div class="footer-line"><a href="#">Accessibility</a></div><div class="footer-line"><a href="#">Press</a></div></div>
+  </div>
+  <div class="footer-strip">
+    <span>© 2026 The Portico Hotel · All rights reserved</span>
+    <div class="footer-strip-links"><a href="#">Instagram</a><a href="#">Journal</a><a href="#">Newsletter</a></div>
+  </div>
+</div>
+
+<div class="verdict">Pick one — tell me <strong>01 / 02 / 03 / 04 / 05</strong></div>
+
+</body>
+</html>

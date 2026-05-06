@@ -1,0 +1,365 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Portico — Map style concepts</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;1,400;1,500&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+  integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+  crossorigin=""/>
+<style>
+  :root {
+    --serif: 'Cormorant Garamond', 'Times New Roman', serif;
+    --sans: 'Inter', -apple-system, system-ui, sans-serif;
+
+    /* Portico Direction C — Dark */
+    --bg: #101a1c;
+    --bg2: #15252a;
+    --ink: #ece5d4;
+    --ink-soft: rgba(236, 229, 212, 0.6);
+    --rule: rgba(236, 229, 212, 0.16);
+    --accent: #c87b58;
+    --accent-ink: #101a1c;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-weight: 400;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .toc {
+    position: sticky; top: 0; z-index: 100;
+    padding: 14px 48px;
+    background: rgba(16, 26, 28, 0.92);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--rule);
+    display: flex; align-items: center; gap: 26px; flex-wrap: wrap;
+    font-size: 10px; letter-spacing: 0.22em; text-transform: uppercase;
+  }
+  .toc strong { color: var(--accent); font-weight: 500; margin-right: 12px; }
+  .toc a { color: var(--ink-soft); text-decoration: none; transition: color 150ms ease; }
+  .toc a:hover { color: var(--ink); }
+
+  .concept {
+    border-bottom: 1px solid var(--rule);
+    padding: 80px 48px;
+  }
+  .concept-head {
+    max-width: 1180px; margin: 0 auto 40px;
+    display: grid; grid-template-columns: minmax(180px, 1fr) 3fr;
+    gap: 56px; align-items: end;
+  }
+  .concept-eyebrow { font-size: 10px; letter-spacing: 0.32em; text-transform: uppercase; color: var(--accent); }
+  .concept-title {
+    font-family: var(--serif);
+    font-size: clamp(34px, 4vw, 48px);
+    line-height: 1.05; letter-spacing: -0.018em; font-weight: 400; margin: 0;
+  }
+  .concept-title em { font-style: italic; color: var(--accent); }
+  .concept-note {
+    grid-column: 1 / -1;
+    font-size: 12px; color: var(--ink-soft); line-height: 1.6; max-width: 760px;
+  }
+
+  .frame {
+    max-width: 1180px;
+    margin: 0 auto;
+    aspect-ratio: 16 / 7;
+    border: 1px solid var(--rule);
+    background: var(--bg2);
+    position: relative;
+    overflow: hidden;
+  }
+  .frame .open {
+    position: absolute; bottom: 12px; right: 12px;
+    background: var(--bg); color: var(--ink);
+    padding: 8px 14px; font-size: 9px; letter-spacing: 0.26em;
+    text-transform: uppercase; text-decoration: none;
+    border: 1px solid var(--rule); font-family: var(--sans);
+    z-index: 5;
+  }
+
+  .leaflet-container { background: var(--bg2); }
+
+  /* Concept 1 — current dark filter */
+  .filter-dark {
+    filter: invert(0.92) hue-rotate(180deg) saturate(0.6);
+  }
+
+  /* Concept 4 — illustrated svg */
+  .svg-frame {
+    background:
+      radial-gradient(circle at 70% 30%, rgba(200,123,88,0.08), transparent 50%),
+      var(--bg);
+    display: flex; align-items: center; justify-content: center;
+    position: relative;
+  }
+  .svg-frame svg { width: 100%; height: 100%; display: block; }
+
+  /* Concept 5 — typography-only */
+  .type-frame {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0;
+    background: var(--bg);
+  }
+  .type-left {
+    padding: 40px 48px;
+    display: flex; flex-direction: column; justify-content: center;
+    border-right: 1px solid var(--rule);
+  }
+  .type-postcode {
+    font-size: 9px; letter-spacing: 0.32em; text-transform: uppercase;
+    color: var(--ink-soft); margin-bottom: 12px;
+  }
+  .type-address {
+    font-family: var(--serif);
+    font-size: clamp(28px, 3.6vw, 44px);
+    line-height: 1.05; letter-spacing: -0.015em;
+  }
+  .type-address em { font-style: italic; color: var(--accent); }
+  .type-coords {
+    margin-top: 20px;
+    font-size: 11px; letter-spacing: 0.22em; text-transform: uppercase;
+    color: var(--ink-soft); font-variant-numeric: tabular-nums;
+  }
+  .type-right {
+    padding: 32px 40px;
+    display: flex; flex-direction: column; justify-content: center; gap: 14px;
+  }
+  .type-row {
+    display: grid; grid-template-columns: 1fr auto;
+    gap: 16px; padding: 12px 0;
+    border-bottom: 1px solid var(--rule);
+  }
+  .type-row:last-child { border-bottom: none; }
+  .type-from {
+    font-size: 9px; letter-spacing: 0.26em; text-transform: uppercase;
+    color: var(--ink-soft); margin-bottom: 4px;
+  }
+  .type-via { font-family: var(--serif); font-size: 17px; color: var(--ink); }
+  .type-time {
+    font-family: var(--sans); font-size: 11px; letter-spacing: 0.18em;
+    text-transform: uppercase; color: var(--accent);
+    font-variant-numeric: tabular-nums; align-self: end;
+  }
+
+  /* Verdict footer */
+  .verdict {
+    padding: 64px 48px;
+    text-align: center;
+    color: var(--ink-soft);
+    font-size: 12px; letter-spacing: 0.22em; text-transform: uppercase;
+  }
+  .verdict strong { color: var(--accent); font-weight: 500; }
+
+  @media (max-width: 920px) {
+    .concept { padding: 56px 24px; }
+    .concept-head { grid-template-columns: 1fr; gap: 14px; }
+    .frame { aspect-ratio: 4 / 3; }
+    .type-frame { grid-template-columns: 1fr; }
+    .type-left { border-right: none; border-bottom: 1px solid var(--rule); }
+  }
+</style>
+</head>
+<body>
+
+<nav class="toc">
+  <strong>Map concepts</strong>
+  <a href="#c1">01 OSM dark filter (current)</a>
+  <a href="#c2">02 Carto Positron</a>
+  <a href="#c3">03 Carto Dark Matter</a>
+  <a href="#c4">04 Illustrated SVG</a>
+  <a href="#c5">05 Typography only</a>
+</nav>
+
+<!-- 01 -->
+<section class="concept" id="c1">
+  <div class="concept-head">
+    <div class="concept-eyebrow">01</div>
+    <h2 class="concept-title">OSM <em>dark filter</em>.</h2>
+    <p class="concept-note">
+      What ships now. Standard OpenStreetMap tiles re-coloured client-side via <code>filter: invert(0.92) hue-rotate(180deg) saturate(0.6)</code>. Free, no API key, instant. Looks washed-out on the dark theme; labels go faintly readable.
+    </p>
+  </div>
+  <div class="frame">
+    <div id="map1" style="position:absolute;inset:0;" class="filter-dark"></div>
+    <a class="open" href="https://www.openstreetmap.org/?mlat=51.5158&mlon=-0.1745#map=16/51.5158/-0.1745" target="_blank">Open in maps →</a>
+  </div>
+</section>
+
+<!-- 02 -->
+<section class="concept" id="c2">
+  <div class="concept-head">
+    <div class="concept-eyebrow">02</div>
+    <h2 class="concept-title">Carto <em>Positron</em>.</h2>
+    <p class="concept-note">
+      Carto's clean light style — pale parks, near-white roads, restrained labels. Free for non-commercial via <code>basemaps.cartocdn.com</code>. Looks excellent on the <strong>Ivory</strong> theme; on Dark you'd invert it (concept 03 instead). No API key.
+    </p>
+  </div>
+  <div class="frame" style="background: #faf8f3;">
+    <div id="map2" style="position:absolute;inset:0;"></div>
+    <a class="open" href="https://www.openstreetmap.org/?mlat=51.5158&mlon=-0.1745#map=16/51.5158/-0.1745" target="_blank">Open in maps →</a>
+  </div>
+</section>
+
+<!-- 03 -->
+<section class="concept" id="c3">
+  <div class="concept-head">
+    <div class="concept-eyebrow">03</div>
+    <h2 class="concept-title">Carto <em>Dark Matter</em>.</h2>
+    <p class="concept-note">
+      Carto's true dark style — purpose-built dark cartography, no filter hacks. Slate roads, near-black ground, subtle labels. Free for non-commercial. Best fit for the <strong>Dark</strong> theme — sits next to the wardrobe-doors photo without the uncanny-filter feeling.
+    </p>
+  </div>
+  <div class="frame">
+    <div id="map3" style="position:absolute;inset:0;"></div>
+    <a class="open" href="https://www.openstreetmap.org/?mlat=51.5158&mlon=-0.1745#map=16/51.5158/-0.1745" target="_blank">Open in maps →</a>
+  </div>
+</section>
+
+<!-- 04 -->
+<section class="concept" id="c4">
+  <div class="concept-head">
+    <div class="concept-eyebrow">04</div>
+    <h2 class="concept-title">Illustrated <em>SVG</em>.</h2>
+    <p class="concept-note">
+      No map tiles at all — a hand-drawn schematic of just the bits that matter (Hyde Park as a wash, Paddington as a station glyph, the hotel as a brass pin). Pure brand. Static, no live data, but loads instantly and reads as a postcard. Can be redrawn properly by a designer.
+    </p>
+  </div>
+  <div class="frame svg-frame">
+    <svg viewBox="0 0 1600 700" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid slice">
+      <!-- park (Hyde Park) -->
+      <rect x="900" y="80" width="650" height="540" fill="rgba(200,123,88,0.06)" stroke="rgba(236,229,212,0.18)" stroke-width="1"/>
+      <text x="1220" y="380" fill="rgba(236,229,212,0.55)" font-family="var(--serif)" font-style="italic" font-size="30" text-anchor="middle">Hyde Park</text>
+      <text x="1220" y="408" fill="rgba(236,229,212,0.35)" font-family="var(--sans)" font-size="9" letter-spacing="3" text-anchor="middle">THE ITALIAN GARDENS</text>
+
+      <!-- main streets -->
+      <line x1="0" y1="380" x2="900" y2="380" stroke="rgba(236,229,212,0.25)" stroke-width="2"/>
+      <line x1="350" y1="0" x2="350" y2="700" stroke="rgba(236,229,212,0.22)" stroke-width="1.4"/>
+      <line x1="700" y1="0" x2="700" y2="700" stroke="rgba(236,229,212,0.22)" stroke-width="1.4"/>
+      <line x1="120" y1="0" x2="120" y2="700" stroke="rgba(236,229,212,0.18)" stroke-width="1"/>
+      <line x1="0" y1="180" x2="900" y2="180" stroke="rgba(236,229,212,0.18)" stroke-width="1"/>
+      <line x1="0" y1="560" x2="900" y2="560" stroke="rgba(236,229,212,0.18)" stroke-width="1"/>
+
+      <!-- street label -->
+      <text x="40" y="372" fill="rgba(236,229,212,0.6)" font-family="var(--sans)" font-size="10" letter-spacing="3">SUSSEX GARDENS</text>
+
+      <!-- paddington station -->
+      <circle cx="350" cy="180" r="8" fill="rgba(236,229,212,0.85)"/>
+      <text x="370" y="166" fill="rgba(236,229,212,0.85)" font-family="var(--sans)" font-size="10" letter-spacing="3">PADDINGTON STATION</text>
+      <text x="370" y="186" fill="rgba(236,229,212,0.4)" font-family="var(--sans)" font-size="9" letter-spacing="2">— DIRECT TO LHR · 15 MIN</text>
+
+      <!-- the hotel pin -->
+      <g>
+        <circle cx="500" cy="380" r="22" fill="rgba(200,123,88,0.18)"/>
+        <circle cx="500" cy="380" r="10" fill="#c87b58"/>
+        <circle cx="500" cy="380" r="3" fill="#101a1c"/>
+        <text x="528" y="368" fill="#c87b58" font-family="var(--sans)" font-size="10" letter-spacing="3" font-weight="500">THE PORTICO</text>
+        <text x="528" y="388" fill="rgba(236,229,212,0.55)" font-family="var(--serif)" font-style="italic" font-size="13">32 Sussex Gardens · W2 1UJ</text>
+      </g>
+
+      <!-- north arrow -->
+      <g transform="translate(80,80)">
+        <line x1="0" y1="20" x2="0" y2="-15" stroke="rgba(236,229,212,0.4)" stroke-width="1.4"/>
+        <polygon points="0,-22 -5,-12 5,-12" fill="rgba(236,229,212,0.55)"/>
+        <text x="0" y="42" fill="rgba(236,229,212,0.4)" font-family="var(--sans)" font-size="9" letter-spacing="3" text-anchor="middle">N</text>
+      </g>
+
+      <!-- scale bar -->
+      <g transform="translate(80,640)">
+        <line x1="0" y1="0" x2="120" y2="0" stroke="rgba(236,229,212,0.4)" stroke-width="1.4"/>
+        <line x1="0" y1="-5" x2="0" y2="5" stroke="rgba(236,229,212,0.4)" stroke-width="1.4"/>
+        <line x1="120" y1="-5" x2="120" y2="5" stroke="rgba(236,229,212,0.4)" stroke-width="1.4"/>
+        <text x="60" y="22" fill="rgba(236,229,212,0.4)" font-family="var(--sans)" font-size="9" letter-spacing="3" text-anchor="middle">200 M</text>
+      </g>
+    </svg>
+    <a class="open" href="https://www.openstreetmap.org/?mlat=51.5158&mlon=-0.1745#map=16/51.5158/-0.1745" target="_blank">Open in maps →</a>
+  </div>
+</section>
+
+<!-- 05 -->
+<section class="concept" id="c5">
+  <div class="concept-head">
+    <div class="concept-eyebrow">05</div>
+    <h2 class="concept-title">Typography <em>only</em>.</h2>
+    <p class="concept-note">
+      No map at all — a typographic location card. Big serif address, GPS coordinates, three travel routes with timings. Most editorial; reads like a printed reservation card. The "Open in maps →" pill keeps the actual map one click away.
+    </p>
+  </div>
+  <div class="frame type-frame" style="aspect-ratio: 16 / 7;">
+    <div class="type-left">
+      <div class="type-postcode">London · W2 1UJ</div>
+      <div class="type-address">
+        32 Sussex Gardens,<br/>
+        <em>Paddington</em>.
+      </div>
+      <div class="type-coords">51.5158° N · 00.1745° W</div>
+    </div>
+    <div class="type-right">
+      <div class="type-row">
+        <div>
+          <div class="type-from">From Heathrow</div>
+          <div class="type-via">Heathrow Express → Paddington, then 4 min walk</div>
+        </div>
+        <div class="type-time">15 min</div>
+      </div>
+      <div class="type-row">
+        <div>
+          <div class="type-from">From Hyde Park</div>
+          <div class="type-via">via Lancaster Gate, north on Sussex Gardens</div>
+        </div>
+        <div class="type-time">2 min</div>
+      </div>
+      <div class="type-row">
+        <div>
+          <div class="type-from">From Marylebone</div>
+          <div class="type-via">west along Marylebone Road, south at Edgware</div>
+        </div>
+        <div class="type-time">8 min</div>
+      </div>
+    </div>
+    <a class="open" href="https://www.openstreetmap.org/?mlat=51.5158&mlon=-0.1745#map=16/51.5158/-0.1745" target="_blank" style="bottom: 12px; right: 12px;">Open in maps →</a>
+  </div>
+</section>
+
+<div class="verdict">
+  Pick one — tell me <strong>01 / 02 / 03 / 04 / 05</strong>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+  integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+  crossorigin=""></script>
+<script>
+  const lat = 51.5158, lon = -0.1745;
+  const opts = { zoomControl: false, dragging: false, scrollWheelZoom: false, doubleClickZoom: false, touchZoom: false, attributionControl: false };
+
+  // 01 — OSM mapnik (we apply CSS filter-dark to the wrapping div)
+  const m1 = L.map('map1', opts).setView([lat, lon], 15);
+  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(m1);
+  L.circleMarker([lat, lon], { radius: 8, color: '#c87b58', fillColor: '#c87b58', fillOpacity: 1, weight: 2 }).addTo(m1);
+
+  // 02 — Carto Positron
+  const m2 = L.map('map2', opts).setView([lat, lon], 15);
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png', {
+    subdomains: 'abcd', maxZoom: 19,
+  }).addTo(m2);
+  L.circleMarker([lat, lon], { radius: 8, color: '#0e4a4a', fillColor: '#0e4a4a', fillOpacity: 1, weight: 2 }).addTo(m2);
+
+  // 03 — Carto Dark Matter
+  const m3 = L.map('map3', opts).setView([lat, lon], 15);
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png', {
+    subdomains: 'abcd', maxZoom: 19,
+  }).addTo(m3);
+  L.circleMarker([lat, lon], { radius: 8, color: '#c87b58', fillColor: '#c87b58', fillOpacity: 1, weight: 2 }).addTo(m3);
+</script>
+
+</body>
+</html>

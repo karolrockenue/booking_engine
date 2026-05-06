@@ -48,6 +48,7 @@ export interface PersistedBookingDraft {
   children: number;
   result: AvailabilityResult | null;
   extras: string[];
+  specialRequests?: string;
   savedAt: number; // epoch ms; for TTL
 }
 

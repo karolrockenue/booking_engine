@@ -1,0 +1,539 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Portico — Room select / rate plan concepts</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;1,400;1,500&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --serif: 'Cormorant Garamond', 'Times New Roman', serif;
+    --sans: 'Inter', -apple-system, system-ui, sans-serif;
+    --bg: #faf8f3;
+    --bg2: #faf8f3;
+    --ink: #1f1c18;
+    --ink-soft: #6b6258;
+    --rule: rgba(31, 28, 24, 0.13);
+    --accent: #0e4a4a;
+    --accent-ink: #faf8f3;
+    --accent-soft: #cbd9d2;
+    --bg-alt: #f1ede2;  /* slightly tinted ivory for elevation */
+    --warn: #8a4d2e;     /* warm earth tone for non-refundable callouts */
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--sans);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .toc {
+    position: sticky; top: 0; z-index: 100;
+    padding: 14px 48px;
+    background: rgba(250,248,243,0.92);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--rule);
+    display: flex; gap: 26px; flex-wrap: wrap;
+    font-size: 10px; letter-spacing: 0.22em; text-transform: uppercase;
+    color: var(--ink-soft);
+  }
+  .toc strong { color: var(--accent); font-weight: 500; margin-right: 12px; }
+  .toc a { color: var(--ink-soft); text-decoration: none; }
+  .toc a:hover { color: var(--ink); }
+
+  .concept {
+    border-bottom: 1px solid var(--rule);
+    padding: 80px 48px;
+  }
+  .concept-head {
+    max-width: 1180px; margin: 0 auto 40px;
+    display: grid; grid-template-columns: minmax(180px,1fr) 3fr;
+    gap: 56px; align-items: end;
+  }
+  .concept-eyebrow { font-size: 10px; letter-spacing: 0.32em; text-transform: uppercase; color: var(--accent); }
+  .concept-title {
+    font-family: var(--serif);
+    font-size: clamp(30px,3.5vw,42px);
+    line-height: 1.05; letter-spacing: -0.018em; font-weight: 400; margin: 0;
+  }
+  .concept-title em { font-style: italic; color: var(--accent); }
+  .concept-note {
+    grid-column: 1 / -1;
+    font-size: 12px; color: var(--ink-soft); line-height: 1.6; max-width: 760px;
+  }
+
+  .room {
+    max-width: 1180px;
+    margin: 0 auto;
+    display: grid;
+    grid-template-columns: 280px 1fr;
+    gap: 32px;
+    padding: 24px 0;
+    border-top: 1px solid var(--rule);
+  }
+  .room-img {
+    aspect-ratio: 4/3;
+    background-image: url('/portico/PorticoHotel_0521.jpg');
+    background-size: cover;
+    background-position: center;
+  }
+  .room-name { font-family: var(--serif); font-size: 36px; line-height: 1; margin: 0 0 10px; font-weight: 400; }
+  .room-desc { font-size: 13px; line-height: 1.6; color: var(--ink-soft); margin: 0 0 14px; }
+  .room-pills { display: flex; gap: 8px; flex-wrap: wrap; }
+  .pill {
+    font-size: 9px; letter-spacing: 0.2em; text-transform: uppercase;
+    padding: 5px 10px; border: 1px solid var(--rule);
+  }
+
+  .row { display: flex; align-items: center; gap: 16px; padding: 16px 0; border-bottom: 1px solid var(--rule); }
+  .row:last-child { border-bottom: none; }
+  .row-info { flex: 1; padding-right: 12px; min-width: 0; }
+  .row-name { font-size: 13px; font-weight: 500; margin-bottom: 4px; }
+  .row-note { font-size: 11px; color: var(--ink-soft); line-height: 1.5; }
+  .row-price { text-align: right; min-width: 80px; }
+  .row-price-main {
+    font-size: 17px; font-variant-numeric: tabular-nums; letter-spacing: 0.005em; font-weight: 500;
+  }
+  .row-price-sub {
+    font-size: 9px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--ink-soft); margin-top: 2px;
+  }
+  .btn {
+    background: transparent; color: var(--ink); border: 1px solid var(--ink);
+    padding: 12px 22px; font-size: 10px; letter-spacing: 0.28em; text-transform: uppercase;
+    cursor: pointer; font-family: var(--sans); min-width: 124px; text-align: center;
+  }
+  .btn-primary {
+    background: var(--accent); color: var(--accent-ink); border-color: var(--accent);
+  }
+
+  /* Cancellation chips */
+  .chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 9px; letter-spacing: 0.22em; text-transform: uppercase;
+    padding: 4px 10px;
+    border: 1px solid var(--rule);
+    color: var(--ink-soft);
+    margin-bottom: 6px;
+  }
+  .chip svg { width: 11px; height: 11px; }
+  .chip-flex { color: var(--accent); border-color: rgba(14,74,74,0.35); background: rgba(14,74,74,0.06); }
+  .chip-nr   { color: var(--warn);   border-color: rgba(138,77,46,0.35); background: rgba(138,77,46,0.06); }
+
+  /* Best-rate strip */
+  .bestrate {
+    display: flex; justify-content: space-between; align-items: center;
+    gap: 16px; flex-wrap: wrap;
+    margin-top: 14px; padding: 12px 16px;
+    border: 1px solid var(--rule);
+    background: var(--bg-alt);
+    font-size: 11px;
+  }
+  .bestrate-label {
+    font-size: 9px; letter-spacing: 0.26em; text-transform: uppercase; color: var(--accent);
+    font-weight: 500;
+  }
+  .ota { display: inline-flex; gap: 14px; font-variant-numeric: tabular-nums; }
+  .ota span s { color: var(--ink-soft); opacity: 0.7; text-decoration-thickness: 1px; }
+
+  /* C2 — comparison column */
+  .row-c2 { display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: 24px; padding: 18px 0; border-bottom: 1px solid var(--rule); }
+  .row-c2:last-child { border-bottom: none; }
+  .ota-stack { font-size: 10px; line-height: 1.6; text-align: right; min-width: 120px; }
+  .ota-stack-direct {
+    font-size: 17px; font-weight: 500; color: var(--accent);
+    font-variant-numeric: tabular-nums;
+  }
+  .ota-stack-line {
+    font-size: 10px; letter-spacing: 0.04em; color: var(--ink-soft);
+    font-variant-numeric: tabular-nums;
+  }
+  .ota-stack-line s { opacity: 0.65; }
+  .ota-stack-save {
+    margin-top: 4px; font-size: 8px; letter-spacing: 0.26em; text-transform: uppercase;
+    color: var(--accent); font-weight: 500;
+  }
+
+  /* C3 — grouped */
+  .group {
+    border-top: 1px solid var(--rule);
+    padding: 14px 0 0;
+  }
+  .group + .group { margin-top: 8px; }
+  .group-head {
+    display: flex; justify-content: space-between; align-items: baseline;
+    gap: 12px; margin-bottom: 4px;
+  }
+  .group-title {
+    font-family: var(--serif); font-size: 22px; letter-spacing: -0.005em; font-weight: 400; margin: 0;
+  }
+  .group-title em { font-style: italic; color: var(--accent); }
+  .group-note { font-size: 11px; color: var(--ink-soft); }
+  .group-rows { padding-top: 4px; }
+
+  /* C4 — bottom card */
+  .compare-card {
+    margin-top: 18px;
+    border: 1px solid var(--rule);
+    background: var(--bg-alt);
+    padding: 18px 22px;
+    display: grid; grid-template-columns: auto 1fr auto; gap: 22px;
+    align-items: center;
+  }
+  .compare-eyebrow {
+    font-size: 9px; letter-spacing: 0.28em; text-transform: uppercase;
+    color: var(--accent); font-weight: 500;
+  }
+  .compare-headline {
+    font-family: var(--serif); font-size: 18px; line-height: 1.3; margin: 4px 0 0;
+  }
+  .compare-headline em { font-style: italic; color: var(--accent); }
+  .compare-table {
+    display: flex; gap: 20px; flex-wrap: wrap;
+    font-size: 11px; font-variant-numeric: tabular-nums;
+  }
+  .compare-cell { display: flex; flex-direction: column; gap: 2px; }
+  .compare-cell-label { font-size: 9px; letter-spacing: 0.22em; text-transform: uppercase; color: var(--ink-soft); }
+  .compare-cell-price { font-size: 14px; font-weight: 500; }
+  .compare-cell.is-direct .compare-cell-price { color: var(--accent); font-size: 16px; }
+  .compare-cell.is-ota .compare-cell-price { color: var(--ink-soft); text-decoration: line-through; }
+
+  .verdict { padding: 64px 48px; text-align: center; color: var(--ink-soft); font-size: 12px; letter-spacing: 0.22em; text-transform: uppercase; }
+  .verdict strong { color: var(--accent); font-weight: 500; }
+
+  @media (max-width: 920px) {
+    .concept { padding: 56px 24px; }
+    .concept-head { grid-template-columns: 1fr; gap: 14px; }
+    .room { grid-template-columns: 1fr; }
+    .row-c2 { grid-template-columns: 1fr; gap: 12px; }
+    .compare-card { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<nav class="toc">
+  <strong>Room-select concepts</strong>
+  <a href="#c1">01 Pills + value strip</a>
+  <a href="#c2">02 Comparison column</a>
+  <a href="#c3">03 Grouped by policy</a>
+  <a href="#c4">04 Best-rate card below</a>
+</nav>
+
+<!-- ╔════════ 01 ════════╗ -->
+<section class="concept" id="c1">
+  <div class="concept-head">
+    <div class="concept-eyebrow">01</div>
+    <h2 class="concept-title">Pills + value <em>strip</em>.</h2>
+    <p class="concept-note">
+      Smallest delta from current. Each rate plan keeps its row, but a tiny coloured pill ("Free cancellation" / "Non-refundable · save 12%") sits above the plan name. A single value strip below the price ladder shows direct vs OTA in one glance — quiet, not screaming.
+    </p>
+  </div>
+  <article class="room">
+    <div class="room-img"></div>
+    <div>
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px;gap:16px;">
+        <h3 class="room-name">Twin</h3>
+        <span style="font-size:13px;color:var(--ink-soft);font-variant-numeric:tabular-nums;white-space:nowrap;">from £195 / night</span>
+      </div>
+      <p class="room-desc">Two single beds, navy velvet drapes, marble chevron shower beyond.</p>
+      <div class="room-pills"><span class="pill">15 sqm</span><span class="pill">2 × 100 × 200cm</span><span class="pill">Up to 2 guests</span></div>
+
+      <div style="margin-top: 24px;">
+        <div class="row">
+          <div class="row-info">
+            <span class="chip chip-flex">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="square"><polyline points="20 6 9 17 4 12"/></svg>
+              Free cancellation
+            </span>
+            <div class="row-name">Best flexible rate</div>
+            <div class="row-note">Cancel free of charge up to 48 hours before arrival.</div>
+          </div>
+          <div class="row-price">
+            <div class="row-price-main">£195</div>
+            <div class="row-price-sub">/ night · 2n total £390</div>
+          </div>
+          <button class="btn btn-primary">Selected</button>
+        </div>
+        <div class="row">
+          <div class="row-info">
+            <span class="chip chip-flex">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="square"><polyline points="20 6 9 17 4 12"/></svg>
+              Free cancellation
+            </span>
+            <div class="row-name">With breakfast</div>
+            <div class="row-note">Continental tray for two. Cancel free up to 48h before.</div>
+          </div>
+          <div class="row-price">
+            <div class="row-price-main">£228</div>
+            <div class="row-price-sub">/ night · 2n total £456</div>
+          </div>
+          <button class="btn">Select</button>
+        </div>
+        <div class="row">
+          <div class="row-info">
+            <span class="chip chip-nr">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="square"><line x1="6" y1="12" x2="18" y2="12"/></svg>
+              Non-refundable · save 12%
+            </span>
+            <div class="row-name">Portico saver</div>
+            <div class="row-note">Charged today. No changes, no refunds.</div>
+          </div>
+          <div class="row-price">
+            <div class="row-price-main">£171</div>
+            <div class="row-price-sub">/ night · 2n total £342</div>
+          </div>
+          <button class="btn">Select</button>
+        </div>
+      </div>
+
+      <div class="bestrate">
+        <span class="bestrate-label">Best rate guaranteed — direct only</span>
+        <span class="ota">
+          <span>Booking.com&nbsp;<s>£218</s></span>
+          <span>Expedia&nbsp;<s>£212</s></span>
+          <span>Hotels.com&nbsp;<s>£215</s></span>
+        </span>
+      </div>
+    </div>
+  </article>
+</section>
+
+<!-- ╔════════ 02 ════════╗ -->
+<section class="concept" id="c2">
+  <div class="concept-head">
+    <div class="concept-eyebrow">02</div>
+    <h2 class="concept-title">Comparison <em>column</em>.</h2>
+    <p class="concept-note">
+      Same row layout, but a third column stacks the OTA prices vertically — direct rate big and accent-coloured, OTA prices below in muted strikethrough. Saves the page from a separate "best-rate" strip. Per-plan comparison rather than per-room.
+    </p>
+  </div>
+  <article class="room">
+    <div class="room-img"></div>
+    <div>
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px;gap:16px;">
+        <h3 class="room-name">Twin</h3>
+        <span style="font-size:13px;color:var(--ink-soft);font-variant-numeric:tabular-nums;white-space:nowrap;">from £195 / night</span>
+      </div>
+      <p class="room-desc">Two single beds, navy velvet drapes, marble chevron shower beyond.</p>
+      <div class="room-pills"><span class="pill">15 sqm</span><span class="pill">2 × 100 × 200cm</span><span class="pill">Up to 2 guests</span></div>
+
+      <div style="margin-top: 24px;">
+        <div class="row-c2">
+          <div>
+            <span class="chip chip-flex">Free cancellation up to 48h</span>
+            <div class="row-name" style="margin-top:6px;">Best flexible rate</div>
+            <div class="row-note">Refundable. The safe pick.</div>
+          </div>
+          <div class="ota-stack">
+            <div class="ota-stack-direct">£195</div>
+            <div class="ota-stack-line"><s>Booking £218</s></div>
+            <div class="ota-stack-line"><s>Expedia £212</s></div>
+            <div class="ota-stack-save">Save £17 direct</div>
+          </div>
+          <button class="btn btn-primary">Selected</button>
+        </div>
+        <div class="row-c2">
+          <div>
+            <span class="chip chip-flex">Free cancellation up to 48h</span>
+            <div class="row-name" style="margin-top:6px;">With breakfast</div>
+            <div class="row-note">Continental tray for two.</div>
+          </div>
+          <div class="ota-stack">
+            <div class="ota-stack-direct">£228</div>
+            <div class="ota-stack-line"><s>Booking £252</s></div>
+            <div class="ota-stack-save">Save £24 direct</div>
+          </div>
+          <button class="btn">Select</button>
+        </div>
+        <div class="row-c2">
+          <div>
+            <span class="chip chip-nr">Non-refundable · save 12%</span>
+            <div class="row-name" style="margin-top:6px;">Portico saver</div>
+            <div class="row-note">Charged today. No changes.</div>
+          </div>
+          <div class="ota-stack">
+            <div class="ota-stack-direct">£171</div>
+            <div class="ota-stack-line"><s>Booking £198</s></div>
+            <div class="ota-stack-save">Save £27 direct</div>
+          </div>
+          <button class="btn">Select</button>
+        </div>
+      </div>
+    </div>
+  </article>
+</section>
+
+<!-- ╔════════ 03 ════════╗ -->
+<section class="concept" id="c3">
+  <div class="concept-head">
+    <div class="concept-eyebrow">03</div>
+    <h2 class="concept-title">Grouped <em>by policy</em>.</h2>
+    <p class="concept-note">
+      Plans clustered under their cancellation policy with an editorial sub-headline ("<em>Flexible</em>." / "<em>Saver</em>."), so the choice between flex and non-ref is the first decision rather than the third. Best-rate strip sits at the bottom of the room block.
+    </p>
+  </div>
+  <article class="room">
+    <div class="room-img"></div>
+    <div>
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px;gap:16px;">
+        <h3 class="room-name">Twin</h3>
+        <span style="font-size:13px;color:var(--ink-soft);font-variant-numeric:tabular-nums;white-space:nowrap;">from £195 / night</span>
+      </div>
+      <p class="room-desc">Two single beds, navy velvet drapes, marble chevron shower beyond.</p>
+      <div class="room-pills"><span class="pill">15 sqm</span><span class="pill">2 × 100 × 200cm</span><span class="pill">Up to 2 guests</span></div>
+
+      <div style="margin-top: 24px;">
+        <div class="group">
+          <div class="group-head">
+            <h4 class="group-title"><em>Flexible.</em></h4>
+            <span class="group-note">Cancel free up to 48 hours before arrival</span>
+          </div>
+          <div class="group-rows">
+            <div class="row">
+              <div class="row-info">
+                <div class="row-name">Best flexible rate</div>
+                <div class="row-note">Pay nothing today. Card is held only.</div>
+              </div>
+              <div class="row-price">
+                <div class="row-price-main">£195</div>
+                <div class="row-price-sub">/ night</div>
+              </div>
+              <button class="btn btn-primary">Selected</button>
+            </div>
+            <div class="row">
+              <div class="row-info">
+                <div class="row-name">With breakfast</div>
+                <div class="row-note">Continental tray for two.</div>
+              </div>
+              <div class="row-price">
+                <div class="row-price-main">£228</div>
+                <div class="row-price-sub">/ night</div>
+              </div>
+              <button class="btn">Select</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="group">
+          <div class="group-head">
+            <h4 class="group-title"><em>Saver.</em> <span style="font-style:normal;color:var(--ink-soft);font-size:13px;">— save 12%</span></h4>
+            <span class="group-note">Non-refundable · charged today</span>
+          </div>
+          <div class="group-rows">
+            <div class="row">
+              <div class="row-info">
+                <div class="row-name">Portico saver</div>
+                <div class="row-note">No changes, no refunds.</div>
+              </div>
+              <div class="row-price">
+                <div class="row-price-main">£171</div>
+                <div class="row-price-sub">/ night</div>
+              </div>
+              <button class="btn">Select</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="bestrate">
+        <span class="bestrate-label">Best rate guaranteed — direct only</span>
+        <span class="ota">
+          <span>Booking.com&nbsp;<s>£218</s></span>
+          <span>Expedia&nbsp;<s>£212</s></span>
+        </span>
+      </div>
+    </div>
+  </article>
+</section>
+
+<!-- ╔════════ 04 ════════╗ -->
+<section class="concept" id="c4">
+  <div class="concept-head">
+    <div class="concept-eyebrow">04</div>
+    <h2 class="concept-title">Best-rate <em>card</em> below.</h2>
+    <p class="concept-note">
+      Lean rate-plan rows (chip + name + price + button), then a self-contained "best rate guaranteed" card with Direct vs OTA columns at the bottom of the room block. The price comparison is its own moment, not interleaved.
+    </p>
+  </div>
+  <article class="room">
+    <div class="room-img"></div>
+    <div>
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px;gap:16px;">
+        <h3 class="room-name">Twin</h3>
+        <span style="font-size:13px;color:var(--ink-soft);font-variant-numeric:tabular-nums;white-space:nowrap;">from £195 / night</span>
+      </div>
+      <p class="room-desc">Two single beds, navy velvet drapes, marble chevron shower beyond.</p>
+      <div class="room-pills"><span class="pill">15 sqm</span><span class="pill">2 × 100 × 200cm</span><span class="pill">Up to 2 guests</span></div>
+
+      <div style="margin-top: 24px;">
+        <div class="row">
+          <div class="row-info">
+            <span class="chip chip-flex">Flexible</span>
+            <div class="row-name" style="margin-top:6px;">Best flexible rate</div>
+          </div>
+          <div class="row-price">
+            <div class="row-price-main">£195</div>
+            <div class="row-price-sub">/ night · 2n £390</div>
+          </div>
+          <button class="btn btn-primary">Selected</button>
+        </div>
+        <div class="row">
+          <div class="row-info">
+            <span class="chip chip-flex">Flexible</span>
+            <div class="row-name" style="margin-top:6px;">With breakfast</div>
+          </div>
+          <div class="row-price">
+            <div class="row-price-main">£228</div>
+            <div class="row-price-sub">/ night · 2n £456</div>
+          </div>
+          <button class="btn">Select</button>
+        </div>
+        <div class="row">
+          <div class="row-info">
+            <span class="chip chip-nr">Non-refundable · −12%</span>
+            <div class="row-name" style="margin-top:6px;">Portico saver</div>
+          </div>
+          <div class="row-price">
+            <div class="row-price-main">£171</div>
+            <div class="row-price-sub">/ night · 2n £342</div>
+          </div>
+          <button class="btn">Select</button>
+        </div>
+      </div>
+
+      <div class="compare-card">
+        <div>
+          <div class="compare-eyebrow">Best rate guaranteed</div>
+          <h4 class="compare-headline">Booked direct, <em>always</em>.</h4>
+        </div>
+        <div class="compare-table">
+          <div class="compare-cell is-direct">
+            <span class="compare-cell-label">Direct</span>
+            <span class="compare-cell-price">£195</span>
+          </div>
+          <div class="compare-cell is-ota">
+            <span class="compare-cell-label">Booking.com</span>
+            <span class="compare-cell-price">£218</span>
+          </div>
+          <div class="compare-cell is-ota">
+            <span class="compare-cell-label">Expedia</span>
+            <span class="compare-cell-price">£212</span>
+          </div>
+          <div class="compare-cell is-ota">
+            <span class="compare-cell-label">Hotels.com</span>
+            <span class="compare-cell-price">£215</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </article>
+</section>
+
+<div class="verdict">Pick one — tell me <strong>01 / 02 / 03 / 04</strong></div>
+
+</body>
+</html>

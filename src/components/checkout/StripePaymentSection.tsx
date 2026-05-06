@@ -6,6 +6,7 @@ import {
   useStripe,
   useElements,
 } from "@stripe/react-stripe-js";
+import type { Appearance } from "@stripe/stripe-js";
 import { forwardRef, useImperativeHandle } from "react";
 import { getStripeBrowser } from "@/lib/stripe/browser";
 
@@ -24,10 +25,11 @@ export interface StripePaymentSectionHandle {
 interface Props {
   kind: IntentKind;
   clientSecret: string;
+  appearance?: Appearance;
 }
 
 const StripePaymentSection = forwardRef<StripePaymentSectionHandle, Props>(
-  function StripePaymentSection({ kind, clientSecret }, ref) {
+  function StripePaymentSection({ kind, clientSecret, appearance }, ref) {
     return (
       <Elements
         // Re-mount when the intent changes (e.g. user navigates back, total
@@ -36,7 +38,7 @@ const StripePaymentSection = forwardRef<StripePaymentSectionHandle, Props>(
         stripe={getStripeBrowser()}
         options={{
           clientSecret,
-          appearance: { theme: "stripe" },
+          appearance: appearance ?? { theme: "stripe" },
         }}
       >
         <InnerForm

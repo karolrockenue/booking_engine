@@ -822,6 +822,8 @@ function FooterLine({
         color: muted ?? "inherit",
         marginTop: spacedTop ? 14 : 0,
         opacity: muted ? 1 : 0.95,
+        wordBreak: "break-word",
+        overflowWrap: "anywhere",
       }}
     >
       {children}

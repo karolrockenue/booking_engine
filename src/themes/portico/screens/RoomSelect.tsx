@@ -422,6 +422,7 @@ function RoomBlock({
             return (
               <div
                 key={key}
+                className="portico-rateplan-row"
                 style={{
                   display: "flex",
                   justifyContent: "space-between",
@@ -429,6 +430,7 @@ function RoomBlock({
                   padding: "12px 0",
                   borderBottom: last ? "none" : `1px solid ${t.rule}`,
                   gap: 16,
+                  flexWrap: "wrap",
                 }}
               >
                 <div style={{ flex: 1, paddingRight: 12 }}>
@@ -479,6 +481,18 @@ function RoomBlock({
         @media (max-width: 720px) {
           .portico-roomselect-header { padding: 24px 20px 16px !important; }
           .portico-roomselect-main { padding: 0 20px 200px !important; }
+        }
+        @media (max-width: 520px) {
+          /* Stack the rate-plan row on tiny screens so the Select button has room */
+          .portico-rateplan-row {
+            display: grid !important;
+            grid-template-columns: 1fr auto !important;
+            gap: 8px 16px !important;
+          }
+          .portico-rateplan-row > button {
+            grid-column: 1 / -1;
+            justify-self: end;
+          }
         }
       `}</style>
     </article>

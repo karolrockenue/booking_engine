@@ -298,9 +298,18 @@ export function BookingNav({
 
       <style>{`
         @media (max-width: 760px) {
-          .portico-bookingnav { padding: 14px 20px !important; }
+          .portico-bookingnav {
+            flex-wrap: wrap !important;
+            row-gap: 10px !important;
+            padding: 14px 20px !important;
+            justify-content: center !important;
+          }
+          .portico-bookingnav > a:first-child {
+            margin-right: auto;
+          }
           .portico-bookingnav-phone { display: none !important; }
           .portico-bookingnav-spacer { display: none !important; }
+          .portico-stepper-compact { width: 100%; justify-content: flex-start !important; }
         }
       `}</style>
     </div>

@@ -29,6 +29,10 @@ export function PorticoShell({
       }}
     >
       <style>{`
+        /* Mobile guardrail — prevent any rogue overflow from breaking layout */
+        html, body { overflow-x: hidden; }
+        .portico-shell { overflow-x: clip; max-width: 100vw; }
+        .portico-shell img { max-width: 100%; height: auto; }
         .portico-shell button:focus-visible,
         .portico-shell a:focus-visible,
         .portico-shell input:focus-visible,

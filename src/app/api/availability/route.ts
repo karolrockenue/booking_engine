@@ -1,39 +1,47 @@
 import { NextRequest, NextResponse } from "next/server";
+import { unstable_cache } from "next/cache";
 import { db } from "@/db";
 import { properties, inventory, roomTypes, ratePlans } from "@/db/schema";
 import { eq, and, gte, lte, sql } from "drizzle-orm";
 import { syncInventoryForProperty } from "@/lib/cloudbeds/sync-inventory";
 
-export async function GET(req: NextRequest) {
-  const { searchParams } = new URL(req.url);
-  const propertyId = searchParams.get("propertyId");
-  const checkIn = searchParams.get("checkIn");
-  const checkOut = searchParams.get("checkOut");
-  const adults = parseInt(searchParams.get("adults") ?? "1");
+interface AvailabilityResultRow {
+  roomType: {
+    id: string;
+    otaRoomId: string;
+    name: string;
+    description: string | null;
+    maxOccupancy: number | null;
+    amenities: unknown;
+  };
+  ratePlan: {
+    id: string;
+    otaRateId: string;
+    name: string;
+    isRefundable: boolean;
+  };
+  totalPrice: number;
+  nightlyRates: Array<{ date: string; rate: number }>;
+  nights: number;
+}
 
-  if (!propertyId || !checkIn || !checkOut) {
-    return NextResponse.json(
-      { error: "Missing propertyId, checkIn, or checkOut" },
-      { status: 400 }
-    );
-  }
-
+// Pure compute: queries the DB and returns the availability tree. Wrapped
+// below by unstable_cache. If the property is OAuth'd to Cloudbeds but has
+// no inventory in the requested window, fires a fire-and-forget background
+// sync — the sync calls revalidateTag at the end, so the next request after
+// it completes will recompute against fresh data instead of waiting on
+// in-band sync (which used to add ~3s to the first request of the day).
+async function computeAvailability(
+  propertyId: string,
+  checkIn: string,
+  checkOut: string,
+  adults: number
+): Promise<AvailabilityResultRow[]> {
   const checkInDate = new Date(checkIn);
   const checkOutDate = new Date(checkOut);
   const nights =
     (checkOutDate.getTime() - checkInDate.getTime()) / (1000 * 60 * 60 * 24);
 
-  if (nights < 1) {
-    return NextResponse.json(
-      { error: "checkOut must be after checkIn" },
-      { status: 400 }
-    );
-  }
-
-  // Cold-start: if the property is connected to Cloudbeds but we have no
-  // inventory rows in the requested window, sync synchronously. This catches
-  // the first ever request after OAuth and any gap left by a missed webhook
-  // before the 6-hourly safety net runs.
   const [coldStartCheck] = await db
     .select({
       cloudbedsPropertyId: properties.cloudbedsPropertyId,
@@ -49,29 +57,27 @@ export async function GET(req: NextRequest) {
     .limit(1);
 
   if (coldStartCheck?.cloudbedsPropertyId && !coldStartCheck.hasInventory) {
-    try {
-      await syncInventoryForProperty(propertyId);
-    } catch (e) {
+    // Background sync — never await. The sync calls revalidateTag on
+    // completion which will flush this cache entry.
+    void syncInventoryForProperty(propertyId).catch((e) => {
       console.error(
-        `availability cold-start sync failed: ${e instanceof Error ? e.message : String(e)}`
+        `availability cold-start background sync failed: ${
+          e instanceof Error ? e.message : String(e)
+        }`
       );
-      // Fall through — return whatever (empty) inventory we have rather than 500.
-    }
+    });
   }
 
-  // Get all room types for the property
   const rooms = await db
     .select()
     .from(roomTypes)
     .where(eq(roomTypes.propertyId, propertyId));
 
-  const results = [];
+  const results: AvailabilityResultRow[] = [];
 
   for (const room of rooms) {
-    // Filter by occupancy
     if (room.maxOccupancy && adults > room.maxOccupancy) continue;
 
-    // Get public rate plans for this room
     const plans = await db
       .select()
       .from(ratePlans)
@@ -83,7 +89,6 @@ export async function GET(req: NextRequest) {
       );
 
     for (const plan of plans) {
-      // Get inventory for all nights of the stay
       const inv = await db
         .select()
         .from(inventory)
@@ -97,8 +102,6 @@ export async function GET(req: NextRequest) {
           )
         );
 
-      // We need inventory for every night (checkIn to checkOut - 1 day)
-      // Build a map of date -> inventory row
       const invByDate = new Map(inv.map((i) => [i.date, i]));
 
       let available = true;
@@ -116,13 +119,11 @@ export async function GET(req: NextRequest) {
           break;
         }
 
-        // Check arrival restriction on first night
         if (i === 0 && dayInv.closedArrival) {
           available = false;
           break;
         }
 
-        // Check min/max stay
         if (dayInv.minStay && nights < dayInv.minStay) {
           available = false;
           break;
@@ -137,7 +138,6 @@ export async function GET(req: NextRequest) {
         nightlyRates.push({ date: dateStr, rate });
       }
 
-      // Check departure restriction on checkout date
       if (available) {
         const checkOutInv = invByDate.get(checkOut);
         if (checkOutInv?.closedDeparture) {
@@ -169,5 +169,47 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  return results;
+}
+
+export async function GET(req: NextRequest) {
+  const { searchParams } = new URL(req.url);
+  const propertyId = searchParams.get("propertyId");
+  const checkIn = searchParams.get("checkIn");
+  const checkOut = searchParams.get("checkOut");
+  const adults = parseInt(searchParams.get("adults") ?? "1");
+
+  if (!propertyId || !checkIn || !checkOut) {
+    return NextResponse.json(
+      { error: "Missing propertyId, checkIn, or checkOut" },
+      { status: 400 }
+    );
+  }
+
+  const checkInDate = new Date(checkIn);
+  const checkOutDate = new Date(checkOut);
+  const nights =
+    (checkOutDate.getTime() - checkInDate.getTime()) / (1000 * 60 * 60 * 24);
+
+  if (nights < 1) {
+    return NextResponse.json(
+      { error: "checkOut must be after checkIn" },
+      { status: 400 }
+    );
+  }
+
+  // Per-property cache tag so syncInventoryForProperty(propId) only flushes
+  // entries for that property. revalidate=30 caps staleness if a sync
+  // somehow misses (e.g. a bug skips revalidateTag).
+  const cached = unstable_cache(
+    () => computeAvailability(propertyId, checkIn, checkOut, adults),
+    ["availability", propertyId, checkIn, checkOut, String(adults)],
+    {
+      revalidate: 30,
+      tags: [`availability:${propertyId}`],
+    }
+  );
+
+  const results = await cached();
   return NextResponse.json({ results });
 }

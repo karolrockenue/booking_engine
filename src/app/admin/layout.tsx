@@ -5,10 +5,15 @@ import { useState, useEffect, createContext, useContext, type ReactNode } from "
 const AdminAuthContext = createContext<{
   token: string;
   setToken: (t: string) => void;
-}>({ token: "", setToken: () => {} });
+  logout: () => void;
+}>({ token: "", setToken: () => {}, logout: () => {} });
 
 export function useAdminToken() {
   return useContext(AdminAuthContext).token;
+}
+
+export function useAdminAuth() {
+  return useContext(AdminAuthContext);
 }
 
 export default function AdminLayout({ children }: { children: ReactNode }) {
@@ -27,24 +32,34 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
     setToken(input);
   }
 
+  function logout() {
+    localStorage.removeItem("admin_token");
+    setToken("");
+  }
+
   if (!checked) return null;
 
   if (!token) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="bg-white p-8 rounded-lg shadow-sm border max-w-sm w-full">
-          <h1 className="text-xl font-bold mb-4 text-gray-900">Admin Login</h1>
+      <div className="admin-root min-h-screen flex items-center justify-center" style={{ background: "var(--a-side)" }}>
+        <div
+          className="bg-white p-8 rounded-md border max-w-sm w-full"
+          style={{ borderColor: "var(--a-border)" }}
+        >
+          <h1 className="text-[18px] font-semibold mb-4">Admin login</h1>
           <input
             type="password"
             value={input}
             onChange={(e) => setInput(e.target.value)}
             placeholder="Admin token"
-            className="w-full px-3 py-2 border rounded text-sm mb-4 text-gray-900"
+            className="w-full px-3 py-2 border rounded text-[13px] mb-4 focus:outline-none focus:border-[var(--a-accent)]"
+            style={{ borderColor: "var(--a-border)" }}
             onKeyDown={(e) => e.key === "Enter" && handleLogin()}
           />
           <button
             onClick={handleLogin}
-            className="w-full py-2 bg-gray-900 text-white rounded text-sm font-medium"
+            className="w-full py-2 text-white rounded text-[13px] font-medium"
+            style={{ background: "var(--a-ink)" }}
           >
             Login
           </button>
@@ -54,35 +69,8 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
   }
 
   return (
-    <AdminAuthContext.Provider value={{ token, setToken }}>
-      <div className="min-h-screen bg-gray-50">
-        {/* Admin top bar */}
-        <header className="bg-gray-900 text-white px-6 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-6">
-            <a href="/admin" className="font-bold text-sm">
-              Booking Engine Admin
-            </a>
-            <nav className="flex gap-4 text-sm text-gray-300">
-              <a href="/admin" className="hover:text-white">
-                Properties
-              </a>
-              <a href="/admin/bookings" className="hover:text-white">
-                Bookings
-              </a>
-            </nav>
-          </div>
-          <button
-            onClick={() => {
-              localStorage.removeItem("admin_token");
-              setToken("");
-            }}
-            className="text-xs text-gray-400 hover:text-white"
-          >
-            Logout
-          </button>
-        </header>
-        <main className="p-6">{children}</main>
-      </div>
+    <AdminAuthContext.Provider value={{ token, setToken, logout }}>
+      <div className="admin-root">{children}</div>
     </AdminAuthContext.Provider>
   );
 }

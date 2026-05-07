@@ -1,8 +1,7 @@
-import { resolveProperty } from "@/lib/get-property";
+import { resolveProperty, getPropertyPhotos } from "@/lib/get-property";
 import { notFound, redirect } from "next/navigation";
 import { RoomsClient } from "./rooms-client";
 import { activePorticoTokens } from "@/themes/portico";
-import { PorticoRoomsIndex } from "@/themes/portico/screens/RoomsIndex";
 import { PorticoRoomSelect } from "@/themes/portico/screens/RoomSelect";
 
 export default async function RoomsPage({
@@ -13,16 +12,16 @@ export default async function RoomsPage({
   const property = await resolveProperty();
   if (!property) notFound();
 
+  const params = await searchParams;
+  const checkIn = pickStr(params.checkIn);
+  const checkOut = pickStr(params.checkOut);
+
   const portico = await activePorticoTokens();
   if (portico) {
-    const params = await searchParams;
-    const checkIn = pickStr(params.checkIn);
-    const checkOut = pickStr(params.checkOut);
-    if (!checkIn || !checkOut) {
-      return <PorticoRoomsIndex t={portico} />;
-    }
+    if (!checkIn || !checkOut) redirect("/book");
     const adults = parseInt(pickStr(params.adults) ?? "2", 10) || 2;
     const children = parseInt(pickStr(params.children) ?? "0", 10) || 0;
+    const photos = await getPropertyPhotos(property.id);
     return (
       <PorticoRoomSelect
         t={portico}
@@ -31,15 +30,12 @@ export default async function RoomsPage({
         checkOut={checkOut}
         adults={adults}
         children={children}
+        photos={photos}
       />
     );
   }
 
-  // Default theme: legacy rooms-results page (redirects to / if no dates).
-  const params = await searchParams;
-  if (!pickStr(params.checkIn) || !pickStr(params.checkOut)) {
-    redirect("/");
-  }
+  if (!checkIn || !checkOut) redirect("/");
   return <RoomsClient property={property} />;
 }
 

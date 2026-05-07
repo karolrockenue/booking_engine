@@ -1,7 +1,7 @@
 # Hotel Website + Booking Engine Platform — Reference
 
-> **Last updated:** 2026-04-29
-> **Status:** Core platform built and deployed. Design overhaul complete. Cloudbeds Phase 1–2 fully shipped — schema migrated, OAuth working, inventory + rate plans + extras + webhooks live and syncing in production (Steps 6 + 7). Production hardening pass complete (`ADMIN_TOKEN` rotated, dev mockup routes gated in prod, webhook URL hardened with token-in-path, `middleware` → `proxy` rename, lint cleanup). Headless booking hooks extracted to `src/lib/booking` so per-hotel bespoke front-ends can share one backend; rooms / checkout / confirmation now use `sessionStorage` for draft state instead of URL-param packing. Stripe Connect not yet started. See `TODO.md` for the live build plan.
+> **Last updated:** 2026-05-07
+> **Status:** Core platform built and deployed. Cloudbeds + Stripe Connect both live end-to-end (Phases 1–4 done). **Admin v3 shipped 2026-05-07** — Linear-style sidebar shell replacing the old `/admin`, all 9 per-hotel tabs (Overview, Bookings, Content, Photos, Rates, Cloudbeds, Stripe, Domain, Alerts) with Domain + Alerts as stubs. **Cloudflare R2 live** for hotel photos with `sharp`-based auto-resize to 3 variants (hero/gallery/thumb) on upload. **Content CMS live** — 5 content blocks per property (`hero`, `neighbourhood`, `goodToKnow`, `contact`, `footer`) with admin editor; Portico Home reads photos + content from DB with bundled defaults as fallback. Headless booking hooks (`src/lib/booking`) still own the booking flow's data + state. See `TODO.md` for the forward plan including Phase 7 post-launch features (WhatsApp, Welcome Pickups, GEO/AI content).
 
 This doc is a **snapshot of the current platform** — what's built, how it's organised, the design conventions that hold across pages. For the forward plan (rebuild steps, sequencing, design questions), see `TODO.md`.
 
@@ -77,10 +77,11 @@ The booking flow's data + state + side effects live in `src/lib/booking` as head
 | **Hosting** | Railway Pro | ✅ Deployed |
 | **UI Library** | Radix UI (popovers), react-day-picker (calendar), Lucide (icons) | ✅ Built |
 | **Font** | Inter (via Google Fonts) | ✅ Live |
-| **PMS Integration** | Cloudbeds REST API (OAuth2) | 🟢 Inventory + rate plans + extras + webhooks live; write paths (postReservation/postCustomItem/postPayment) gated on Stripe |
-| **Payments** | Stripe Connect (Express, direct charges) | 🔲 Not started |
-| **Image Storage** | Cloudflare R2 (planned) | 🔲 Not started |
-| **DNS/Domains** | Cloudflare (planned) | 🔲 Not started |
+| **PMS Integration** | Cloudbeds REST API (OAuth2) | 🟢 Inventory + rate plans + extras + webhooks + write paths all live |
+| **Payments** | Stripe Connect (Standard, direct charges with `on_behalf_of`) | 🟢 Live — UAE sandbox platform; verified £29.16 fees on £972 revenue (3% rate) |
+| **Image Storage** | Cloudflare R2 + `@aws-sdk/client-s3` + `sharp` | 🟢 Live (2026-05-07) — bucket `rockenue-hotel-photos`, public via R2.dev URL, 3 variants per upload (hero 1600w / gallery 800w / thumb 400w) |
+| **Email** | SendGrid (`@sendgrid/mail`) | 🟢 Booking confirmation emails (NR + Flex) |
+| **DNS/Domains** | Cloudflare (planned, custom domains pending) | 🟡 Per-hotel custom domains TBD; R2.dev URL covers photos for now |
 
 ---
 
@@ -94,9 +95,18 @@ The booking flow's data + state + side effects live in `src/lib/booking` as head
 | `/rooms` | Room selection with rate plans, extras (Cloudbeds-driven), price comparison | ✅ |
 | `/checkout` | Guest details + payment form + booking summary sidebar | ✅ (mock card form; reads draft from sessionStorage) |
 | `/confirmation` | Booking confirmed with reference, stay details, nightly breakdown | ✅ (reads from sessionStorage; URL only carries `orderId`) |
-| `/admin` | Admin dashboard (token-protected) | ✅ |
-| `/admin/properties/[id]` | Property editor (general, rooms, theme) | ✅ |
-| `/admin/bookings` | Bookings list across all properties | ✅ |
+| `/admin` | **v3 Dashboard** — hotel tile grid with status pills (Live / Cloudbeds / Stripe), bookings·7d, revenue·7d, search, filter chips | ✅ Live (2026-05-07) |
+| `/admin/[propertyId]` | **v3 Overview** — stat grid + sparklines, recent bookings, launch checklist, alerts widget, quick actions | ✅ Live |
+| `/admin/[propertyId]/bookings` | Per-hotel bookings table + slide-over detail panel | ✅ Live |
+| `/admin/[propertyId]/content` | Content & copy editor (5 sections) | ✅ Live |
+| `/admin/[propertyId]/photos` | Photo library — drag-drop, slot assignment, per-room galleries | ✅ Live |
+| `/admin/[propertyId]/rates` | Rate plans accordion editor (refundability, deadline, penalty, note) | ✅ Live |
+| `/admin/[propertyId]/cloudbeds` | Cloudbeds connection / sync log / webhooks / "Sync now" / re-authorise | ✅ Live |
+| `/admin/[propertyId]/stripe` | Stripe & payouts — split into "Your platform" vs "Hotel side · read-only" | ✅ Live |
+| `/admin/[propertyId]/domain` | Domain & deploy info | 🟡 Stub |
+| `/admin/[propertyId]/alerts` | Operational alerts queue | 🟡 Stub (alerts engine deferred) |
+| `/admin/properties/[id]` | Old property editor (orphan; OAuth/Stripe redirects no longer point here) | 🗑️ Pending delete |
+| `/admin/bookings` | Old cross-property bookings list | 🗑️ Pending delete (silos rule violates this) |
 | `/pickers` | DEV: 4 booking bar style variants (legacy, see /bars) — 404s in prod | ✅ Dev |
 | `/bars` | DEV: 6 booking bar concepts on full hero folds — 404s in prod | ✅ Dev |
 | `/compare` | DEV: 15 price comparison banner concepts — 404s in prod | ✅ Dev |
@@ -190,10 +200,10 @@ All rendered via CSS custom properties. Components read from `useTheme()` contex
 
 ### Database Schema (live on Neon)
 
-- `properties` — multi-tenant config, theme JSONB, domain, encrypted Cloudbeds tokens, `cloudbedsPropertyId`, Stripe fields (still empty)
-- `pages` — page layouts per property (JSON composition)
-- `content_blocks` — key-value content per property
-- `images` — image references per property
+- `properties` — multi-tenant config, theme JSONB, domain, encrypted Cloudbeds tokens, `cloudbedsPropertyId`, Stripe Connect fields (live: `stripeAccountId`, `stripeAccountStatus`, `stripeAccountCurrency`, `platformFeePercent`, `payoutSchedule`)
+- `pages` — page layouts per property (JSON composition; legacy, unused in Portico flow)
+- `content_blocks` — key-value JSONB content per property. Admin Content tab writes 5 keys: `hero`, `neighbourhood`, `goodToKnow`, `contact`, `footer`. Defaults in `src/lib/content-defaults.ts`; merged at read time via `getPropertyContent()`
+- `images` — photo library. Extended 2026-05-07 with: `slot` (hero | gallery | room | neighbourhood, default `gallery`), `roomTypeId` (FK, when slot=room), `sortOrder`, `mimeType`, `sizeBytes`, `variants` JSONB ({ hero: {key,url,w,h,sizeBytes}, gallery: {...}, thumb: {...} }), `createdAt`. R2 keys follow `properties/<propertyId>/<uuid>-{hero|gallery|thumb}.jpg`. Unique on (`propertyId`, `key`); index on (`propertyId`, `slot`).
 - `room_types` — mirrored from Cloudbeds (`otaRoomId` = Cloudbeds `roomTypeID`, numeric)
 - `rate_plans` — mirrored from Cloudbeds (`otaRateId` = Cloudbeds `rateID`); `isRefundable` + `cancellationPolicy` are admin-managed (not in CB API), seeded from a name heuristic on first sync
 - `inventory` — ARI cache (date × room × rate → units, rate, restrictions); upserted by `syncInventoryForProperty`
@@ -202,9 +212,65 @@ All rendered via CSS custom properties. Components read from `useTheme()` contex
 - `payment_events` — Stripe + auto-charge audit trail (empty until Phase 3)
 - `cloudbeds_webhook_subscriptions` — one row per (property, object, action); persisted so we can `deleteWebhook` on disconnect. Subscription endpoint URLs include the `CLOUDBEDS_WEBHOOK_TOKEN` segment.
 
+### Admin v3 (shipped 2026-05-07)
+
+Full UX signed off as `public/mockups/admin-mockup-v3.html`. Light "Modern AI / Linear" sidebar shell. Two project memories (loaded automatically each session) anchor the design and silo decisions: `project_admin_design_direction.md` and `project_admin_silo.md`.
+
+**Shell:**
+
+- `src/app/admin/layout.tsx` — auth gate only (token via localStorage, `useAdminAuth()` exposes `{ token, setToken, logout }`).
+- `src/app/admin/[propertyId]/layout.tsx` — fetches property meta, renders the sidebar shell. Active nav item inferred from pathname. `<PropertyBar>` at the top of the main area shows hotel name + status pill + domain + currency + always-new-tab "Open site ↗". Visible on every per-hotel page.
+- `src/components/admin/Sidebar.tsx` — 240px persistent sidebar. Hotel switcher card → Property nav (Overview, Bookings, Content, Photos, Rates, Alerts) → Integrations nav (Cloudbeds, Stripe, Domain) → user/logout chip. Click switcher card returns to `/admin`.
+- `src/components/admin/TopStrip.tsx` — page header (`<TopStrip>`) + button primitive (`<Btn>`) with variants `primary | secondary | danger | ghost`, sizes `sm | md`, `newTab` prop for external links.
+- v3 design tokens scoped under `.admin-root` in `src/app/globals.css` — `--a-bg`, `--a-side`, `--a-ink`, `--a-accent` (`#5B5BD6`), tinted soft variants for green/amber/red/blue, `.font-jbm` utility for JetBrains Mono.
+
+**Pages and endpoints:**
+
+| Page | Endpoint(s) | Status |
+|---|---|---|
+| `/admin` | `GET /api/admin/properties` (list with bookings·7d + revenue·7d aggregates) | ✅ |
+| `/admin/[id]` Overview | `GET /api/admin/properties/[id]/overview` (stats + recentBookings + checklist + alerts) | ✅ |
+| `/admin/[id]/bookings` | `GET /api/admin/properties/[id]/bookings` (200-row cap, hydrates extras inline) | ✅ |
+| `/admin/[id]/content` | `GET POST /api/admin/properties/[id]/content` (existing endpoint, key-value upsert) | ✅ |
+| `/admin/[id]/photos` | `GET POST /api/admin/properties/[id]/photos` + `PATCH DELETE /[photoId]` | ✅ |
+| `/admin/[id]/rates` | `GET /api/admin/properties/[id]/rate-plans` + `PATCH /[ratePlanId]` (existing) | ✅ |
+| `/admin/[id]/cloudbeds` | `GET /api/admin/properties/[id]/cloudbeds` + `POST /sync` | ✅ |
+| `/admin/[id]/stripe` | `GET /api/admin/properties/[id]/stripe` (Promise.allSettled across account / fees / payouts / balance / refunds) | ✅ |
+| `/admin/[id]/domain` | TODO | 🟡 stub |
+| `/admin/[id]/alerts` | TODO (alerts engine first) | 🟡 stub |
+
+**Cross-cutting decisions:**
+
+- **Hotels are siloed** — no cross-property views. Dashboard is the only cross-hotel surface and only shows status pills. Save in memory `project_admin_silo.md`.
+- **Light only** — chose over dark mode in design picker. Top tabs vs sidebar: sidebar wins for 9-tab depth.
+- **Cold vs warm** — chose cold/Linear over Anthropic warm cream. Admin should feel like a tool, not a brand surface.
+- **OAuth callbacks migrated** — Cloudbeds callback now redirects to `/admin/[propertyId]/cloudbeds?connected=1` (was `/admin/properties/[id]?cloudbeds=connected`). Stripe callbacks still point at the old `/admin/properties/[id]?...` URLs — pending cleanup. Old route preserved for now to avoid breaking those flows; pending delete.
+- **Cloudbeds scopes** extracted to `src/lib/cloudbeds/scopes.ts` (single source of truth for both OAuth start route and admin display).
+
+### Photos & R2 (shipped 2026-05-07)
+
+- **Bucket:** `rockenue-hotel-photos` (Cloudflare R2, single bucket holds all hotel photos).
+- **Public URL:** `https://pub-8cc422176ea047e683cb49fef0837d63.r2.dev` (R2.dev subdomain). Custom domain swap is a one-env-var change later (`R2_PUBLIC_URL`).
+- **Client:** `src/lib/r2/client.ts` wraps `@aws-sdk/client-s3` with `uploadToR2()` and `deleteFromR2()`. Endpoint computed from `R2_ACCOUNT_ID`.
+- **Resize:** `src/lib/r2/resize.ts` uses `sharp` to generate 3 JPEG variants on every upload. Hero 1600w, gallery 800w, thumb 400w. Quality 80 with mozjpeg, EXIF rotation honoured, never enlarges past source. Originals NOT kept in R2 — the local copy is the master.
+- **Limits:** 30 MB max upload (DSLR-friendly), allowed types: jpeg / png / webp / avif / gif / heic / heif.
+- **Variant URLs** stored on the DB row in `images.variants` JSONB. Admin grid renders the thumb (3-30 KB each) — page loads instantly even with 100+ photos. Customer-facing pages pick the variant matching their layout context.
+- **Slot/room assignment** in admin via the ⋯ menu on each photo. Drag-reorder UI deferred (`sortOrder` is set on upload).
+- **`unoptimized={src.startsWith("http")}`** is set on every `<Image>` that may receive an R2 URL — bypasses Next.js image optimisation (which would need a `next.config` allowlist for the R2 host). `sharp` already produces compressed JPEGs so no quality loss.
+
+### Content CMS (shipped 2026-05-07)
+
+- **Storage:** existing `content_blocks` table, key-value JSONB. Admin Content tab writes 5 keys: `hero`, `neighbourhood`, `goodToKnow`, `contact`, `footer`.
+- **Defaults** at `src/lib/content-defaults.ts` — Portico's existing hardcoded copy moved here verbatim, so a fresh DB renders identically to the seed. Doubles as seed values for new hotels and as the merge base when fields are partially saved.
+- **Merge** via `mergeContent(blocks)` (in defaults file) — DB blocks override per-key fields. Returned shape is fully typed `PropertyContent`, never has nulls.
+- **Read** via `getPropertyContent(propertyId)` in `src/lib/get-property.ts`.
+- **Inline emphasis:** `*word*` becomes italic-accent on customer pages; `\n` becomes `<br>`. Helper at `src/themes/portico/components/emphasis.tsx`. Keeps Portico's distinctive italic style admin-editable without dragging in a markdown parser.
+- **Portico Home wired:** Hero, Neighbourhood, GoodToKnow, Footer all read content with fallbacks to `defaultContent`. Editing in admin → save → hard-refresh customer page = changes appear (no deploy, no caching layer).
+- **Booking-flow screens** (Dates, Extras, Checkout, Confirmation) **still hardcoded** — small bits of static copy that aren't really property-editable. Promote when needed.
+
 ### Test Data
 
-**The Kensington Arms** (slug: `demo`, GBP, `cloudbedsPropertyId=302817`) — connected to Cloudbeds
+**The Kensington Arms** (slug: `demo`, GBP, `cloudbedsPropertyId=302817`) — connected to Cloudbeds. **DB name updated to "Rockenue Partner Account" 2026-05-07** to match the actual Cloudbeds property name. Use `npx tsx src/scripts/cloudbeds-update-name.ts <slug>` to sync any hotel's name from Cloudbeds (name only by default; pass `--with-currency` / `--with-timezone` for those too).
 - 3 room types from CB: Single Room, Double Room, Triple Room
 - 8 rate plans from CB: 3 master rates (Standard) + 2 derived (`Non refundable -10%`) + 3 master ("Direct Rate - 72h cancelation")
 - 720 inventory rows (8 plans × 90 days) auto-synced
@@ -231,6 +297,10 @@ All rendered via CSS custom properties. Components read from `useTheme()` contex
   - `CRON_SECRET` — Bearer token for `/api/cron/inventory-sync`
   - `CLOUDBEDS_WEBHOOK_TOKEN` — random 24-byte hex value used as the dynamic segment in `/api/cloudbeds/webhooks/[token]`. Wrong token → 404. Compared with `timingSafeEqual`.
   - `CLOUDBEDS_WEBHOOK_URL` — optional explicit override for the URL passed to `postWebhook`; if unset, the subscription helper builds `${origin of CLOUDBEDS_REDIRECT_URI}/api/cloudbeds/webhooks/${CLOUDBEDS_WEBHOOK_TOKEN}`
+  - `STRIPE_SECRET_KEY`, `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`, `STRIPE_WEBHOOK_SECRET`, `PUBLIC_APP_URL` — Stripe Connect platform
+  - `SENDGRID_API_KEY` — confirmation emails
+  - `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET`, `R2_PUBLIC_URL` — Cloudflare R2 photo hosting (added 2026-05-07). Bucket: `rockenue-hotel-photos`.
+  - `THEME` — set to `portico-ivory` on the Portico Railway service. Empty = default theme.
 - **Railway services in the project:**
   - `booking-engine` — main Next.js app
   - `inspiring-trust` — cron service running `0 */6 * * *` UTC; image `alpine:latest`, start command runs `apk add --no-cache curl && curl -fS -X POST -H "Authorization: Bearer $CRON_SECRET" <url>` against `/api/cron/inventory-sync`. Logs visible in Railway → service → Deployments.
@@ -263,68 +333,92 @@ src/
 │   ├── rates/                      # DEV: rate plan display concepts
 │   ├── enhance/                    # DEV: extras panel concepts
 │   ├── rooms-mockup/               # DEV: room card layout concepts
-│   ├── admin/
-│   │   ├── layout.tsx              # Auth context + nav
-│   │   ├── page.tsx                # Properties list
-│   │   ├── properties/[id]/page.tsx # Property editor
-│   │   └── bookings/page.tsx       # Bookings list
+│   ├── admin/                                    # v3 admin (2026-05-07)
+│   │   ├── layout.tsx                            # Auth gate + AdminAuthContext (token in localStorage)
+│   │   ├── page.tsx                              # Dashboard tile grid
+│   │   ├── [propertyId]/
+│   │   │   ├── layout.tsx                        # Sidebar shell + PropertyBar (Open site ↗)
+│   │   │   ├── page.tsx                          # Overview
+│   │   │   ├── bookings/page.tsx                 # Per-hotel bookings + slide-over detail
+│   │   │   ├── content/page.tsx                  # Content & copy editor (5 sections)
+│   │   │   ├── photos/page.tsx                   # R2 photo library
+│   │   │   ├── rates/page.tsx                    # Rate plans accordion
+│   │   │   ├── cloudbeds/page.tsx                # Connection / sync / webhooks
+│   │   │   ├── stripe/page.tsx                   # Platform fees + hotel-side payouts
+│   │   │   ├── domain/page.tsx                   # 🟡 stub
+│   │   │   └── alerts/page.tsx                   # 🟡 stub
+│   │   ├── properties/[id]/page.tsx              # 🗑️ Old property editor (orphan, pending delete)
+│   │   └── bookings/page.tsx                     # 🗑️ Old cross-property bookings (orphan, pending delete)
 │   └── api/
-│       ├── availability/route.ts            # Cold-starts inventory sync if window is empty
-│       ├── extras/route.ts                  # Per-property addon catalog (60s unstable_cache); cold-starts sync if empty
-│       ├── bookings/route.ts                # Currently stubs Cloudbeds — TODO Step 11 rewrites
+│       ├── availability/route.ts                 # Cold-starts inventory sync if window is empty
+│       ├── extras/route.ts                       # Per-property addon catalog (60s unstable_cache)
+│       ├── bookings/route.ts                     # POST creates booking after Stripe verification + postReservation/postCustomItem/postPayment
 │       ├── cloudbeds/
-│       │   ├── oauth/start/route.ts         # Admin-only, redirects to Cloudbeds authorize
-│       │   ├── oauth/callback/route.ts      # Token exchange + auto-subscribes webhooks
-│       │   └── webhooks/[token]/route.ts    # Receives Cloudbeds events, fires sync. Token-gated (404 on mismatch).
-│       ├── cron/
-│       │   └── inventory-sync/route.ts      # Bearer-protected, runs full sweep (Railway cron)
-│       └── admin/                           # Admin CRUD endpoints
+│       │   ├── oauth/start/route.ts              # Admin-only, redirects to Cloudbeds authorize (uses SCOPES from src/lib/cloudbeds/scopes.ts)
+│       │   ├── oauth/callback/route.ts           # Token exchange + auto-subscribes webhooks; redirects to /admin/[propertyId]/cloudbeds
+│       │   └── webhooks/[token]/route.ts         # Receives Cloudbeds events, fires sync. Token-gated (404 on mismatch).
+│       ├── cron/inventory-sync/route.ts          # Bearer-protected, runs full sweep (Railway cron)
+│       ├── stripe/                               # connect/start, connect/return, payment-intent, setup-intent, webhooks
+│       └── admin/properties/[id]/
+│           ├── route.ts                          # GET single property (full); PATCH allowed fields
+│           ├── overview/route.ts                 # Stat grid + recent bookings + checklist + alerts
+│           ├── bookings/route.ts                 # Per-hotel list with extras hydrated
+│           ├── content/route.ts                  # GET list / POST upsert content blocks
+│           ├── photos/route.ts                   # GET list (with rooms) / POST upload (sharp resize → 3 variants → R2 → DB)
+│           ├── photos/[photoId]/route.ts         # PATCH slot/room/sortOrder/altText; DELETE row + all variants from R2
+│           ├── rate-plans/route.ts               # GET list with room type names
+│           ├── rate-plans/[ratePlanId]/route.ts  # PATCH isRefundable + cancellationPolicy
+│           ├── cloudbeds/route.ts                # GET status (token expiry, scopes, last sync, webhooks)
+│           ├── cloudbeds/sync/route.ts           # POST triggers syncInventoryForProperty
+│           └── stripe/route.ts                   # GET account + fees + payouts + balance + refunds (Promise.allSettled)
 ├── components/
-│   ├── layout/                     # ThemeProvider, NavBar, Footer
-│   ├── website/                    # HeroSection
-│   ├── booking/                    # BookingBar*, BookingProgress, AvailabilityResults,
-│   │                               # ExtrasPanel (Cloudbeds-driven), StickyBookingBar,
-│   │                               # PriceCompare, GuestDetailsForm, BookingSummary
-│   │                               # (childCount prop, not children — React reserves it), etc.
-│   ├── ui/                         # FadeIn (scroll animation)
-│   ├── admin/                      # ThemeEditor
-│   └── PageRenderer.tsx            # JSON → components
+│   ├── layout/                                   # ThemeProvider, NavBar, Footer
+│   ├── website/                                  # HeroSection (legacy theme)
+│   ├── booking/                                  # BookingBar*, ExtrasPanel, etc. (legacy theme)
+│   ├── checkout/                                 # StripePaymentSection
+│   ├── ui/                                       # FadeIn (scroll animation)
+│   ├── admin/                                    # v3 admin components
+│   │   ├── Sidebar.tsx                           # Hotel switcher + grouped nav + user chip
+│   │   ├── TopStrip.tsx                          # Page header + Btn primitive (newTab support)
+│   │   └── ThemeEditor.tsx                       # Legacy (orphan with old admin)
+│   └── PageRenderer.tsx                          # JSON → components (legacy)
 ├── db/
-│   ├── schema.ts                   # Drizzle schema (10 tables; pushed via drizzle-kit push, no migrations dir)
-│   └── index.ts                    # Neon connection
+│   ├── schema.ts                                 # Drizzle schema; push via drizzle-kit push (no migrations dir)
+│   └── index.ts                                  # Neon connection
 ├── lib/
-│   ├── theme.ts                          # PropertyTheme type + CSS vars
-│   ├── get-property.ts                   # Multi-tenant resolver (reads x-property-host / x-property-slug from proxy)
-│   ├── admin-auth.ts                     # Bearer token check
-│   ├── crypto.ts                         # AES-256-GCM token at-rest encryption + signed OAuth state
-│   ├── booking/                          # Headless booking hooks — see "Headless booking library" section
-│   │   ├── types.ts
-│   │   ├── useAvailability.ts
-│   │   ├── useExtras.ts
-│   │   ├── useBookingDraft.ts
-│   │   ├── usePersistedDraft.ts          # sessionStorage mirror + load/clear + confirmation helpers
-│   │   ├── submitBooking.ts              # Typed POST to /api/bookings; reserves Stripe ID slots
-│   │   └── index.ts                      # Barrel export — `import { ... } from "@/lib/booking"`
-│   └── cloudbeds/
-│       ├── client.ts                     # OAuth refresh + cloudbeds(propertyId, path) v1.3 wrapper
-│       ├── sync-inventory.ts             # Pulls room types / rate plans / inventory; calls sync-extras at the end
-│       ├── sync-extras.ts                # Pages /addons/v1/addons (api.cloudbeds.com host, x-property-id header); upsert + delete-missing
-│       ├── webhook-handler.ts            # Shared handler logic — invoked from the [token] route
-│       └── webhook-subscriptions.ts      # subscribe / unsubscribe / track in DB. deleteWebhook needs the full triple (subscriptionID + endpointUrl + object + action) — undocumented.
+│   ├── theme.ts                                  # PropertyTheme type + CSS vars (legacy theme)
+│   ├── content-defaults.ts                       # PropertyContent types + Portico-faithful defaults + mergeContent()
+│   ├── get-property.ts                           # resolveProperty + getPropertyPhotos + getPropertyContent
+│   ├── admin-auth.ts                             # Bearer token check
+│   ├── crypto.ts                                 # AES-256-GCM token at-rest encryption + signed OAuth state
+│   ├── booking/                                  # Headless booking hooks
+│   │   ├── types.ts, useAvailability.ts, useExtras.ts, useBookingDraft.ts
+│   │   ├── usePersistedDraft.ts, submitBooking.ts, index.ts
+│   ├── cloudbeds/
+│   │   ├── client.ts                             # OAuth refresh + cloudbeds(propertyId, path) v1.3 wrapper
+│   │   ├── scopes.ts                             # SCOPES array (single source of truth, used by oauth/start + admin display)
+│   │   ├── sync-inventory.ts                     # Pulls room types / rate plans / inventory
+│   │   ├── sync-extras.ts                        # Pages /addons/v1/addons; upsert + delete-missing
+│   │   ├── reservations.ts                       # postReservation / postCustomItem / postPayment
+│   │   ├── webhook-handler.ts                    # Shared handler logic
+│   │   └── webhook-subscriptions.ts              # subscribe / unsubscribe / track in DB
+│   ├── stripe/                                   # client.ts (platform), browser.ts, status.ts, amounts.ts
+│   ├── email/                                    # sendgrid.ts, booking-confirmation.ts
+│   └── r2/                                       # Cloudflare R2 (2026-05-07)
+│       ├── client.ts                             # @aws-sdk/client-s3 wrapper — uploadToR2 / deleteFromR2
+│       └── resize.ts                             # sharp-based 3-variant generator (hero/gallery/thumb)
+├── themes/portico/                               # Portico Ivory theme — reads photos + content from DB
+│   ├── PorticoShell.tsx, tokens.ts, fonts.ts, stripe-appearance.ts, index.ts
+│   ├── components/                               # Nav, Calendar, Gallery, Map, primitives, RoomGallery, StickyBar, Logo, Wordmark, emphasis (renderEmphasis helper for *italic* + \n)
+│   └── screens/                                  # Home, Dates, RoomSelect, Extras, Checkout, Confirmation
 ├── scripts/
-│   ├── seed.ts                           # Kensington Arms test data (legacy — Cloudbeds is now source of truth for demo)
-│   ├── seed-second.ts                    # UrbanStay test data (no Cloudbeds connection)
-│   ├── seed-rate-plans.ts                # 4 rate plans per room + inventory (legacy — for non-CB properties)
-│   ├── cloudbeds-smoke.ts                # Read-only smoke test against all CB endpoints we use
-│   ├── cloudbeds-sync.ts                 # Manual trigger for inventory sync (also pulls extras)
-│   ├── cloudbeds-subscribe.ts            # Manual trigger for webhook subscription
-│   ├── cloudbeds-rotate-webhooks.ts      # Unsubscribe + resubscribe — use after the webhook URL changes
-│   ├── check-inventory.ts                # DB inspection helper
-│   ├── cleanup-demo-seed.ts              # One-shot script that removed old hand-seeded rows from demo
-│   ├── reset-db.ts                       # DROP all tables (dev only)
-│   ├── update-font.ts                    # Update property font in DB
-│   └── update-themes.ts                  # Theme migration script
-└── proxy.ts                         # Next.js 16 proxy (renamed from middleware): host header → property + dev-route 404 in production
+│   ├── cloudbeds-smoke.ts, cloudbeds-sync.ts, cloudbeds-subscribe.ts, cloudbeds-rotate-webhooks.ts
+│   ├── cloudbeds-update-name.ts                  # Pulls hotel name from /getHotelDetails (name only by default; --with-currency / --with-timezone)
+│   ├── check-inventory.ts, cleanup-demo-seed.ts, reset-db.ts
+│   ├── seed.ts, seed-second.ts, seed-rate-plans.ts (legacy, mostly orphan since Cloudbeds is now source of truth for demo)
+│   ├── test-confirmation-email.ts                # Sends one Flex + one NR confirmation to a target address
+│   └── update-font.ts, update-themes.ts          # Legacy theme migration helpers
+└── proxy.ts                                      # Next.js 16 proxy (renamed from middleware)
 ```
 
 ---
@@ -367,7 +461,9 @@ src/scripts/cloudbeds-smoke.ts demo               # Read-only; saves raw respons
 src/scripts/cloudbeds-sync.ts demo 90             # Run full inventory + extras sync for 90 days
 src/scripts/cloudbeds-subscribe.ts demo           # Subscribe webhooks (idempotent)
 src/scripts/cloudbeds-rotate-webhooks.ts demo     # Unsubscribe + resubscribe (use after webhook URL changes)
+src/scripts/cloudbeds-update-name.ts demo         # Pull hotel name from getHotelDetails (use --with-currency / --with-timezone for those)
 src/scripts/check-inventory.ts demo               # Inspect DB state + most recent updatedAt
+src/scripts/test-confirmation-email.ts <to>       # Smoke-test confirmation emails (one Flex + one NR)
 ```
 
 For `cloudbeds-subscribe.ts` / `cloudbeds-rotate-webhooks.ts`, the registered URL is built from `CLOUDBEDS_WEBHOOK_URL` (if set), or `${origin of CLOUDBEDS_REDIRECT_URI}/api/cloudbeds/webhooks/${CLOUDBEDS_WEBHOOK_TOKEN}` as fallback. Both env vars must be present locally to run these scripts against the production Railway URL.

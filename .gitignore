@@ -46,6 +46,9 @@ next-env.d.ts
 # scratch / smoke test output (may contain Cloudbeds response data)
 /tmp/
 
+# Claude Code local state (per-developer, not project)
+/.claude/
+
 # Portico — local design references (huge image bundles, do not ship)
 /design/
 /design_handoff_*/

@@ -95,9 +95,26 @@ export const images = pgTable(
     altText: text("alt_text"),
     width: integer("width"),
     height: integer("height"),
+    // Slot tag: where the photo shows up on the customer site.
+    // hero | gallery | room | neighbourhood
+    slot: text("slot").notNull().default("gallery"),
+    // When slot=room, links to a specific room type for per-room galleries.
+    roomTypeId: uuid("room_type_id").references(() => roomTypes.id),
+    sortOrder: integer("sort_order").notNull().default(0),
+    mimeType: text("mime_type"),
+    sizeBytes: integer("size_bytes"),
+    // Web-sized variants generated at upload time. Shape:
+    //   { hero: { key, url, width, height, sizeBytes },
+    //     gallery: ..., thumb: ... }
+    // Customer-facing pages pick the variant matching their layout.
+    variants: jsonb("variants"),
+    createdAt: timestamp("created_at", { withTimezone: true }).default(
+      sql`NOW()`
+    ),
   },
   (table) => [
     uniqueIndex("images_property_key_idx").on(table.propertyId, table.key),
+    index("images_property_slot_idx").on(table.propertyId, table.slot),
   ]
 );
 

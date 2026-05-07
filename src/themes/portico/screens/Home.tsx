@@ -6,9 +6,13 @@ import { PorticoShell } from "../PorticoShell";
 import { Nav } from "../components/Nav";
 import { PorticoGallery } from "../components/Gallery";
 import { PorticoMap } from "../components/Map";
+import { renderEmphasis } from "../components/emphasis";
+import type { PropertyPhotos, PropertyContent } from "@/lib/get-property";
+import { defaultContent } from "@/lib/content-defaults";
 
-// Photos shown in the Inside gallery + lightbox.
-const GALLERY_IMAGES = [
+// Fallback photos shown in the Inside gallery if the DB has nothing in the
+// gallery slot. Pulled from public/portico/ — overridden by uploads.
+const FALLBACK_GALLERY_IMAGES = [
   porticoImg.roomDouble,
   porticoImg.roomTwin,
   porticoImg.roomTriple,
@@ -18,29 +22,35 @@ const GALLERY_IMAGES = [
   porticoImg.hero,
 ];
 
-// Mock copy / data — replace with real property details when the Portico
-// brand sits on its own Cloudbeds property.
-const NEARBY = [
-  { place: "Hyde Park", dist: "2 min walk" },
-  { place: "Paddington Station", dist: "4 min walk" },
-  { place: "Marylebone Village", dist: "8 min walk" },
-  { place: "Notting Hill", dist: "12 min walk" },
-  { place: "Oxford Street", dist: "12 min by Tube" },
-  { place: "Heathrow Airport", dist: "15 min by Heathrow Express" },
-];
+export function PorticoHome({
+  t,
+  photos,
+  content,
+}: {
+  t: PorticoTokens;
+  photos?: PropertyPhotos;
+  content?: PropertyContent;
+}) {
+  const c = content ?? defaultContent;
 
-const GOOD_TO_KNOW = [
-  { label: "Check-in", value: "From 4pm" },
-  { label: "Check-out", value: "By 11am" },
-  { label: "Reception", value: "24 hours" },
-  { label: "Wi-Fi", value: "Complimentary throughout" },
-  { label: "Parking", value: "NCP, 3 min walk" },
-  { label: "Children", value: "Welcome · cot on request" },
-  { label: "Pets", value: "Small dogs by arrangement" },
-  { label: "Accessibility", value: "Lift to all floors · 1 ADA room" },
-];
+  // Pick the right photo per slot, falling back to bundled defaults.
+  const heroSrc =
+    photos?.heroSlot[0]?.urls.hero ??
+    photos?.gallerySlot[0]?.urls.hero ??
+    porticoImg.hero;
+  const heroAlt = photos?.heroSlot[0]?.altText ?? "Hotel hero";
 
-export function PorticoHome({ t }: { t: PorticoTokens }) {
+  const galleryUrls = photos?.gallerySlot.length
+    ? photos.gallerySlot.map((p) => p.urls.gallery)
+    : FALLBACK_GALLERY_IMAGES;
+
+  const neighbourhoodSrc =
+    photos?.neighbourhoodSlot[0]?.urls.gallery ??
+    photos?.gallerySlot[0]?.urls.gallery ??
+    porticoImg.drawingRoom;
+  const neighbourhoodAlt =
+    photos?.neighbourhoodSlot[0]?.altText ?? "Neighbourhood photo";
+
   return (
     <PorticoShell t={t} fullBleed>
       {/* Smooth anchor scrolling for the in-page nav links. Scoped to document
@@ -51,17 +61,32 @@ export function PorticoHome({ t }: { t: PorticoTokens }) {
           .portico-section { padding: 64px 24px !important; }
         }
       `}</style>
-      <Hero t={t} />
-      <Neighbourhood t={t} />
-      <Inside t={t} />
-      <GoodToKnow t={t} />
-      <Footer t={t} />
+      <Hero t={t} heroSrc={heroSrc} heroAlt={heroAlt} content={c.hero} />
+      <Neighbourhood
+        t={t}
+        photoSrc={neighbourhoodSrc}
+        photoAlt={neighbourhoodAlt}
+        content={c.neighbourhood}
+      />
+      <Inside t={t} galleryUrls={galleryUrls} />
+      <GoodToKnow t={t} content={c.goodToKnow} />
+      <Footer t={t} content={c} />
     </PorticoShell>
   );
 }
 
 // ─── Hero ────────────────────────────────────────────────────────────────
-function Hero({ t }: { t: PorticoTokens }) {
+function Hero({
+  t,
+  heroSrc,
+  heroAlt,
+  content,
+}: {
+  t: PorticoTokens;
+  heroSrc: string;
+  heroAlt: string;
+  content: PropertyContent["hero"];
+}) {
   return (
     <section
       style={{
@@ -72,7 +97,7 @@ function Hero({ t }: { t: PorticoTokens }) {
         color: "#fff",
       }}
     >
-      <Image src={porticoImg.hero} alt="The Portico Hotel — Paddington exterior" fill priority sizes="100vw" style={{ objectFit: "cover" }} />
+      <Image src={heroSrc} alt={heroAlt} fill priority sizes="100vw" style={{ objectFit: "cover" }} unoptimized={heroSrc.startsWith("http")} />
       <div style={{ position: "absolute", inset: 0, background: t.heroOverlay }} />
 
       <div style={{ position: "absolute", top: 0, left: 0, right: 0 }}>
@@ -102,7 +127,7 @@ function Hero({ t }: { t: PorticoTokens }) {
               fontFamily: "var(--portico-sans)",
             }}
           >
-            Paddington · London · W2
+            {content.eyebrow}
           </div>
           <h1
             style={{
@@ -114,11 +139,7 @@ function Hero({ t }: { t: PorticoTokens }) {
               margin: 0,
             }}
           >
-            An evening
-            <br />
-            at <span style={{ fontStyle: "italic" }}>The Portico</span>,
-            <br />
-            any night you choose.
+            {renderEmphasis(content.headline, "#fff")}
           </h1>
         </div>
 
@@ -135,7 +156,7 @@ function Hero({ t }: { t: PorticoTokens }) {
               margin: "0 0 10px",
             }}
           >
-            &ldquo;A jewel-box behind a Paddington portico.&rdquo;
+            &ldquo;{content.pressQuote}&rdquo;
           </p>
           <div
             style={{
@@ -146,7 +167,7 @@ function Hero({ t }: { t: PorticoTokens }) {
               fontFamily: "var(--portico-sans)",
             }}
           >
-            — Conde Nast Traveller
+            — {content.pressQuoteAttribution}
           </div>
         </aside>
       </div>
@@ -177,23 +198,7 @@ function Hero({ t }: { t: PorticoTokens }) {
             cursor: "pointer",
           }}
         >
-          Book a room →
-        </Link>
-        <Link
-          href="/rooms"
-          style={{
-            fontSize: 10,
-            letterSpacing: "0.26em",
-            textTransform: "uppercase",
-            color: "#fff",
-            opacity: 0.85,
-            borderBottom: "1px solid rgba(255,255,255,0.55)",
-            paddingBottom: 2,
-            fontFamily: "var(--portico-sans)",
-            textDecoration: "none",
-          }}
-        >
-          Explore the rooms
+          {content.bookCtaLabel}
         </Link>
       </div>
 
@@ -261,10 +266,19 @@ function Hero({ t }: { t: PorticoTokens }) {
 }
 
 // ─── 01 · Neighbourhood ───────────────────────────────────────────────────
-function Neighbourhood({ t }: { t: PorticoTokens }) {
-  // 32 Sussex Gardens, Paddington, London W2 1UJ — approx. coords
-  const lat = 51.5158;
-  const lon = -0.1745;
+function Neighbourhood({
+  t,
+  photoSrc,
+  photoAlt,
+  content,
+}: {
+  t: PorticoTokens;
+  photoSrc: string;
+  photoAlt: string;
+  content: PropertyContent["neighbourhood"];
+}) {
+  const lat = content.mapLat;
+  const lon = content.mapLon;
 
   return (
     <section
@@ -297,11 +311,12 @@ function Neighbourhood({ t }: { t: PorticoTokens }) {
           }}
         >
           <Image
-            src={porticoImg.drawingRoom}
-            alt="The Portico Hotel — drawing room"
+            src={photoSrc}
+            alt={photoAlt}
             fill
             sizes="(max-width: 920px) 100vw, 50vw"
             style={{ objectFit: "cover" }}
+            unoptimized={photoSrc.startsWith("http")}
           />
         </div>
 
@@ -315,7 +330,7 @@ function Neighbourhood({ t }: { t: PorticoTokens }) {
           }}
         >
           <div style={{ display: "flex", flexDirection: "column", justifyContent: "center" }}>
-            <SectionEyebrow t={t}>01 — Neighbourhood</SectionEyebrow>
+            <SectionEyebrow t={t}>{content.eyebrow}</SectionEyebrow>
             <h2
               style={{
                 fontFamily: "var(--portico-serif)",
@@ -326,8 +341,7 @@ function Neighbourhood({ t }: { t: PorticoTokens }) {
                 margin: "16px 0 24px",
               }}
             >
-              Behind a Paddington portico,
-              <br />a <span style={{ fontStyle: "italic", color: t.accent }}>quiet</span> Edwardian street.
+              {renderEmphasis(content.title, t.accent)}
             </h2>
             <p
               style={{
@@ -338,7 +352,7 @@ function Neighbourhood({ t }: { t: PorticoTokens }) {
                 maxWidth: 520,
               }}
             >
-              Sussex Gardens is the kind of London street that hasn&rsquo;t quite been discovered. Two minutes from Hyde Park&rsquo;s Italian Gardens. Eight from Marylebone Village. Paddington Station — direct to Heathrow in fifteen — is around the corner.
+              {content.body}
             </p>
             <div
               style={{
@@ -349,7 +363,7 @@ function Neighbourhood({ t }: { t: PorticoTokens }) {
                 paddingTop: 16,
               }}
             >
-              {NEARBY.map((item) => (
+              {content.nearby.map((item) => (
                 <div
                   key={item.place}
                   style={{
@@ -425,7 +439,7 @@ function Neighbourhood({ t }: { t: PorticoTokens }) {
 }
 
 // ─── 02 · Inside (gallery) ────────────────────────────────────────────────
-function Inside({ t }: { t: PorticoTokens }) {
+function Inside({ t, galleryUrls }: { t: PorticoTokens; galleryUrls: string[] }) {
   return (
     <section
       id="inside"
@@ -464,7 +478,7 @@ function Inside({ t }: { t: PorticoTokens }) {
           </h2>
         </div>
 
-        <PorticoGallery t={t} images={GALLERY_IMAGES} />
+        <PorticoGallery t={t} images={galleryUrls} />
       </div>
 
       <style>{`
@@ -483,7 +497,13 @@ function Inside({ t }: { t: PorticoTokens }) {
 }
 
 // ─── 03 · Good to know ────────────────────────────────────────────────────
-function GoodToKnow({ t }: { t: PorticoTokens }) {
+function GoodToKnow({
+  t,
+  content,
+}: {
+  t: PorticoTokens;
+  content: PropertyContent["goodToKnow"];
+}) {
   return (
     <section
       id="good-to-know"
@@ -505,7 +525,7 @@ function GoodToKnow({ t }: { t: PorticoTokens }) {
           }}
           className="portico-section-head"
         >
-          <SectionEyebrow t={t}>03 — Good to know</SectionEyebrow>
+          <SectionEyebrow t={t}>{content.eyebrow}</SectionEyebrow>
           <h2
             style={{
               fontFamily: "var(--portico-serif)",
@@ -516,7 +536,7 @@ function GoodToKnow({ t }: { t: PorticoTokens }) {
               margin: 0,
             }}
           >
-            The <span style={{ fontStyle: "italic", color: t.accent }}>practicalities</span>.
+            {renderEmphasis(content.title, t.accent)}
           </h2>
         </div>
 
@@ -530,7 +550,7 @@ function GoodToKnow({ t }: { t: PorticoTokens }) {
           }}
           className="portico-gtk-grid"
         >
-          {GOOD_TO_KNOW.map((item) => (
+          {content.rows.map((item) => (
             <div
               key={item.label}
               style={{
@@ -588,10 +608,18 @@ function GoodToKnow({ t }: { t: PorticoTokens }) {
 // Cinematic dark block — reuses the same surface as the checkout summary
 // panel and the sticky basket bar so the brand has one repeated dark colour
 // rather than three. Doubles as the /#contact anchor target.
-function Footer({ t }: { t: PorticoTokens }) {
+function Footer({
+  t,
+  content,
+}: {
+  t: PorticoTokens;
+  content: PropertyContent;
+}) {
   const inkOn = t.summaryInk;
   const inkMuted = "rgba(236, 229, 212, 0.55)";
   const ruleOn = t.summaryRule;
+  const fc = content.footer;
+  const cc = content.contact;
 
   return (
     <footer
@@ -635,7 +663,7 @@ function Footer({ t }: { t: PorticoTokens }) {
               maxWidth: 360,
             }}
           >
-            A jewel-box behind a Paddington portico. Seventy-three rooms across five floors of W2.
+            {fc.brandTagline}
           </p>
           <Link
             href="/book"
@@ -657,44 +685,46 @@ function Footer({ t }: { t: PorticoTokens }) {
 
         {/* Visit */}
         <FooterCol label="Visit" inkMuted={inkMuted} ruleOn={ruleOn}>
-          <FooterLine>32 Sussex Gardens</FooterLine>
-          <FooterLine>Paddington</FooterLine>
-          <FooterLine>London W2 1UJ</FooterLine>
-          <FooterLine spacedTop>Reception · 24 hours</FooterLine>
+          {cc.addressLines.map((line, i) => (
+            <FooterLine key={i}>{line}</FooterLine>
+          ))}
+          {cc.receptionLine && <FooterLine spacedTop>{cc.receptionLine}</FooterLine>}
         </FooterCol>
 
         {/* Reservations */}
         <FooterCol label="Reservations" inkMuted={inkMuted} ruleOn={ruleOn}>
           <FooterLine>
-            <a href="tel:+442074020190" style={{ color: "inherit", textDecoration: "none" }}>
-              +44 20 7402 0190
+            <a
+              href={`tel:${cc.reservationsPhone.replace(/\s+/g, "")}`}
+              style={{ color: "inherit", textDecoration: "none" }}
+            >
+              {cc.reservationsPhone}
             </a>
           </FooterLine>
           <FooterLine>
-            <a href="mailto:stay@theporticohotel.com" style={{ color: "inherit", textDecoration: "none" }}>
-              stay@theporticohotel.com
+            <a
+              href={`mailto:${cc.reservationsEmail}`}
+              style={{ color: "inherit", textDecoration: "none" }}
+            >
+              {cc.reservationsEmail}
             </a>
           </FooterLine>
           <FooterLine spacedTop muted={inkMuted}>
             General enquiries
           </FooterLine>
           <FooterLine>
-            <a href="mailto:hello@theporticohotel.com" style={{ color: "inherit", textDecoration: "none" }}>
-              hello@theporticohotel.com
+            <a
+              href={`mailto:${cc.generalEmail}`}
+              style={{ color: "inherit", textDecoration: "none" }}
+            >
+              {cc.generalEmail}
             </a>
           </FooterLine>
         </FooterCol>
 
         {/* Fine print */}
         <FooterCol label="Fine print" inkMuted={inkMuted} ruleOn={ruleOn}>
-          {[
-            { label: "Terms & conditions", href: "#" },
-            { label: "Privacy policy", href: "#" },
-            { label: "Cookie policy", href: "#" },
-            { label: "Accessibility", href: "#" },
-            { label: "Modern slavery statement", href: "#" },
-            { label: "Press", href: "#" },
-          ].map((l) => (
+          {fc.fineprintLinks.map((l) => (
             <FooterLine key={l.label}>
               <Link href={l.href} style={{ color: "inherit", textDecoration: "none" }}>
                 {l.label}

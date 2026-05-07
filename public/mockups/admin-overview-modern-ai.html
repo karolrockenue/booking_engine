@@ -1,0 +1,722 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Admin Overview — Modern AI variations</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Geist:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { font-family: 'Inter', system-ui, sans-serif; }
+  button { font-family: inherit; cursor: pointer; border: none; background: none; }
+  a { color: inherit; text-decoration: none; }
+
+  /* Switcher */
+  .switcher {
+    position: sticky; top: 0; z-index: 100;
+    background: rgba(255,255,255,0.92);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border-bottom: 1px solid #E5E5E5;
+    padding: 10px 24px;
+    display: flex; gap: 4px;
+    align-items: center;
+  }
+  .switcher .meta {
+    margin-right: auto;
+    font-size: 12px; color: #737373;
+    font-weight: 500;
+  }
+  .switcher .meta strong { color: #0A0A0A; font-weight: 600; }
+  .switcher button {
+    padding: 7px 14px;
+    border-radius: 999px;
+    font-size: 12.5px; font-weight: 500;
+    color: #525252;
+    transition: all .15s;
+  }
+  .switcher button:hover { background: #F5F5F5; color: #0A0A0A; }
+  .switcher button.active { background: #0A0A0A; color: #fff; }
+
+  .concept { display: none; min-height: calc(100vh - 53px); }
+  .concept.active { display: block; }
+
+/* ═══════════════════════════════════════════════════════
+   v1 · LINEAR — original light
+   ═══════════════════════════════════════════════════════ */
+  .v1 {
+    --bg: #FAFAFA;
+    --surface: #FFFFFF;
+    --border: #E5E5E5;
+    --border-soft: #F0F0F0;
+    --ink: #0A0A0A;
+    --ink-2: #404040;
+    --muted: #737373;
+    --accent: #5B5BD6;
+    --green: #00875A;
+    --amber: #B45309;
+    --red: #C62828;
+    background: var(--bg);
+    color: var(--ink);
+    font-feature-settings: 'cv11', 'ss01';
+  }
+  .v1 .wrap { max-width: 1280px; margin: 0 auto; padding: 32px 32px 80px; }
+  .v1 .crumb { font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 8px; margin-bottom: 16px; }
+  .v1 .crumb a { color: var(--muted); }
+  .v1 .crumb .arrow { color: #D4D4D4; }
+  .v1 .ws-head { display: flex; align-items: flex-start; gap: 24px; padding-bottom: 24px; border-bottom: 1px solid var(--border); margin-bottom: 24px; }
+  .v1 .ws-head h1 { font-size: 24px; font-weight: 600; letter-spacing: -0.02em; }
+  .v1 .ws-head .domain { font-family: 'JetBrains Mono', monospace; font-size: 12.5px; color: var(--muted); margin-top: 4px; }
+  .v1 .ws-head .actions { margin-left: auto; display: flex; gap: 6px; align-items: center; }
+  .v1 .nav { display: flex; gap: 0; margin-bottom: 32px; }
+  .v1 .nav a { padding: 8px 14px; font-size: 13px; color: var(--muted); border-bottom: 1px solid transparent; margin-bottom: -1px; }
+  .v1 .nav a:hover { color: var(--ink); }
+  .v1 .nav a.active { color: var(--ink); border-bottom-color: var(--ink); }
+
+  .v1 .stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; background: var(--surface); margin-bottom: 24px; }
+  .v1 .stat { padding: 18px 20px; border-right: 1px solid var(--border-soft); }
+  .v1 .stat:last-child { border-right: none; }
+  .v1 .stat .label { font-size: 11.5px; color: var(--muted); display: flex; align-items: center; gap: 6px; }
+  .v1 .stat .label::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+  .v1 .stat .value { font-size: 28px; font-weight: 600; letter-spacing: -0.02em; margin-top: 6px; font-variant-numeric: tabular-nums; }
+  .v1 .stat .delta { font-size: 12px; color: var(--muted); margin-top: 2px; font-family: 'JetBrains Mono', monospace; }
+  .v1 .stat .delta.up { color: var(--green); }
+  .v1 .spark { margin-top: 10px; height: 24px; display: flex; align-items: flex-end; gap: 2px; }
+  .v1 .spark .bar { flex: 1; background: var(--accent); opacity: 0.15; border-radius: 1px; }
+  .v1 .spark .bar.lit { opacity: 1; }
+
+  .v1 .grid-2 { display: grid; grid-template-columns: 2fr 1fr; gap: 16px; }
+  @media (max-width: 900px) { .v1 .grid-2 { grid-template-columns: 1fr; } }
+  .v1 .card { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+  .v1 .card-head { padding: 14px 18px; display: flex; align-items: center; gap: 10px; border-bottom: 1px solid var(--border-soft); }
+  .v1 .card-head h2 { font-size: 13px; font-weight: 600; letter-spacing: -0.005em; }
+  .v1 .row { display: flex; align-items: center; gap: 12px; padding: 10px 18px; font-size: 13px; }
+  .v1 .row + .row { border-top: 1px solid var(--border-soft); }
+  .v1 .row .mono { font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--ink-2); width: 110px; }
+  .v1 .row .grow { flex: 1; }
+  .v1 .row .num { font-variant-numeric: tabular-nums; font-family: 'JetBrains Mono', monospace; }
+
+  .v1 .check { display: flex; align-items: center; gap: 12px; padding: 10px 18px; font-size: 13px; }
+  .v1 .check + .check { border-top: 1px solid var(--border-soft); }
+  .v1 .check .dot { width: 14px; height: 14px; border-radius: 50%; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; font-size: 9px; font-weight: 700; }
+  .v1 .check.done .dot { background: var(--ink); color: #fff; }
+  .v1 .check .meta { color: var(--muted); font-size: 11.5px; font-family: 'JetBrains Mono', monospace; margin-left: auto; }
+  .v1 .check.done span:not(.dot):not(.meta) { color: var(--ink-2); }
+
+  .v1 .pill { display: inline-flex; align-items: center; gap: 5px; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 500; font-family: 'JetBrains Mono', monospace; border: 1px solid; }
+  .v1 .pill.green { color: var(--green); border-color: rgba(0,135,90,0.2); background: rgba(0,135,90,0.06); }
+  .v1 .pill.blue  { color: var(--accent); border-color: rgba(91,91,214,0.2); background: rgba(91,91,214,0.06); }
+
+  .v1 .btn { padding: 6px 12px; border-radius: 4px; font-size: 12.5px; font-weight: 500; border: 1px solid var(--border); background: var(--surface); color: var(--ink); }
+  .v1 .btn:hover { background: #F5F5F5; }
+  .v1 .btn.primary { background: var(--ink); color: #fff; border-color: var(--ink); }
+  .v1 .alert.ok { color: var(--muted); padding: 24px; text-align: center; font-size: 13px; }
+  .v1 .qa a { padding: 10px 18px; border-bottom: 1px solid var(--border-soft); font-size: 13px; display: flex; align-items: center; gap: 8px; }
+  .v1 .qa a::before { content: '→'; color: var(--muted); }
+  .v1 .qa a:last-child { border-bottom: none; }
+  .v1 .qa a:hover { background: #FAFAFA; }
+  .v1 kbd { font-family: 'JetBrains Mono', monospace; font-size: 10.5px; font-weight: 500; padding: 1px 5px; border-radius: 3px; border: 1px solid var(--border); background: #F8F8F8; color: var(--muted); }
+
+/* ═══════════════════════════════════════════════════════
+   v2 · DARK — Vercel / Linear dark
+   ═══════════════════════════════════════════════════════ */
+  .v2 {
+    --bg: #000000;
+    --surface: #0A0A0A;
+    --surface-2: #141414;
+    --border: #1F1F1F;
+    --border-soft: #181818;
+    --ink: #FAFAFA;
+    --ink-2: #A3A3A3;
+    --muted: #737373;
+    --accent: #A78BFA;
+    --accent-glow: rgba(167, 139, 250, 0.12);
+    --green: #4ADE80;
+    --amber: #FBBF24;
+    --red: #F87171;
+    background: var(--bg);
+    color: var(--ink);
+    font-feature-settings: 'cv11', 'ss01';
+    background-image: radial-gradient(at 0% 0%, rgba(167, 139, 250, 0.06) 0%, transparent 30%);
+  }
+  .v2 .wrap { max-width: 1280px; margin: 0 auto; padding: 32px 32px 80px; }
+  .v2 .crumb { font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 8px; margin-bottom: 16px; }
+  .v2 .crumb a { color: var(--muted); }
+  .v2 .crumb .arrow { color: #404040; }
+  .v2 .ws-head { display: flex; align-items: flex-start; gap: 24px; padding-bottom: 24px; border-bottom: 1px solid var(--border); margin-bottom: 24px; }
+  .v2 .ws-head h1 { font-size: 24px; font-weight: 600; letter-spacing: -0.02em; }
+  .v2 .ws-head .domain { font-family: 'JetBrains Mono', monospace; font-size: 12.5px; color: var(--muted); margin-top: 4px; }
+  .v2 .ws-head .actions { margin-left: auto; display: flex; gap: 6px; align-items: center; }
+  .v2 .nav { display: flex; gap: 0; margin-bottom: 32px; border-bottom: 1px solid var(--border); }
+  .v2 .nav a { padding: 8px 14px; font-size: 13px; color: var(--muted); border-bottom: 1px solid transparent; margin-bottom: -1px; }
+  .v2 .nav a:hover { color: var(--ink); }
+  .v2 .nav a.active { color: var(--ink); border-bottom-color: var(--ink); }
+
+  .v2 .stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; background: var(--surface); margin-bottom: 24px; }
+  .v2 .stat { padding: 18px 20px; border-right: 1px solid var(--border); position: relative; }
+  .v2 .stat:last-child { border-right: none; }
+  .v2 .stat .label { font-size: 11.5px; color: var(--muted); display: flex; align-items: center; gap: 6px; font-family: 'JetBrains Mono', monospace; text-transform: lowercase; }
+  .v2 .stat .label::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 6px var(--accent); }
+  .v2 .stat .value { font-size: 28px; font-weight: 600; letter-spacing: -0.02em; margin-top: 6px; font-variant-numeric: tabular-nums; }
+  .v2 .stat .delta { font-size: 12px; color: var(--muted); margin-top: 2px; font-family: 'JetBrains Mono', monospace; }
+  .v2 .stat .delta.up { color: var(--green); }
+  .v2 .spark { margin-top: 10px; height: 24px; display: flex; align-items: flex-end; gap: 2px; }
+  .v2 .spark .bar { flex: 1; background: var(--accent); opacity: 0.2; border-radius: 1px; }
+  .v2 .spark .bar.lit { opacity: 1; box-shadow: 0 0 8px var(--accent-glow); }
+
+  .v2 .grid-2 { display: grid; grid-template-columns: 2fr 1fr; gap: 16px; }
+  @media (max-width: 900px) { .v2 .grid-2 { grid-template-columns: 1fr; } }
+  .v2 .card { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+  .v2 .card-head { padding: 14px 18px; display: flex; align-items: center; gap: 10px; border-bottom: 1px solid var(--border); }
+  .v2 .card-head h2 { font-size: 13px; font-weight: 600; letter-spacing: -0.005em; }
+  .v2 .row { display: flex; align-items: center; gap: 12px; padding: 10px 18px; font-size: 13px; }
+  .v2 .row + .row { border-top: 1px solid var(--border); }
+  .v2 .row:hover { background: var(--surface-2); }
+  .v2 .row .mono { font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--ink-2); width: 110px; }
+  .v2 .row .grow { flex: 1; }
+  .v2 .row .num { font-variant-numeric: tabular-nums; font-family: 'JetBrains Mono', monospace; }
+
+  .v2 .check { display: flex; align-items: center; gap: 12px; padding: 10px 18px; font-size: 13px; }
+  .v2 .check + .check { border-top: 1px solid var(--border); }
+  .v2 .check .dot { width: 14px; height: 14px; border-radius: 50%; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; font-size: 9px; font-weight: 700; }
+  .v2 .check.done .dot { background: var(--ink); color: var(--bg); }
+  .v2 .check.done .dot::after { content: ''; }
+  .v2 .check .meta { color: var(--muted); font-size: 11.5px; font-family: 'JetBrains Mono', monospace; margin-left: auto; }
+  .v2 .check.done span:not(.dot):not(.meta) { color: var(--ink-2); }
+
+  .v2 .pill { display: inline-flex; align-items: center; gap: 5px; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 500; font-family: 'JetBrains Mono', monospace; border: 1px solid; }
+  .v2 .pill.green { color: var(--green); border-color: rgba(74,222,128,0.25); background: rgba(74,222,128,0.08); }
+  .v2 .pill.blue  { color: var(--accent); border-color: rgba(167,139,250,0.3); background: rgba(167,139,250,0.1); }
+
+  .v2 .btn { padding: 6px 12px; border-radius: 4px; font-size: 12.5px; font-weight: 500; border: 1px solid var(--border); background: var(--surface); color: var(--ink); }
+  .v2 .btn:hover { background: var(--surface-2); border-color: #2A2A2A; }
+  .v2 .btn.primary { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+  .v2 .btn.primary:hover { background: #E5E5E5; }
+  .v2 .alert.ok { color: var(--muted); padding: 24px; text-align: center; font-size: 13px; font-family: 'JetBrains Mono', monospace; }
+  .v2 .qa a { padding: 10px 18px; border-bottom: 1px solid var(--border); font-size: 13px; display: flex; align-items: center; gap: 8px; }
+  .v2 .qa a::before { content: '→'; color: var(--muted); }
+  .v2 .qa a:last-child { border-bottom: none; }
+  .v2 .qa a:hover { background: var(--surface-2); }
+  .v2 kbd { font-family: 'JetBrains Mono', monospace; font-size: 10.5px; font-weight: 500; padding: 1px 5px; border-radius: 3px; border: 1px solid var(--border); background: var(--surface-2); color: var(--muted); }
+
+/* ═══════════════════════════════════════════════════════
+   v3 · SIDEBAR — Linear app shell
+   ═══════════════════════════════════════════════════════ */
+  .v3 {
+    --bg: #FFFFFF;
+    --side: #FAFAFA;
+    --surface: #FFFFFF;
+    --border: #EBEBEB;
+    --border-soft: #F1F1F1;
+    --ink: #0A0A0A;
+    --ink-2: #404040;
+    --muted: #737373;
+    --accent: #5B5BD6;
+    --green: #00875A;
+    --amber: #B45309;
+    --red: #C62828;
+    background: var(--bg);
+    color: var(--ink);
+    font-feature-settings: 'cv11', 'ss01';
+  }
+  .v3 .shell { display: grid; grid-template-columns: 240px 1fr; min-height: calc(100vh - 53px); }
+  @media (max-width: 1000px) { .v3 .shell { grid-template-columns: 1fr; } .v3 .sidebar { display: none; } }
+  .v3 .sidebar {
+    background: var(--side);
+    border-right: 1px solid var(--border);
+    padding: 16px 12px;
+    display: flex; flex-direction: column;
+    position: sticky; top: 53px; height: calc(100vh - 53px);
+    overflow-y: auto;
+  }
+  .v3 .switcher-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px 10px;
+    display: flex; align-items: center; gap: 8px;
+    margin-bottom: 16px;
+    cursor: pointer;
+  }
+  .v3 .switcher-card:hover { background: #FAFAFA; }
+  .v3 .switcher-card .av { width: 24px; height: 24px; border-radius: 4px; background: linear-gradient(135deg, #C7B9FF 0%, #5B5BD6 100%); display: flex; align-items: center; justify-content: center; color: #fff; font-size: 11px; font-weight: 600; flex-shrink: 0; }
+  .v3 .switcher-card .name { font-size: 13px; font-weight: 500; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .v3 .switcher-card .chev { color: var(--muted); font-size: 11px; }
+  .v3 .nav-section { margin-bottom: 14px; }
+  .v3 .nav-label { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); padding: 4px 8px; font-weight: 500; }
+  .v3 .nav-item {
+    padding: 6px 8px;
+    border-radius: 4px;
+    font-size: 13px;
+    color: var(--ink-2);
+    display: flex; align-items: center; gap: 8px;
+    cursor: pointer;
+  }
+  .v3 .nav-item .ico { width: 14px; height: 14px; opacity: 0.7; flex-shrink: 0; }
+  .v3 .nav-item .count { margin-left: auto; font-size: 11px; color: var(--muted); font-family: 'JetBrains Mono', monospace; }
+  .v3 .nav-item:hover { background: rgba(0,0,0,0.04); color: var(--ink); }
+  .v3 .nav-item.active { background: rgba(91,91,214,0.08); color: var(--accent); font-weight: 500; }
+  .v3 .nav-item.active .ico { opacity: 1; }
+  .v3 .sidebar-footer { margin-top: auto; padding-top: 12px; border-top: 1px solid var(--border); }
+  .v3 .sidebar-footer .user { display: flex; align-items: center; gap: 8px; padding: 6px 8px; font-size: 12.5px; color: var(--muted); }
+  .v3 .sidebar-footer .av { width: 22px; height: 22px; border-radius: 50%; background: #E5E5E5; }
+
+  .v3 .main { padding: 24px 32px 80px; max-width: 1100px; }
+  .v3 .top { display: flex; align-items: flex-start; gap: 16px; padding-bottom: 16px; border-bottom: 1px solid var(--border); margin-bottom: 24px; }
+  .v3 .top h1 { font-size: 22px; font-weight: 600; letter-spacing: -0.01em; }
+  .v3 .top .domain { font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--muted); margin-top: 4px; }
+  .v3 .top .badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 500; background: rgba(0,135,90,0.08); color: var(--green); border: 1px solid rgba(0,135,90,0.18); margin-left: 6px; vertical-align: middle; }
+  .v3 .top .actions { margin-left: auto; display: flex; gap: 6px; }
+
+  .v3 .stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; background: var(--surface); margin-bottom: 20px; }
+  .v3 .stat { padding: 16px 18px; border-right: 1px solid var(--border-soft); }
+  .v3 .stat:last-child { border-right: none; }
+  .v3 .stat .label { font-size: 11.5px; color: var(--muted); display: flex; align-items: center; gap: 6px; }
+  .v3 .stat .label::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+  .v3 .stat .value { font-size: 24px; font-weight: 600; letter-spacing: -0.02em; margin-top: 4px; font-variant-numeric: tabular-nums; }
+  .v3 .stat .delta { font-size: 11.5px; color: var(--muted); margin-top: 2px; font-family: 'JetBrains Mono', monospace; }
+  .v3 .stat .delta.up { color: var(--green); }
+  .v3 .spark { margin-top: 8px; height: 20px; display: flex; align-items: flex-end; gap: 2px; }
+  .v3 .spark .bar { flex: 1; background: var(--accent); opacity: 0.15; border-radius: 1px; }
+  .v3 .spark .bar.lit { opacity: 1; }
+
+  .v3 .grid-2 { display: grid; grid-template-columns: 1.6fr 1fr; gap: 16px; }
+  @media (max-width: 900px) { .v3 .grid-2 { grid-template-columns: 1fr; } }
+  .v3 .card { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+  .v3 .card-head { padding: 12px 16px; display: flex; align-items: center; gap: 10px; border-bottom: 1px solid var(--border-soft); }
+  .v3 .card-head h2 { font-size: 12.5px; font-weight: 600; letter-spacing: -0.005em; }
+  .v3 .row { display: flex; align-items: center; gap: 10px; padding: 9px 16px; font-size: 12.5px; }
+  .v3 .row + .row { border-top: 1px solid var(--border-soft); }
+  .v3 .row .mono { font-family: 'JetBrains Mono', monospace; font-size: 11.5px; color: var(--ink-2); width: 100px; }
+  .v3 .row .grow { flex: 1; }
+  .v3 .row .num { font-variant-numeric: tabular-nums; font-family: 'JetBrains Mono', monospace; }
+
+  .v3 .check { display: flex; align-items: center; gap: 10px; padding: 8px 16px; font-size: 12.5px; }
+  .v3 .check + .check { border-top: 1px solid var(--border-soft); }
+  .v3 .check .dot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; font-size: 8px; font-weight: 700; }
+  .v3 .check.done .dot { background: var(--ink); color: #fff; }
+  .v3 .check .meta { color: var(--muted); font-size: 11px; font-family: 'JetBrains Mono', monospace; margin-left: auto; }
+  .v3 .check.done span:not(.dot):not(.meta) { color: var(--ink-2); }
+
+  .v3 .pill { display: inline-flex; align-items: center; gap: 4px; padding: 1px 7px; border-radius: 3px; font-size: 10.5px; font-weight: 500; font-family: 'JetBrains Mono', monospace; border: 1px solid; }
+  .v3 .pill.green { color: var(--green); border-color: rgba(0,135,90,0.2); background: rgba(0,135,90,0.06); }
+  .v3 .pill.blue  { color: var(--accent); border-color: rgba(91,91,214,0.2); background: rgba(91,91,214,0.06); }
+
+  .v3 .btn { padding: 5px 11px; border-radius: 4px; font-size: 12px; font-weight: 500; border: 1px solid var(--border); background: var(--surface); color: var(--ink); }
+  .v3 .btn:hover { background: #FAFAFA; }
+  .v3 .btn.primary { background: var(--ink); color: #fff; border-color: var(--ink); }
+  .v3 .alert.ok { color: var(--muted); padding: 24px; text-align: center; font-size: 12.5px; }
+  .v3 .qa a { padding: 8px 16px; border-bottom: 1px solid var(--border-soft); font-size: 12.5px; display: flex; align-items: center; gap: 8px; }
+  .v3 .qa a::before { content: '→'; color: var(--muted); }
+  .v3 .qa a:last-child { border-bottom: none; }
+  .v3 .qa a:hover { background: #FAFAFA; }
+
+/* ═══════════════════════════════════════════════════════
+   v4 · WARM — Anthropic-style off-white minimal
+   ═══════════════════════════════════════════════════════ */
+  .v4 {
+    --bg: #FAF8F4;
+    --surface: #FFFFFF;
+    --border: #E8E2D6;
+    --border-soft: #F0EBDF;
+    --ink: #1A1714;
+    --ink-2: #44403C;
+    --muted: #78716C;
+    --accent: #C2410C;
+    --accent-soft: rgba(194, 65, 12, 0.08);
+    --green: #15803D;
+    --amber: #A16207;
+    --red: #B91C1C;
+    background: var(--bg);
+    color: var(--ink);
+    font-feature-settings: 'cv11', 'ss01';
+    font-size: 14.5px;
+  }
+  .v4 .wrap { max-width: 1200px; margin: 0 auto; padding: 40px 36px 80px; }
+  .v4 .crumb { font-size: 12.5px; color: var(--muted); display: flex; align-items: center; gap: 8px; margin-bottom: 20px; }
+  .v4 .crumb a { color: var(--muted); }
+  .v4 .crumb .arrow { color: #C8C0AE; }
+  .v4 .ws-head { display: flex; align-items: flex-start; gap: 24px; padding-bottom: 28px; border-bottom: 1px solid var(--border); margin-bottom: 28px; }
+  .v4 .ws-head h1 { font-size: 26px; font-weight: 600; letter-spacing: -0.02em; }
+  .v4 .ws-head .domain { font-family: 'JetBrains Mono', monospace; font-size: 13px; color: var(--muted); margin-top: 6px; }
+  .v4 .ws-head .actions { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+  .v4 .nav { display: flex; gap: 0; margin-bottom: 36px; border-bottom: 1px solid var(--border); }
+  .v4 .nav a { padding: 9px 16px; font-size: 13.5px; color: var(--muted); border-bottom: 1px solid transparent; margin-bottom: -1px; }
+  .v4 .nav a:hover { color: var(--ink); }
+  .v4 .nav a.active { color: var(--ink); border-bottom-color: var(--accent); font-weight: 500; }
+
+  .v4 .stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0; border: 1px solid var(--border); border-radius: 4px; overflow: hidden; background: var(--surface); margin-bottom: 28px; }
+  .v4 .stat { padding: 22px 24px; border-right: 1px solid var(--border-soft); }
+  .v4 .stat:last-child { border-right: none; }
+  .v4 .stat .label { font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 7px; }
+  .v4 .stat .label::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+  .v4 .stat .value { font-size: 32px; font-weight: 500; letter-spacing: -0.02em; margin-top: 8px; font-variant-numeric: tabular-nums; }
+  .v4 .stat .delta { font-size: 12.5px; color: var(--muted); margin-top: 4px; font-family: 'JetBrains Mono', monospace; }
+  .v4 .stat .delta.up { color: var(--green); }
+  .v4 .spark { margin-top: 12px; height: 22px; display: flex; align-items: flex-end; gap: 2px; }
+  .v4 .spark .bar { flex: 1; background: var(--accent); opacity: 0.15; border-radius: 1px; }
+  .v4 .spark .bar.lit { opacity: 0.85; }
+
+  .v4 .grid-2 { display: grid; grid-template-columns: 1.7fr 1fr; gap: 20px; }
+  @media (max-width: 900px) { .v4 .grid-2 { grid-template-columns: 1fr; } }
+  .v4 .card { background: var(--surface); border: 1px solid var(--border); border-radius: 4px; overflow: hidden; }
+  .v4 .card-head { padding: 16px 20px; display: flex; align-items: center; gap: 12px; border-bottom: 1px solid var(--border-soft); }
+  .v4 .card-head h2 { font-size: 14px; font-weight: 600; letter-spacing: -0.005em; }
+  .v4 .row { display: flex; align-items: center; gap: 14px; padding: 12px 20px; font-size: 13.5px; }
+  .v4 .row + .row { border-top: 1px solid var(--border-soft); }
+  .v4 .row:hover { background: #FDFBF6; }
+  .v4 .row .mono { font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--ink-2); width: 110px; }
+  .v4 .row .grow { flex: 1; }
+  .v4 .row .num { font-variant-numeric: tabular-nums; font-family: 'JetBrains Mono', monospace; }
+
+  .v4 .check { display: flex; align-items: center; gap: 14px; padding: 12px 20px; font-size: 13.5px; }
+  .v4 .check + .check { border-top: 1px solid var(--border-soft); }
+  .v4 .check .dot { width: 16px; height: 16px; border-radius: 50%; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; }
+  .v4 .check.done .dot { background: var(--ink); color: var(--bg); }
+  .v4 .check .meta { color: var(--muted); font-size: 12px; font-family: 'JetBrains Mono', monospace; margin-left: auto; }
+  .v4 .check.done span:not(.dot):not(.meta) { color: var(--ink-2); }
+
+  .v4 .pill { display: inline-flex; align-items: center; gap: 5px; padding: 2px 9px; border-radius: 3px; font-size: 11.5px; font-weight: 500; font-family: 'JetBrains Mono', monospace; border: 1px solid; }
+  .v4 .pill.green { color: var(--green); border-color: rgba(21,128,61,0.2); background: rgba(21,128,61,0.06); }
+  .v4 .pill.blue  { color: var(--accent); border-color: rgba(194,65,12,0.2); background: var(--accent-soft); }
+
+  .v4 .btn { padding: 7px 14px; border-radius: 4px; font-size: 13px; font-weight: 500; border: 1px solid var(--border); background: var(--surface); color: var(--ink); }
+  .v4 .btn:hover { background: #FDFBF6; border-color: #D8CFB8; }
+  .v4 .btn.primary { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+  .v4 .alert.ok { color: var(--muted); padding: 28px; text-align: center; font-size: 13.5px; }
+  .v4 .qa a { padding: 12px 20px; border-bottom: 1px solid var(--border-soft); font-size: 13.5px; display: flex; align-items: center; gap: 10px; }
+  .v4 .qa a::before { content: '→'; color: var(--muted); }
+  .v4 .qa a:last-child { border-bottom: none; }
+  .v4 .qa a:hover { background: #FDFBF6; }
+  .v4 kbd { font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 500; padding: 1px 6px; border-radius: 3px; border: 1px solid var(--border); background: #FDFBF6; color: var(--muted); }
+</style>
+</head>
+<body>
+
+<div class="switcher">
+  <div class="meta">Admin · Overview · <strong>The Portico Hotel</strong> · Modern AI variations</div>
+  <button data-c="v1" class="active">v1 · Linear</button>
+  <button data-c="v2">v2 · Dark</button>
+  <button data-c="v3">v3 · Sidebar</button>
+  <button data-c="v4">v4 · Warm</button>
+</div>
+
+<!-- ════════════ v1 · Linear (original) ════════════ -->
+<section class="concept v1 active" id="v1">
+  <div class="wrap">
+    <div class="crumb"><a href="#">All hotels</a><span class="arrow">/</span><span>The Portico Hotel</span></div>
+    <div class="ws-head">
+      <div>
+        <h1>The Portico Hotel</h1>
+        <div class="domain">theporticohotel.com · Paddington · GBP</div>
+      </div>
+      <div class="actions">
+        <button class="btn">Preview <kbd>P</kbd></button>
+        <button class="btn">Open site ↗</button>
+        <button class="btn primary">Sync now <kbd>⌘S</kbd></button>
+      </div>
+    </div>
+    <div class="nav">
+      <a href="#" class="active">Overview</a><a href="#">Bookings</a><a href="#">Content</a><a href="#">Photos</a><a href="#">Rates</a><a href="#">Cloudbeds</a><a href="#">Stripe</a><a href="#">Domain</a><a href="#">Alerts</a>
+    </div>
+    <div class="stat-grid">
+      <div class="stat"><div class="label">Bookings · 7d</div><div class="value">14</div><div class="delta up">+3 vs prior week</div><div class="spark"><div class="bar" style="height:30%"></div><div class="bar" style="height:60%"></div><div class="bar" style="height:45%"></div><div class="bar" style="height:80%"></div><div class="bar" style="height:50%"></div><div class="bar lit" style="height:90%"></div><div class="bar lit" style="height:75%"></div></div></div>
+      <div class="stat"><div class="label">Revenue · 7d</div><div class="value">£8,420</div><div class="delta up">+12.4%</div><div class="spark"><div class="bar" style="height:50%"></div><div class="bar" style="height:35%"></div><div class="bar" style="height:70%"></div><div class="bar" style="height:60%"></div><div class="bar" style="height:80%"></div><div class="bar lit" style="height:95%"></div><div class="bar lit" style="height:85%"></div></div></div>
+      <div class="stat"><div class="label">Conversion</div><div class="value">3.4%</div><div class="delta">view → book</div><div class="spark"><div class="bar" style="height:40%"></div><div class="bar" style="height:55%"></div><div class="bar" style="height:50%"></div><div class="bar" style="height:65%"></div><div class="bar" style="height:60%"></div><div class="bar lit" style="height:75%"></div><div class="bar lit" style="height:70%"></div></div></div>
+      <div class="stat"><div class="label">Avg booking</div><div class="value">£412</div><div class="delta">2.1 nights · 1.4 guests</div><div class="spark"><div class="bar" style="height:60%"></div><div class="bar" style="height:65%"></div><div class="bar" style="height:55%"></div><div class="bar" style="height:75%"></div><div class="bar" style="height:60%"></div><div class="bar lit" style="height:70%"></div><div class="bar lit" style="height:80%"></div></div></div>
+    </div>
+    <div class="grid-2">
+      <div style="display:flex; flex-direction:column; gap:16px;">
+        <div class="card">
+          <div class="card-head"><h2>Recent bookings</h2><span class="pill blue" style="margin-left:auto">14 this week</span></div>
+          <div>
+            <div class="row"><span class="mono">CB-3491820</span><span class="grow">Eleanor Whitfield · Master Suite</span><span class="num">£1,140</span><span class="pill green">paid</span></div>
+            <div class="row"><span class="mono">CB-3491819</span><span class="grow">James Park · Deluxe Double</span><span class="num">£480</span><span class="pill green">paid</span></div>
+            <div class="row"><span class="mono">CB-3491812</span><span class="grow">Sara Conti · Classic Single</span><span class="num">£420</span><span class="pill blue">card on file</span></div>
+            <div class="row"><span class="mono">CB-3491790</span><span class="grow">Daniel Roth · Master Suite</span><span class="num">£380</span><span class="pill green">paid</span></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-head"><h2>Needs attention</h2></div>
+          <div class="alert ok">All clear · last sync 9:14 UTC</div>
+        </div>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:16px;">
+        <div class="card">
+          <div class="card-head"><h2>Launch checklist</h2><span class="pill green" style="margin-left:auto">11/11</span></div>
+          <div>
+            <div class="check done"><span class="dot">✓</span><span>Property created</span><span class="meta">2026-03-12</span></div>
+            <div class="check done"><span class="dot">✓</span><span>Cloudbeds OAuth</span><span class="meta">auto-refresh</span></div>
+            <div class="check done"><span class="dot">✓</span><span>Stripe Connect</span><span class="meta">active · GBP</span></div>
+            <div class="check done"><span class="dot">✓</span><span>Front-end shipped</span><span class="meta">portico-ivory</span></div>
+            <div class="check done"><span class="dot">✓</span><span>Photos uploaded</span><span class="meta">24 in library</span></div>
+            <div class="check done"><span class="dot">✓</span><span>Copy filled</span><span class="meta">2026-05-02</span></div>
+            <div class="check done"><span class="dot">✓</span><span>Domain · DNS · SSL</span><span class="meta">Aug 4</span></div>
+            <div class="check done"><span class="dot">✓</span><span>Test booking</span><span class="meta">2026-04-29</span></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-head"><h2>Quick actions</h2></div>
+          <div class="qa">
+            <a href="#">Sync inventory now</a>
+            <a href="#">Open in Stripe ↗</a>
+            <a href="#">Send test confirmation</a>
+            <a href="#">Preview booking flow</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ════════════ v2 · Dark ════════════ -->
+<section class="concept v2" id="v2">
+  <div class="wrap">
+    <div class="crumb"><a href="#">All hotels</a><span class="arrow">/</span><span>The Portico Hotel</span></div>
+    <div class="ws-head">
+      <div>
+        <h1>The Portico Hotel</h1>
+        <div class="domain">theporticohotel.com · Paddington · GBP</div>
+      </div>
+      <div class="actions">
+        <button class="btn">Preview <kbd>P</kbd></button>
+        <button class="btn">Open site ↗</button>
+        <button class="btn primary">Sync now <kbd>⌘S</kbd></button>
+      </div>
+    </div>
+    <div class="nav">
+      <a href="#" class="active">Overview</a><a href="#">Bookings</a><a href="#">Content</a><a href="#">Photos</a><a href="#">Rates</a><a href="#">Cloudbeds</a><a href="#">Stripe</a><a href="#">Domain</a><a href="#">Alerts</a>
+    </div>
+    <div class="stat-grid">
+      <div class="stat"><div class="label">bookings_7d</div><div class="value">14</div><div class="delta up">+3 vs prior</div><div class="spark"><div class="bar" style="height:30%"></div><div class="bar" style="height:60%"></div><div class="bar" style="height:45%"></div><div class="bar" style="height:80%"></div><div class="bar" style="height:50%"></div><div class="bar lit" style="height:90%"></div><div class="bar lit" style="height:75%"></div></div></div>
+      <div class="stat"><div class="label">revenue_7d</div><div class="value">£8,420</div><div class="delta up">+12.4%</div><div class="spark"><div class="bar" style="height:50%"></div><div class="bar" style="height:35%"></div><div class="bar" style="height:70%"></div><div class="bar" style="height:60%"></div><div class="bar" style="height:80%"></div><div class="bar lit" style="height:95%"></div><div class="bar lit" style="height:85%"></div></div></div>
+      <div class="stat"><div class="label">conversion</div><div class="value">3.4%</div><div class="delta">view → book</div><div class="spark"><div class="bar" style="height:40%"></div><div class="bar" style="height:55%"></div><div class="bar" style="height:50%"></div><div class="bar" style="height:65%"></div><div class="bar" style="height:60%"></div><div class="bar lit" style="height:75%"></div><div class="bar lit" style="height:70%"></div></div></div>
+      <div class="stat"><div class="label">avg_booking</div><div class="value">£412</div><div class="delta">2.1n · 1.4g</div><div class="spark"><div class="bar" style="height:60%"></div><div class="bar" style="height:65%"></div><div class="bar" style="height:55%"></div><div class="bar" style="height:75%"></div><div class="bar" style="height:60%"></div><div class="bar lit" style="height:70%"></div><div class="bar lit" style="height:80%"></div></div></div>
+    </div>
+    <div class="grid-2">
+      <div style="display:flex; flex-direction:column; gap:16px;">
+        <div class="card">
+          <div class="card-head"><h2>Recent bookings</h2><span class="pill blue" style="margin-left:auto">14 this week</span></div>
+          <div>
+            <div class="row"><span class="mono">CB-3491820</span><span class="grow">Eleanor Whitfield · Master Suite</span><span class="num">£1,140</span><span class="pill green">paid</span></div>
+            <div class="row"><span class="mono">CB-3491819</span><span class="grow">James Park · Deluxe Double</span><span class="num">£480</span><span class="pill green">paid</span></div>
+            <div class="row"><span class="mono">CB-3491812</span><span class="grow">Sara Conti · Classic Single</span><span class="num">£420</span><span class="pill blue">card on file</span></div>
+            <div class="row"><span class="mono">CB-3491790</span><span class="grow">Daniel Roth · Master Suite</span><span class="num">£380</span><span class="pill green">paid</span></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-head"><h2>Needs attention</h2></div>
+          <div class="alert ok">$ all_clear · last_sync 9:14 UTC</div>
+        </div>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:16px;">
+        <div class="card">
+          <div class="card-head"><h2>Launch checklist</h2><span class="pill green" style="margin-left:auto">11/11</span></div>
+          <div>
+            <div class="check done"><span class="dot">✓</span><span>Property created</span><span class="meta">2026-03-12</span></div>
+            <div class="check done"><span class="dot">✓</span><span>Cloudbeds OAuth</span><span class="meta">auto-refresh</span></div>
+            <div class="check done"><span class="dot">✓</span><span>Stripe Connect</span><span class="meta">active · GBP</span></div>
+            <div class="check done"><span class="dot">✓</span><span>Front-end shipped</span><span class="meta">portico-ivory</span></div>
+            <div class="check done"><span class="dot">✓</span><span>Photos uploaded</span><span class="meta">24 in library</span></div>
+            <div class="check done"><span class="dot">✓</span><span>Copy filled</span><span class="meta">2026-05-02</span></div>
+            <div class="check done"><span class="dot">✓</span><span>Domain · DNS · SSL</span><span class="meta">Aug 4</span></div>
+            <div class="check done"><span class="dot">✓</span><span>Test booking</span><span class="meta">2026-04-29</span></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-head"><h2>Quick actions</h2></div>
+          <div class="qa">
+            <a href="#">Sync inventory now</a>
+            <a href="#">Open in Stripe ↗</a>
+            <a href="#">Send test confirmation</a>
+            <a href="#">Preview booking flow</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ════════════ v3 · Sidebar ════════════ -->
+<section class="concept v3" id="v3">
+  <div class="shell">
+    <aside class="sidebar">
+      <div class="switcher-card">
+        <div class="av">P</div>
+        <div class="name">The Portico Hotel</div>
+        <div class="chev">⇅</div>
+      </div>
+      <div class="nav-section">
+        <div class="nav-label">Property</div>
+        <div class="nav-item active"><span class="ico">◉</span>Overview</div>
+        <div class="nav-item"><span class="ico">▤</span>Bookings <span class="count">14</span></div>
+        <div class="nav-item"><span class="ico">¶</span>Content</div>
+        <div class="nav-item"><span class="ico">▣</span>Photos <span class="count">24</span></div>
+        <div class="nav-item"><span class="ico">≡</span>Rate plans <span class="count">8</span></div>
+        <div class="nav-item"><span class="ico">⇄</span>Alerts <span class="count">0</span></div>
+      </div>
+      <div class="nav-section">
+        <div class="nav-label">Integrations</div>
+        <div class="nav-item"><span class="ico">●</span>Cloudbeds</div>
+        <div class="nav-item"><span class="ico">$</span>Stripe</div>
+        <div class="nav-item"><span class="ico">⌘</span>Domain &amp; deploy</div>
+      </div>
+      <div class="nav-section">
+        <div class="nav-label">Other</div>
+        <div class="nav-item"><span class="ico">↗</span>Open site</div>
+        <div class="nav-item"><span class="ico">⏵</span>Preview</div>
+      </div>
+      <div class="sidebar-footer">
+        <div class="user"><div class="av"></div><div>karol@rockenue.com</div></div>
+      </div>
+    </aside>
+    <div class="main">
+      <div class="top">
+        <div>
+          <h1>Overview <span class="badge"><span style="width:6px;height:6px;border-radius:50%;background:currentColor;display:inline-block"></span>live</span></h1>
+          <div class="domain">theporticohotel.com · Paddington · GBP</div>
+        </div>
+        <div class="actions">
+          <button class="btn">Preview</button>
+          <button class="btn">Open site ↗</button>
+          <button class="btn primary">Sync now</button>
+        </div>
+      </div>
+      <div class="stat-grid">
+        <div class="stat"><div class="label">Bookings · 7d</div><div class="value">14</div><div class="delta up">+3 vs prior</div><div class="spark"><div class="bar" style="height:30%"></div><div class="bar" style="height:60%"></div><div class="bar" style="height:45%"></div><div class="bar" style="height:80%"></div><div class="bar" style="height:50%"></div><div class="bar lit" style="height:90%"></div><div class="bar lit" style="height:75%"></div></div></div>
+        <div class="stat"><div class="label">Revenue · 7d</div><div class="value">£8,420</div><div class="delta up">+12.4%</div><div class="spark"><div class="bar" style="height:50%"></div><div class="bar" style="height:35%"></div><div class="bar" style="height:70%"></div><div class="bar" style="height:60%"></div><div class="bar" style="height:80%"></div><div class="bar lit" style="height:95%"></div><div class="bar lit" style="height:85%"></div></div></div>
+        <div class="stat"><div class="label">Conversion</div><div class="value">3.4%</div><div class="delta">view → book</div><div class="spark"><div class="bar" style="height:40%"></div><div class="bar" style="height:55%"></div><div class="bar" style="height:50%"></div><div class="bar" style="height:65%"></div><div class="bar" style="height:60%"></div><div class="bar lit" style="height:75%"></div><div class="bar lit" style="height:70%"></div></div></div>
+        <div class="stat"><div class="label">Avg booking</div><div class="value">£412</div><div class="delta">2.1n · 1.4g</div><div class="spark"><div class="bar" style="height:60%"></div><div class="bar" style="height:65%"></div><div class="bar" style="height:55%"></div><div class="bar" style="height:75%"></div><div class="bar" style="height:60%"></div><div class="bar lit" style="height:70%"></div><div class="bar lit" style="height:80%"></div></div></div>
+      </div>
+      <div class="grid-2">
+        <div style="display:flex; flex-direction:column; gap:16px;">
+          <div class="card">
+            <div class="card-head"><h2>Recent bookings</h2><span class="pill blue" style="margin-left:auto">14 this week</span></div>
+            <div>
+              <div class="row"><span class="mono">CB-3491820</span><span class="grow">Eleanor Whitfield · Master Suite</span><span class="num">£1,140</span><span class="pill green">paid</span></div>
+              <div class="row"><span class="mono">CB-3491819</span><span class="grow">James Park · Deluxe Double</span><span class="num">£480</span><span class="pill green">paid</span></div>
+              <div class="row"><span class="mono">CB-3491812</span><span class="grow">Sara Conti · Classic Single</span><span class="num">£420</span><span class="pill blue">card on file</span></div>
+              <div class="row"><span class="mono">CB-3491790</span><span class="grow">Daniel Roth · Master Suite</span><span class="num">£380</span><span class="pill green">paid</span></div>
+              <div class="row"><span class="mono">CB-3491772</span><span class="grow">Mei Lin · Deluxe Double</span><span class="num">£1,200</span><span class="pill green">paid</span></div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-head"><h2>Needs attention</h2></div>
+            <div class="alert ok">All clear · last sync 9:14 UTC</div>
+          </div>
+        </div>
+        <div style="display:flex; flex-direction:column; gap:16px;">
+          <div class="card">
+            <div class="card-head"><h2>Launch checklist</h2><span class="pill green" style="margin-left:auto">11/11</span></div>
+            <div>
+              <div class="check done"><span class="dot">✓</span><span>Property created</span><span class="meta">Mar 12</span></div>
+              <div class="check done"><span class="dot">✓</span><span>Cloudbeds OAuth</span><span class="meta">auto</span></div>
+              <div class="check done"><span class="dot">✓</span><span>Stripe Connect</span><span class="meta">GBP</span></div>
+              <div class="check done"><span class="dot">✓</span><span>Front-end shipped</span><span class="meta">portico</span></div>
+              <div class="check done"><span class="dot">✓</span><span>Photos uploaded</span><span class="meta">24</span></div>
+              <div class="check done"><span class="dot">✓</span><span>Copy filled</span><span class="meta">May 2</span></div>
+              <div class="check done"><span class="dot">✓</span><span>DNS · SSL</span><span class="meta">live</span></div>
+              <div class="check done"><span class="dot">✓</span><span>Test booking</span><span class="meta">Apr 29</span></div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-head"><h2>Quick actions</h2></div>
+            <div class="qa">
+              <a href="#">Sync inventory</a>
+              <a href="#">Open in Stripe</a>
+              <a href="#">Send test email</a>
+              <a href="#">Preview booking</a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ════════════ v4 · Warm ════════════ -->
+<section class="concept v4" id="v4">
+  <div class="wrap">
+    <div class="crumb"><a href="#">All hotels</a><span class="arrow">/</span><span>The Portico Hotel</span></div>
+    <div class="ws-head">
+      <div>
+        <h1>The Portico Hotel</h1>
+        <div class="domain">theporticohotel.com · Paddington · GBP</div>
+      </div>
+      <div class="actions">
+        <button class="btn">Preview <kbd>P</kbd></button>
+        <button class="btn">Open site ↗</button>
+        <button class="btn primary">Sync now <kbd>⌘S</kbd></button>
+      </div>
+    </div>
+    <div class="nav">
+      <a href="#" class="active">Overview</a><a href="#">Bookings</a><a href="#">Content</a><a href="#">Photos</a><a href="#">Rates</a><a href="#">Cloudbeds</a><a href="#">Stripe</a><a href="#">Domain</a><a href="#">Alerts</a>
+    </div>
+    <div class="stat-grid">
+      <div class="stat"><div class="label">Bookings · 7d</div><div class="value">14</div><div class="delta up">+3 vs prior week</div><div class="spark"><div class="bar" style="height:30%"></div><div class="bar" style="height:60%"></div><div class="bar" style="height:45%"></div><div class="bar" style="height:80%"></div><div class="bar" style="height:50%"></div><div class="bar lit" style="height:90%"></div><div class="bar lit" style="height:75%"></div></div></div>
+      <div class="stat"><div class="label">Revenue · 7d</div><div class="value">£8,420</div><div class="delta up">+12.4%</div><div class="spark"><div class="bar" style="height:50%"></div><div class="bar" style="height:35%"></div><div class="bar" style="height:70%"></div><div class="bar" style="height:60%"></div><div class="bar" style="height:80%"></div><div class="bar lit" style="height:95%"></div><div class="bar lit" style="height:85%"></div></div></div>
+      <div class="stat"><div class="label">Conversion</div><div class="value">3.4%</div><div class="delta">view → book</div><div class="spark"><div class="bar" style="height:40%"></div><div class="bar" style="height:55%"></div><div class="bar" style="height:50%"></div><div class="bar" style="height:65%"></div><div class="bar" style="height:60%"></div><div class="bar lit" style="height:75%"></div><div class="bar lit" style="height:70%"></div></div></div>
+      <div class="stat"><div class="label">Avg booking</div><div class="value">£412</div><div class="delta">2.1 nights · 1.4 guests</div><div class="spark"><div class="bar" style="height:60%"></div><div class="bar" style="height:65%"></div><div class="bar" style="height:55%"></div><div class="bar" style="height:75%"></div><div class="bar" style="height:60%"></div><div class="bar lit" style="height:70%"></div><div class="bar lit" style="height:80%"></div></div></div>
+    </div>
+    <div class="grid-2">
+      <div style="display:flex; flex-direction:column; gap:20px;">
+        <div class="card">
+          <div class="card-head"><h2>Recent bookings</h2><span class="pill blue" style="margin-left:auto">14 this week</span></div>
+          <div>
+            <div class="row"><span class="mono">CB-3491820</span><span class="grow">Eleanor Whitfield · Master Suite</span><span class="num">£1,140</span><span class="pill green">paid</span></div>
+            <div class="row"><span class="mono">CB-3491819</span><span class="grow">James Park · Deluxe Double</span><span class="num">£480</span><span class="pill green">paid</span></div>
+            <div class="row"><span class="mono">CB-3491812</span><span class="grow">Sara Conti · Classic Single</span><span class="num">£420</span><span class="pill blue">card on file</span></div>
+            <div class="row"><span class="mono">CB-3491790</span><span class="grow">Daniel Roth · Master Suite</span><span class="num">£380</span><span class="pill green">paid</span></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-head"><h2>Needs attention</h2></div>
+          <div class="alert ok">All clear · last sync 9:14 UTC</div>
+        </div>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:20px;">
+        <div class="card">
+          <div class="card-head"><h2>Launch checklist</h2><span class="pill green" style="margin-left:auto">11/11</span></div>
+          <div>
+            <div class="check done"><span class="dot">✓</span><span>Property created</span><span class="meta">2026-03-12</span></div>
+            <div class="check done"><span class="dot">✓</span><span>Cloudbeds OAuth</span><span class="meta">auto-refresh</span></div>
+            <div class="check done"><span class="dot">✓</span><span>Stripe Connect</span><span class="meta">active · GBP</span></div>
+            <div class="check done"><span class="dot">✓</span><span>Front-end shipped</span><span class="meta">portico-ivory</span></div>
+            <div class="check done"><span class="dot">✓</span><span>Photos uploaded</span><span class="meta">24 in library</span></div>
+            <div class="check done"><span class="dot">✓</span><span>Copy filled</span><span class="meta">2026-05-02</span></div>
+            <div class="check done"><span class="dot">✓</span><span>Domain · DNS · SSL</span><span class="meta">Aug 4</span></div>
+            <div class="check done"><span class="dot">✓</span><span>Test booking</span><span class="meta">2026-04-29</span></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-head"><h2>Quick actions</h2></div>
+          <div class="qa">
+            <a href="#">Sync inventory now</a>
+            <a href="#">Open in Stripe ↗</a>
+            <a href="#">Send test confirmation</a>
+            <a href="#">Preview booking flow</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<script>
+  const buttons = document.querySelectorAll('.switcher button');
+  const concepts = document.querySelectorAll('.concept');
+  function show(c) {
+    buttons.forEach(b => b.classList.toggle('active', b.dataset.c === c));
+    concepts.forEach(s => s.classList.toggle('active', s.id === c));
+    history.replaceState(null, '', '#' + c);
+    window.scrollTo({ top: 0 });
+  }
+  buttons.forEach(b => b.addEventListener('click', () => show(b.dataset.c)));
+  const init = location.hash.replace('#', '') || 'v1';
+  show(init);
+</script>
+
+</body>
+</html>

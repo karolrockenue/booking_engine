@@ -1,8 +1,11 @@
 import { headers } from "next/headers";
 import { db } from "@/db";
 import { properties, pages, contentBlocks, images, roomTypes } from "@/db/schema";
-import { eq, or } from "drizzle-orm";
+import { asc, eq, or, isNotNull } from "drizzle-orm";
 import { type PropertyTheme, defaultTheme } from "./theme";
+import { mergeContent, type PropertyContent } from "./content-defaults";
+
+export type { PropertyContent };
 
 export type ResolvedProperty = {
   id: string;
@@ -52,8 +55,20 @@ export async function resolveProperty(): Promise<ResolvedProperty | null> {
       .limit(1);
   }
 
-  // Fallback: if no property matched by domain, use the first one
-  // This covers localhost dev, Railway preview URLs, and single-property setups
+  // Fallback: if no property matched by domain, prefer one that's actually
+  // wired up to Cloudbeds. Localhost dev, Railway preview URLs, and
+  // single-property setups land here — picking a Cloudbeds-connected
+  // property means bookings work without needing a ?property= override.
+  if (!property) {
+    [property] = await db
+      .select()
+      .from(properties)
+      .where(isNotNull(properties.cloudbedsPropertyId))
+      .limit(1);
+  }
+
+  // Final fallback: any property at all (covers fresh DBs with nothing
+  // connected yet).
   if (!property) {
     [property] = await db.select().from(properties).limit(1);
   }
@@ -90,6 +105,92 @@ export async function getPropertyWithContent(propertyId: string) {
     images: propertyImages,
     roomTypes: propertyRooms,
   };
+}
+
+// Photo for customer-facing rendering. The DB row stores 3 variant URLs;
+// callers pick whichever fits their layout context (hero / gallery / thumb).
+export interface PropertyPhoto {
+  id: string;
+  urls: { hero: string; gallery: string; thumb: string };
+  width: number | null;
+  height: number | null;
+  altText: string | null;
+  sortOrder: number;
+}
+
+export interface PropertyPhotos {
+  heroSlot: PropertyPhoto[];
+  gallerySlot: PropertyPhoto[];
+  neighbourhoodSlot: PropertyPhoto[];
+  byRoomType: Record<string, PropertyPhoto[]>;
+}
+
+interface VariantRecord {
+  url?: string;
+}
+
+function variantUrls(variants: unknown, fallback: string): {
+  hero: string;
+  gallery: string;
+  thumb: string;
+} {
+  if (!variants || typeof variants !== "object") {
+    return { hero: fallback, gallery: fallback, thumb: fallback };
+  }
+  const v = variants as Record<string, VariantRecord>;
+  return {
+    hero: v.hero?.url ?? fallback,
+    gallery: v.gallery?.url ?? fallback,
+    thumb: v.thumb?.url ?? fallback,
+  };
+}
+
+export async function getPropertyPhotos(
+  propertyId: string
+): Promise<PropertyPhotos> {
+  const rows = await db
+    .select()
+    .from(images)
+    .where(eq(images.propertyId, propertyId))
+    .orderBy(asc(images.sortOrder));
+
+  const out: PropertyPhotos = {
+    heroSlot: [],
+    gallerySlot: [],
+    neighbourhoodSlot: [],
+    byRoomType: {},
+  };
+
+  for (const row of rows) {
+    const photo: PropertyPhoto = {
+      id: row.id,
+      urls: variantUrls(row.variants, row.url),
+      width: row.width,
+      height: row.height,
+      altText: row.altText,
+      sortOrder: row.sortOrder ?? 0,
+    };
+    if (row.slot === "hero") out.heroSlot.push(photo);
+    else if (row.slot === "gallery") out.gallerySlot.push(photo);
+    else if (row.slot === "neighbourhood") out.neighbourhoodSlot.push(photo);
+    else if (row.slot === "room" && row.roomTypeId) {
+      const arr = out.byRoomType[row.roomTypeId] ?? [];
+      arr.push(photo);
+      out.byRoomType[row.roomTypeId] = arr;
+    }
+  }
+
+  return out;
+}
+
+export async function getPropertyContent(
+  propertyId: string
+): Promise<PropertyContent> {
+  const blocks = await db
+    .select({ key: contentBlocks.key, content: contentBlocks.content })
+    .from(contentBlocks)
+    .where(eq(contentBlocks.propertyId, propertyId));
+  return mergeContent(blocks);
 }
 
 export function parseTheme(raw: unknown): PropertyTheme {

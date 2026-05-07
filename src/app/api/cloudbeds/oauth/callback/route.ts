@@ -93,6 +93,6 @@ export async function GET(req: NextRequest) {
   }
 
   return NextResponse.redirect(
-    `${publicOrigin()}/admin/properties/${verified.propertyId}?cloudbeds=connected`
+    `${publicOrigin()}/admin/${verified.propertyId}/cloudbeds?connected=1`
   );
 }

@@ -1,24 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyAdmin } from "@/lib/admin-auth";
 import { signOauthState } from "@/lib/crypto";
-
-const SCOPES = [
-  "read:addon",
-  "read:currency",
-  "read:dataInsightsGuests",
-  "read:dataInsightsOccupancy",
-  "read:dataInsightsReservations",
-  "read:guest",
-  "write:guest",
-  "read:hotel",
-  "read:rate",
-  "write:rate",
-  "read:reservation",
-  "write:reservation",
-  "read:room",
-  "read:taxesAndFees",
-  "read:user",
-].join(" ");
+import { SCOPES_STRING } from "@/lib/cloudbeds/scopes";
 
 const AUTHORIZE_URL = "https://hotels.cloudbeds.com/api/v1.3/oauth";
 
@@ -51,7 +34,7 @@ export async function POST(req: NextRequest) {
   url.searchParams.set("client_id", clientId);
   url.searchParams.set("redirect_uri", redirectUri);
   url.searchParams.set("response_type", "code");
-  url.searchParams.set("scope", SCOPES);
+  url.searchParams.set("scope", SCOPES_STRING);
   url.searchParams.set("state", state);
 
   return NextResponse.json({ authorizeUrl: url.toString() });

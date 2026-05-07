@@ -4,7 +4,7 @@ A sequenced plan to take the booking engine to launch-ready (Cloudbeds REST API,
 
 Earlier steps are concrete because the work is well-scoped. Later steps are looser because the design will be informed by what we learn earlier (especially the sandbox smoke-test in Step 5 and the Stripe Connect setup in Phase 3). Tighten them up as we go.
 
-**Phase status (2026-05-04):**
+**Phase status (2026-05-07):**
 
 | Phase | Steps | Status |
 |---|---|---|
@@ -14,7 +14,9 @@ Earlier steps are concrete because the work is well-scoped. Later steps are loos
 | 3. Stripe Connect | 8, 9, 10 | ✅ Done — UAE sandbox platform, Standard accounts, Stripe Elements working end-to-end (test card `4242…`) |
 | 4. Booking flow rewrite | 11, 12 | ✅ Done — postReservation/postCustomItem/postPayment + confirmation page polish + SendGrid email all live |
 | 5. Flex auto-charge | 13, 14, 15 | ⛔ Not started |
-| 6. Cancellation + launch hardening | 16, 17 | 🟡 Quick wins shipped earlier; R2 / domains / room descriptions / JSON-LD / `next/font` / availability perf still TODO |
+| 6. Cancellation + launch hardening | 16, 17 | 🟡 Quick wins shipped earlier; availability perf A+B shipped 2026-05-04; R2 image hosting shipped 2026-05-07 (Phase 6.5); domains / JSON-LD / `next/font` still TODO |
+| 6.5 Admin v3 + R2 + Content CMS | shipped 2026-05-07 | ✅ Done — Linear-style sidebar shell, all 9 hotel tabs (Overview, Bookings, Content, Photos, Rates, Cloudbeds, Stripe, Domain, Alerts), Cloudflare R2 + sharp variants, content blocks → Portico Home wired |
+| 7. Post-launch features | WhatsApp · Welcome Pickups · GEO/AI content · Corporate portal · Tiqets · Guest accounts | 🟡 Scoping — see Phase 7 section |
 
 ---
 
@@ -432,20 +434,116 @@ Day-one work, not a follow-up.
 - JSON-LD Hotel schema on each homepage.
 - `next/font` swap for the Google Fonts `<link>` in `layout.tsx`.
 
-### Availability performance — TODO
+### Availability performance — A + B done 🟢, C deferred
 
-The `/api/availability` request is noticeably slow (Karol's UX feedback 2026-05-01). Three causes, ranked by impact:
+Original problem: `/api/availability` was noticeably slow (Karol's UX feedback 2026-05-01). Three causes were identified — A (cold-start in request path) and B (no response cache) shipped 2026-05-04. C (N+1 query) deferred.
 
-1. **Cold-start sync inside the request.** If a property has no inventory in the requested window, `syncInventoryForProperty` runs synchronously inside the request (~3s for 8 rate plans × 90 days). First user of the day waits for everyone.
-2. **No response cache.** Every request re-runs DB queries from scratch even though inventory only changes via webhook. Repeat hits on the same dates = full recompute every time.
-3. **N+1 query pattern.** Per room type, separate queries for rate plans + inventory.
+**A. Cold-start sync moved out of request path — DONE 🟢**
 
-**Fix plan (in priority order):**
+`src/app/api/availability/route.ts` previously awaited `syncInventoryForProperty` inline if the queried window had no inventory rows (~3s for 8 rate plans × 90 days). Now fires `void syncInventoryForProperty(...).catch(...)` in the background and returns whatever inventory exists (empty for a true cold start). The sync, on completion, calls `revalidateTag` (see B) so the next request gets fresh data without waiting on the time-based revalidation.
 
-- Wrap `/api/availability` response in `unstable_cache`, keyed by `(propertyId, checkIn, checkOut, adults)`, `revalidate: 30s`, `tags: ['availability:${propertyId}']`. In `webhook-handler.ts` (Cloudbeds events that affect inventory) call `revalidateTag('availability:${propertyId}')` so the cache invalidates instantly when a booking lands.
-- Move cold-start sync out of the request path. Return empty results immediately + trigger sync in the background. Steady state stays warm via the 6h cron + webhook events.
-- Per-hotel pre-rendering (later, when Phase 2.5 lands) — homepage shows "from £X" badges pre-computed at edge with ISR. Full availability call only fires when user picks dates.
-- Collapse N+1 to a single join. Marginal compared to the above two; do last.
+Tradeoff accepted: first user on a property with zero inventory in the window sees "no availability" for ~3s while the background sync runs. The alternative (every first user of the day waiting 3s in-band) is worse. Steady-state coverage by the 6h cron + Cloudbeds webhooks means this only triggers for genuinely cold properties.
+
+**B. `unstable_cache` wrapper + tag invalidation — DONE 🟢**
+
+`/api/availability` response wrapped in `unstable_cache`:
+- Key parts: `["availability", propertyId, checkIn, checkOut, adults]` (each unique combo is its own cache entry).
+- `revalidate: 30` (caps staleness if a sync somehow misses calling revalidateTag).
+- `tags: ['availability:${propertyId}']` (per-property scope).
+
+`syncInventoryForProperty` (in `src/lib/cloudbeds/sync-inventory.ts`) now calls `revalidateTag('availability:${propertyId}', { expire: 0 })` after all DB writes complete. Used Next 16's two-arg signature with `{ expire: 0 }` per the docs' recommended pattern for webhook-triggered immediate expiration. (Single-arg `revalidateTag(tag)` is deprecated in Next 16.)
+
+This means: any sync — whether triggered by a Cloudbeds webhook, the 6h cron, or the cold-start fire-and-forget — flushes the per-property availability cache the moment it completes. No 30-second stale window after a booking lands.
+
+**Behavior summary post-A+B:**
+
+- Repeat request, same date range: cache hit, ~ms.
+- First request for a date range (cold cache): full DB query, ~200ms (N+1 still there).
+- First-ever request on a brand-new OAuth'd property with no inventory: instant empty result + background sync; ~3s later sync's `revalidateTag` fires; next request recomputes against fresh data.
+- Booking webhook lands → sync runs → `revalidateTag` flushes that property's entries → next request sees fresh inventory.
+
+**C. Collapse N+1 to a single JOIN — DEFERRED**
+
+Demo property still does ~28 sequential DB queries on a cold cache miss. A single JOIN would cut to 1 (~200ms → ~30ms). Skipped because B+30s caching covers most of the user-perceptible cost; revisit only if production numbers say cache misses are still painful.
+
+**D. Per-hotel pre-rendering with ISR — DEFERRED**
+
+Per the original plan, lands when Phase 2.5 (`src/hotels/<slug>/`) does. Homepage shows "from £X" pre-rendered; full availability call only fires when user picks dates.
+
+---
+
+## Phase 6.5 — Admin v3 + R2 + Content CMS — DONE 🟢
+
+Shipped 2026-05-07 in one focused session. Replaces the old `/admin` shell entirely. Full reference in `hotel-platform-build-plan.md` ("Admin v3" section).
+
+**Shipped:**
+
+- **Sidebar shell** — Linear-flavoured. 240px persistent sidebar with hotel switcher card → Property nav (Overview · Bookings · Content · Photos · Rates · Alerts) → Integrations nav (Cloudbeds · Stripe · Domain) → user/logout chip. Light palette, `#5B5BD6` accent, JetBrains Mono for IDs/numerics. Tokens scoped under `.admin-root` in `globals.css`. Components in `src/components/admin/`.
+- **Dashboard** at `/admin` — hotel tile grid with real status pills (Live / Cloudbeds / Stripe), bookings·7d, revenue·7d, search, 4 filter chips. Per-hotel data joined server-side in `/api/admin/properties` GET.
+- **Overview tab** at `/admin/[id]` — stat grid with sparklines (bookings, revenue, avg booking, failed count), recent bookings, derived launch checklist (5 items), auto-generated alerts (stripe-restricted, cloudbeds-reauth, expiring-token, failed-bookings), quick actions. Endpoint: `/api/admin/properties/[id]/overview`.
+- **Cloudbeds tab** — connection card with token expiry + scopes + re-authorise (real OAuth start), inventory sync card with last-synced timestamp + "Sync now" button (works), webhook subscriptions list. OAuth callback redirect migrated from `/admin/properties/[id]?cloudbeds=connected` to `/admin/[propertyId]/cloudbeds?connected=1`. Scopes extracted to `src/lib/cloudbeds/scopes.ts`.
+- **Bookings tab** — siloed table with search, status filter chips, slide-over detail panel (stay / guest / folio / payment + Stripe deep-link). Resend / cancel-refund actions are placeholders.
+- **Rate plans tab** — accordion editor for `isRefundable` + `cancellationPolicy` (deadline, penalty type, percent, internal note). Reuses existing PATCH endpoint.
+- **Stripe tab** — split into "Your platform" (fees collected, platform fee %, account status) vs "Hotel side · read-only" (their payouts, balance, refunds, account meta). All from existing Stripe API via `Promise.allSettled` so one failure degrades gracefully. Verified £29.16 fees against £972 revenue = exactly 3%.
+- **Domain & deploy tab** — stub for now (DNS / SSL / Railway service info — defer to dedicated step).
+- **Alerts tab** — stub. Real alerts engine deferred to its own step (compute from operational signals).
+- **Photos tab + Cloudflare R2** — `images` schema extended with `slot` (hero/gallery/room/neighbourhood), `roomTypeId`, `sortOrder`, `mimeType`, `sizeBytes`, `variants` JSONB. R2 bucket `rockenue-hotel-photos`. Upload endpoint resizes via `sharp` to 3 variants per photo (hero 1600w / gallery 800w / thumb 400w), uploads in parallel. DELETE cleans all variant keys. Originals NOT kept in R2 — local copies are the master. UI: drag-drop, slot assignment, per-room galleries. R2 client at `src/lib/r2/client.ts`. Public URL via R2.dev (`https://pub-...r2.dev`); custom domain swap is a one env-var change later.
+- **Content CMS** — 5 content blocks per property: `hero`, `neighbourhood`, `goodToKnow`, `contact`, `footer`. Reuses existing `content_blocks` table + endpoints. Defaults file (`src/lib/content-defaults.ts`) seeded from Portico's hardcoded copy so empty DBs render identically. `getPropertyContent(propertyId)` helper merges DB blocks with defaults. Inline emphasis: `*word*` becomes italic+accent (`renderEmphasis` helper) — keeps Portico's distinctive italic style admin-editable.
+- **Portico Home wired to DB** — Hero, Neighbourhood, GoodToKnow, Footer all read photos + content with fallbacks to bundled defaults. RoomSelect reads per-room photos from `photos.byRoomType[roomTypeId]`. Gallery / Image components got `unoptimized={src.startsWith("http")}` for R2 URLs (no `next.config` allowlist needed).
+- **Property top-bar** — every per-hotel admin page renders a thin bar above the page TopStrip showing hotel name + status pill + domain + currency + "Open site ↗" (always opens in new tab).
+
+**Carry-forward (Phase 6.5):**
+
+- **Booking-flow screens still hardcoded** — Dates / Extras / Checkout / Confirmation use small bits of static copy that aren't in content blocks yet. Lower priority; promote when needed.
+- **Domain & deploy + Alerts tabs are stubs** — Domain is mostly read-only display work (DNS / SSL / Railway probe); easy. Alerts needs the underlying alerts engine (compute from signals) — that's its own subsystem.
+- **Resend confirmation + Cancel/refund actions** — placeholders on the booking detail panel. Resend = re-fire SendGrid template; cancel/refund = Cloudbeds reservation cancel + Stripe refund. Each merits its own focused step.
+- **No image variants for next/image optimisation** — R2 URLs use `unoptimized`. If you ever want Next.js image optimisation back on, add R2 host to `next.config.ts` `images.remotePatterns`. Not critical since `sharp` already produces compressed JPEGs.
+- **Custom domain for R2** — currently `pub-...r2.dev`. Swap to `images.rockenue.com` (or per-hotel) by changing `R2_PUBLIC_URL` once DNS is set.
+- **Per-hotel onboarding wizard** — "+ New hotel" button on the dashboard is a placeholder. At hotel #21+ we'll want a wizard that guides through the full setup. Defer until needed.
+- **`sharp` on Railway** — if a future Railway redeploy errors on platform-mismatch, add `optionalDependencies: { "@img/sharp-linux-x64": "*" }` to `package.json`.
+- **Stale browser cache** — Portico content reads happen server-side per request, but browsers cache the rendered HTML. Hard refresh after content edits if you don't see changes.
+
+---
+
+## Phase 7 — Post-launch features
+
+Loose direction for post-launch. Each item gets its own focused step when its time comes; this section is just to capture decisions made on 2026-05-07.
+
+### Active (already in motion)
+
+- **Welcome Pickups airport transfers** — Karol emailed them 2026-05-07. Once partnership confirmed, build:
+    - New `transfer` extra type alongside Cloudbeds add-ons (separate booking surface — Welcome Pickups has its own booking flow / commission).
+    - Surfaced at `/extras` (or its own step in the booking flow).
+    - Pre-arrival WhatsApp prompt with the booking link (depends on WhatsApp landing first).
+
+### Highest-leverage cheap wins
+
+- **GEO / AI-friendly content** — single highest-leverage item in the roadmap. Make Portico (and every property) discoverable to AI agents, search, and direct queries.
+    - **JSON-LD schema** on every property page. Types: `Hotel`, `FAQPage`, `AggregateRating`, `Offer`. Generated server-side from property data + content blocks.
+    - **FAQ admin section** — pre-populated with 15 standard questions per property (check-in, parking, breakfast, accessibility, pets, etc.), editable. New content key `faq` in content blocks. Renders both as visible `/faq` page AND as `FAQPage` JSON-LD.
+    - **5–10 specific factual claims** per property homepage — concrete, verifiable, citation-ready ("3 minutes from Paddington Station", "Eight rooms", etc.). Already partially shipped in the neighbourhood block; add a structured `facts` field.
+    - **MCP endpoint** at `/mcp/server` — exposes availability + property details via Model Context Protocol so AI agents (ChatGPT, Claude, Perplexity, etc.) can query rooms directly. Probably wraps `/api/availability` + property meta.
+    - **Per-property local-guide content** — owner-written ongoing copy. Adds depth + originality, not boilerplate. Lives in content blocks as `localGuide` (or split into multiple).
+
+### Under consideration
+
+- **WhatsApp Business API** — pre-arrival upsell, confirmations, review requests. **360dialog** as the BSP (Business Solution Provider). Foundation for Welcome Pickups + Tiqets flow. Decide before building those two.
+- **Corporate / TMC portal** — open. Build only if demand emerges from business-traveler properties (and only the ones that need it). Not building speculatively.
+
+### Defer
+
+- **Tiqets / GetYourGuide attractions** — defer until WhatsApp flow exists. Pattern: pre-arrival WhatsApp surfaces curated experiences, links to Tiqets. Without WhatsApp the surface is wrong.
+- **Guest accounts / cross-property identity** — note for future. Foundation for "welcome back" across the 39-property portfolio. Big enough that it deserves its own design pass. Not building now.
+
+### Skipped / dropped
+
+- ❌ **Stripe Identity** — would impact conversion. Identity verification, if ever needed, lives in a separate self-check-in app, not the booking engine.
+- ❌ **JustPark / parking** — most properties have no parking. Per-property; optional add-on later if a specific hotel asks.
+- ❌ **Onyx travel-agent commissions** — not now.
+
+### Already in pipeline (no action needed here)
+
+- Google Hotel Ads + Meta Travel Ads — paid acquisition handled separately.
 
 ---
 

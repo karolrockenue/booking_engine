@@ -158,7 +158,7 @@ function Tile({
       }}
       className="portico-gallery-tile"
     >
-      <Image src={src} alt="" fill sizes="(max-width: 920px) 100vw, 33vw" style={{ objectFit: "cover" }} />
+      <Image src={src} alt="" fill sizes="(max-width: 920px) 100vw, 33vw" style={{ objectFit: "cover" }} unoptimized={src.startsWith("http")} />
     </button>
   );
 }
@@ -292,6 +292,7 @@ function Lightbox({
             fill
             sizes="100vw"
             priority
+            unoptimized={src.startsWith("http")}
             style={{ objectFit: "contain" }}
           />
         </div>
@@ -354,7 +355,7 @@ function Lightbox({
                 transition: "opacity 150ms ease",
               }}
             >
-              <Image src={img} alt="" fill sizes="96px" style={{ objectFit: "cover" }} />
+              <Image src={img} alt="" fill sizes="96px" style={{ objectFit: "cover" }} unoptimized={img.startsWith("http")} />
             </button>
           );
         })}

@@ -234,17 +234,6 @@ export function PorticoDates({ t, currency }: { t: PorticoTokens; currency: stri
               >
                 {nights ? `${nights} ${nights === 1 ? "night" : "nights"}` : "Select dates"}
               </div>
-              <div
-                style={{
-                  fontSize: 18,
-                  marginTop: 2,
-                  fontVariantNumeric: "tabular-nums",
-                  letterSpacing: "0.005em",
-                  fontFamily: "var(--portico-sans)",
-                }}
-              >
-                {nights ? `Rates loaded on next step` : "—"}
-              </div>
             </div>
             <Btn t={t} primary onClick={handleContinue} disabled={!canContinue}>
               See rooms →

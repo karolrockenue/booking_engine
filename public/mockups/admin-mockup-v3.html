@@ -1,0 +1,1186 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Admin · v3 sidebar — full UX mockup</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* ───────── v3 design tokens ───────── */
+:root {
+  --bg: #FFFFFF;
+  --side: #FAFAFA;
+  --surface: #FFFFFF;
+  --surface-2: #FAFAFA;
+  --border: #EBEBEB;
+  --border-soft: #F1F1F1;
+  --ink: #0A0A0A;
+  --ink-2: #404040;
+  --muted: #737373;
+  --accent: #5B5BD6;
+  --accent-soft: rgba(91,91,214,0.08);
+  --green: #00875A;
+  --green-soft: rgba(0,135,90,0.08);
+  --amber: #B45309;
+  --amber-soft: rgba(180,83,9,0.08);
+  --red: #C62828;
+  --red-soft: rgba(198,40,40,0.08);
+  --blue: #1D4ED8;
+  --blue-soft: rgba(29,78,216,0.08);
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { font-family: 'Inter', system-ui, sans-serif; color: var(--ink); background: var(--bg); font-feature-settings: 'cv11','ss01'; }
+button { font-family: inherit; cursor: pointer; border: none; background: none; }
+a { color: inherit; text-decoration: none; }
+input, textarea, select { font-family: inherit; }
+.mono { font-family: 'JetBrains Mono', monospace; }
+
+/* ───────── switcher ───────── */
+.switcher {
+  position: sticky; top: 0; z-index: 100;
+  background: rgba(255,255,255,0.95);
+  backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--border);
+  padding: 8px 16px;
+  display: flex; gap: 4px; align-items: center;
+  overflow-x: auto;
+}
+.switcher .meta { margin-right: auto; font-size: 12px; color: var(--muted); font-weight: 500; white-space: nowrap; }
+.switcher .meta strong { color: var(--ink); font-weight: 600; }
+.switcher button {
+  padding: 6px 12px; border-radius: 999px;
+  font-size: 12px; font-weight: 500; color: #525252;
+  white-space: nowrap;
+}
+.switcher button:hover { background: #F5F5F5; color: var(--ink); }
+.switcher button.active { background: var(--ink); color: #fff; }
+
+.screen { display: none; }
+.screen.active { display: block; }
+
+/* ───────── shell ───────── */
+.shell { display: grid; grid-template-columns: 240px 1fr; min-height: calc(100vh - 41px); }
+@media (max-width: 1000px) { .shell { grid-template-columns: 1fr; } .sidebar { display: none; } }
+.sidebar {
+  background: var(--side);
+  border-right: 1px solid var(--border);
+  padding: 16px 12px;
+  display: flex; flex-direction: column;
+  position: sticky; top: 41px; height: calc(100vh - 41px);
+  overflow-y: auto;
+}
+.switcher-card {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 6px;
+  padding: 8px 10px; display: flex; align-items: center; gap: 8px;
+  margin-bottom: 16px; cursor: pointer;
+}
+.switcher-card:hover { background: #FAFAFA; }
+.switcher-card .av { width: 24px; height: 24px; border-radius: 4px; background: linear-gradient(135deg, #C7B9FF 0%, #5B5BD6 100%); display: flex; align-items: center; justify-content: center; color: #fff; font-size: 11px; font-weight: 600; flex-shrink: 0; }
+.switcher-card .name { font-size: 13px; font-weight: 500; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.switcher-card .chev { color: var(--muted); font-size: 11px; }
+.nav-section { margin-bottom: 14px; }
+.nav-label { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); padding: 4px 8px; font-weight: 500; }
+.nav-item {
+  padding: 6px 8px; border-radius: 4px; font-size: 13px;
+  color: var(--ink-2); display: flex; align-items: center; gap: 8px; cursor: pointer;
+}
+.nav-item .ico { width: 14px; opacity: 0.7; flex-shrink: 0; text-align: center; }
+.nav-item .count { margin-left: auto; font-size: 11px; color: var(--muted); font-family: 'JetBrains Mono', monospace; }
+.nav-item:hover { background: rgba(0,0,0,0.04); color: var(--ink); }
+.nav-item.active { background: var(--accent-soft); color: var(--accent); font-weight: 500; }
+.nav-item.active .ico { opacity: 1; }
+.nav-item .count.alert { color: var(--red); }
+.sidebar-footer { margin-top: auto; padding-top: 12px; border-top: 1px solid var(--border); }
+.sidebar-footer .user { display: flex; align-items: center; gap: 8px; padding: 6px 8px; font-size: 12.5px; color: var(--muted); }
+.sidebar-footer .av { width: 22px; height: 22px; border-radius: 50%; background: #E5E5E5; }
+
+/* ───────── main + top ───────── */
+.main { padding: 24px 32px 80px; max-width: 1180px; }
+.top { display: flex; align-items: flex-start; gap: 16px; padding-bottom: 16px; border-bottom: 1px solid var(--border); margin-bottom: 24px; }
+.top h1 { font-size: 22px; font-weight: 600; letter-spacing: -0.01em; }
+.top .domain { font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--muted); margin-top: 4px; }
+.top .badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 500; background: var(--green-soft); color: var(--green); border: 1px solid rgba(0,135,90,0.18); margin-left: 6px; vertical-align: middle; }
+.top .actions { margin-left: auto; display: flex; gap: 6px; }
+
+/* ───────── shared components ───────── */
+.btn { padding: 5px 11px; border-radius: 4px; font-size: 12.5px; font-weight: 500; border: 1px solid var(--border); background: var(--surface); color: var(--ink); display: inline-flex; align-items: center; gap: 6px; }
+.btn:hover { background: #FAFAFA; }
+.btn.primary { background: var(--ink); color: #fff; border-color: var(--ink); }
+.btn.primary:hover { background: #262626; }
+.btn.danger { color: var(--red); border-color: rgba(198,40,40,0.25); }
+.btn.danger:hover { background: var(--red-soft); }
+.btn.sm { padding: 3px 9px; font-size: 11.5px; }
+.btn.ghost { border-color: transparent; }
+.btn.ghost:hover { background: #F5F5F5; }
+kbd { font-family: 'JetBrains Mono', monospace; font-size: 10.5px; font-weight: 500; padding: 1px 5px; border-radius: 3px; border: 1px solid var(--border); background: #F8F8F8; color: var(--muted); }
+
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+.card-head { padding: 12px 16px; display: flex; align-items: center; gap: 10px; border-bottom: 1px solid var(--border-soft); }
+.card-head h2 { font-size: 12.5px; font-weight: 600; letter-spacing: -0.005em; }
+.card-head .right { margin-left: auto; }
+.card-body { padding: 14px 16px; }
+.card-body.dense { padding: 0; }
+
+.pill {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 1px 7px; border-radius: 3px;
+  font-size: 10.5px; font-weight: 500;
+  font-family: 'JetBrains Mono', monospace;
+  border: 1px solid;
+}
+.pill.green { color: var(--green); border-color: rgba(0,135,90,0.25); background: var(--green-soft); }
+.pill.amber { color: var(--amber); border-color: rgba(180,83,9,0.25); background: var(--amber-soft); }
+.pill.red   { color: var(--red);   border-color: rgba(198,40,40,0.25); background: var(--red-soft); }
+.pill.blue  { color: var(--accent); border-color: rgba(91,91,214,0.25); background: var(--accent-soft); }
+.pill.gray  { color: var(--muted); border-color: var(--border); background: #F5F5F5; }
+.pill .dot { width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+
+table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+th, td { padding: 9px 16px; text-align: left; border-bottom: 1px solid var(--border-soft); }
+th { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); font-weight: 500; }
+tbody tr:hover { background: var(--surface-2); cursor: pointer; }
+tbody tr:last-child td { border-bottom: none; }
+td.mono-c { font-family: 'JetBrains Mono', monospace; font-size: 11.5px; color: var(--ink-2); }
+td.num { text-align: right; font-variant-numeric: tabular-nums; font-family: 'JetBrains Mono', monospace; }
+
+.row { display: flex; align-items: center; gap: 10px; padding: 9px 16px; font-size: 12.5px; border-bottom: 1px solid var(--border-soft); }
+.row:last-child { border-bottom: none; }
+.row:hover { background: var(--surface-2); }
+.row .ref { font-family: 'JetBrains Mono', monospace; font-size: 11.5px; color: var(--ink-2); width: 110px; flex-shrink: 0; }
+.row .grow { flex: 1; min-width: 0; }
+.row .num { font-variant-numeric: tabular-nums; font-family: 'JetBrains Mono', monospace; }
+
+.kv { display: flex; gap: 12px; padding: 8px 16px; border-bottom: 1px solid var(--border-soft); font-size: 12.5px; }
+.kv:last-child { border-bottom: none; }
+.kv .k { width: 160px; color: var(--muted); flex-shrink: 0; }
+.kv .v { flex: 1; min-width: 0; }
+.kv .v.mono { font-family: 'JetBrains Mono', monospace; font-size: 11.5px; }
+
+.toolbar { display: flex; gap: 6px; align-items: center; margin-bottom: 16px; flex-wrap: wrap; }
+.toolbar input[type=search] {
+  padding: 5px 10px;
+  border: 1px solid var(--border); border-radius: 4px;
+  font-size: 12.5px; background: var(--surface); width: 280px;
+}
+.toolbar input[type=search]:focus { outline: 1px solid var(--accent); border-color: var(--accent); }
+.toolbar .right { margin-left: auto; display: flex; gap: 6px; }
+
+/* ───────── layouts ───────── */
+.grid-2 { display: grid; grid-template-columns: 1.6fr 1fr; gap: 16px; }
+.grid-1-1 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.grid-2-1 { display: grid; grid-template-columns: 2fr 1fr; gap: 16px; }
+@media (max-width: 900px) { .grid-2, .grid-1-1, .grid-2-1 { grid-template-columns: 1fr; } }
+.stack > * + * { margin-top: 16px; }
+
+/* ───────── stat blocks ───────── */
+.stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; background: var(--surface); margin-bottom: 20px; }
+.stat { padding: 16px 18px; border-right: 1px solid var(--border-soft); }
+.stat:last-child { border-right: none; }
+.stat .label { font-size: 11.5px; color: var(--muted); display: flex; align-items: center; gap: 6px; }
+.stat .label::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+.stat .value { font-size: 24px; font-weight: 600; letter-spacing: -0.02em; margin-top: 4px; font-variant-numeric: tabular-nums; }
+.stat .delta { font-size: 11.5px; color: var(--muted); margin-top: 2px; font-family: 'JetBrains Mono', monospace; }
+.stat .delta.up { color: var(--green); }
+.spark { margin-top: 8px; height: 20px; display: flex; align-items: flex-end; gap: 2px; }
+.spark .bar { flex: 1; background: var(--accent); opacity: 0.15; border-radius: 1px; }
+.spark .bar.lit { opacity: 1; }
+
+/* ───────── checklist ───────── */
+.check { display: flex; align-items: center; gap: 10px; padding: 8px 16px; font-size: 12.5px; border-bottom: 1px solid var(--border-soft); }
+.check:last-child { border-bottom: none; }
+.check .dot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; font-size: 8px; font-weight: 700; }
+.check.done .dot { background: var(--ink); color: #fff; }
+.check.todo .dot { border: 1px dashed #C0C0C0; }
+.check .meta { color: var(--muted); font-size: 11px; font-family: 'JetBrains Mono', monospace; margin-left: auto; }
+.check.done span:not(.dot):not(.meta) { color: var(--ink-2); }
+
+/* ───────── alert rows ───────── */
+.alert {
+  padding: 12px 16px; display: flex; gap: 10px; align-items: flex-start;
+  border-bottom: 1px solid var(--border-soft);
+}
+.alert:last-child { border-bottom: none; }
+.alert .icon { width: 18px; height: 18px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: 3px; font-weight: 700; font-size: 10px; }
+.alert.danger .icon { background: var(--red-soft); color: var(--red); }
+.alert.warn .icon { background: var(--amber-soft); color: var(--amber); }
+.alert.info .icon { background: var(--blue-soft); color: var(--blue); }
+.alert .body { flex: 1; min-width: 0; }
+.alert .title { font-size: 12.5px; font-weight: 500; }
+.alert .desc { font-size: 11.5px; color: var(--muted); margin-top: 2px; }
+.alert .actions { display: flex; gap: 6px; }
+.alert.ok-state { color: var(--muted); padding: 24px; text-align: center; font-size: 12.5px; justify-content: center; }
+
+/* ───────── quick actions ───────── */
+.qa a { padding: 9px 16px; border-bottom: 1px solid var(--border-soft); font-size: 12.5px; display: flex; align-items: center; gap: 8px; }
+.qa a::before { content: '→'; color: var(--muted); }
+.qa a:last-child { border-bottom: none; }
+.qa a:hover { background: var(--surface-2); }
+
+/* ───────── form fields ───────── */
+.field { margin-bottom: 12px; }
+.field label { display: block; font-size: 11.5px; font-weight: 500; color: var(--ink-2); margin-bottom: 4px; }
+.field input[type=text], .field input[type=number], .field input:not([type]), .field textarea, .field select {
+  width: 100%; padding: 6px 10px;
+  border: 1px solid var(--border); border-radius: 4px;
+  font-size: 12.5px; background: var(--surface);
+}
+.field input:focus, .field textarea:focus, .field select:focus { outline: 1px solid var(--accent); border-color: var(--accent); }
+.field textarea { resize: vertical; min-height: 60px; font-family: inherit; }
+.field .hint { font-size: 11px; color: var(--muted); margin-top: 4px; }
+.checkbox { display: inline-flex; align-items: center; gap: 6px; font-weight: 400; font-size: 12.5px; }
+
+/* ───────── dashboard tile grid ───────── */
+.dash { padding: 24px 32px 80px; max-width: 1380px; margin: 0 auto; }
+.dash .top { padding-bottom: 24px; }
+.dash h1 { font-size: 24px; font-weight: 600; letter-spacing: -0.02em; }
+.dash .lead { color: var(--muted); margin-top: 4px; font-size: 13px; }
+.tile-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+@media (max-width: 1100px) { .tile-grid { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 700px) { .tile-grid { grid-template-columns: 1fr; } }
+.tile { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 14px 16px; cursor: pointer; transition: border-color .15s; }
+.tile:hover { border-color: #C0C0C0; }
+.tile-head { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 10px; }
+.tile-name { font-weight: 600; font-size: 13.5px; letter-spacing: -0.005em; }
+.tile-domain { color: var(--muted); font-size: 11.5px; margin-top: 2px; font-family: 'JetBrains Mono', monospace; }
+.tile-head .alert-badge { margin-left: auto; }
+.tile-pills { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 10px; }
+.tile-stats { display: flex; gap: 14px; padding-top: 10px; border-top: 1px solid var(--border-soft); font-size: 11.5px; color: var(--muted); }
+.tile-stats .num { color: var(--ink); font-weight: 600; font-family: 'JetBrains Mono', monospace; }
+.tile-stats .right-meta { margin-left: auto; font-family: 'JetBrains Mono', monospace; }
+
+/* ───────── photos ───────── */
+.photo-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.photo {
+  aspect-ratio: 4/3;
+  background: linear-gradient(135deg, #d4c5a9 0%, #8c7a5b 100%);
+  border-radius: 4px;
+  position: relative; overflow: hidden;
+  border: 1px solid var(--border);
+  display: flex; align-items: flex-end; padding: 6px;
+  color: rgba(255,255,255,0.9); font-size: 10px; font-weight: 500;
+  cursor: pointer;
+}
+.photo .label { background: rgba(0,0,0,0.45); padding: 1px 5px; border-radius: 2px; font-family: 'JetBrains Mono', monospace; }
+.photo.alt-1 { background: linear-gradient(135deg, #b8a888 0%, #6b5a3f 100%); }
+.photo.alt-2 { background: linear-gradient(135deg, #c9b89a 0%, #7d6a4d 100%); }
+.photo.alt-3 { background: linear-gradient(135deg, #a39177 0%, #574936 100%); }
+.photo.alt-4 { background: linear-gradient(135deg, #d8c8a8 0%, #948167 100%); }
+.photo.alt-5 { background: linear-gradient(135deg, #b09a7d 0%, #6e5d44 100%); }
+.upload {
+  aspect-ratio: 4/3; border: 1px dashed var(--border); border-radius: 4px;
+  display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 2px;
+  color: var(--muted); font-size: 11.5px; cursor: pointer; background: var(--surface-2);
+}
+.upload:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+.upload .plus { font-size: 18px; line-height: 1; }
+
+/* ───────── rate accordion ───────── */
+.rate-row { border: 1px solid var(--border); border-radius: 4px; margin-bottom: 6px; background: var(--surface); }
+.rate-row-head { padding: 10px 14px; display: flex; align-items: center; gap: 12px; cursor: pointer; }
+.rate-row-head:hover { background: var(--surface-2); }
+.rate-row.open .rate-row-body { display: block; }
+.rate-row-body { display: none; padding: 14px; border-top: 1px solid var(--border-soft); background: var(--surface-2); }
+.rate-row .name { font-weight: 500; font-size: 13px; }
+.rate-row .id { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--muted); }
+.chevron { color: var(--muted); transition: transform .15s; font-size: 11px; }
+.rate-row.open .chevron { transform: rotate(90deg); }
+
+/* ───────── DNS code block ───────── */
+.dns {
+  background: #0A0A0A; color: #E5E5E5;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11.5px; padding: 12px 14px;
+  border-radius: 4px; line-height: 1.7;
+}
+.dns .k { color: #737373; display: inline-block; width: 80px; }
+.dns .v { color: #E5E5E5; }
+
+/* ───────── booking detail panel ───────── */
+.detail-pane { position: fixed; right: 0; top: 41px; bottom: 0; width: 460px; background: var(--surface); border-left: 1px solid var(--border); z-index: 50; padding: 0; overflow-y: auto; box-shadow: -8px 0 24px rgba(0,0,0,0.04); display: none; }
+.detail-pane.open { display: block; }
+.detail-pane .head { padding: 16px 20px; border-bottom: 1px solid var(--border); display: flex; align-items: flex-start; gap: 12px; }
+.detail-pane .head h2 { font-size: 15px; font-weight: 600; }
+.detail-pane .head .ref { font-family: 'JetBrains Mono', monospace; font-size: 11.5px; color: var(--muted); margin-top: 2px; }
+.detail-pane .head .close { margin-left: auto; }
+.detail-pane h3 { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); padding: 14px 20px 6px; font-weight: 500; }
+.detail-pane .pane-section { padding-bottom: 8px; border-bottom: 1px solid var(--border-soft); }
+.detail-pane .pane-section:last-child { border-bottom: none; }
+.detail-pane .actions-row { display: flex; gap: 6px; padding: 16px 20px; flex-wrap: wrap; }
+
+/* misc */
+.empty { padding: 48px 20px; text-align: center; color: var(--muted); font-size: 13px; }
+.divider { height: 1px; background: var(--border); margin: 16px 0; }
+.note { color: var(--muted); font-size: 11.5px; margin-top: 8px; }
+code { font-family: 'JetBrains Mono', monospace; font-size: 11.5px; background: var(--surface-2); padding: 1px 5px; border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<div class="switcher">
+  <div class="meta">Admin · v3 sidebar · <strong>The Portico Hotel</strong></div>
+  <button data-s="dashboard">Dashboard</button>
+  <button data-s="overview" class="active">Overview</button>
+  <button data-s="bookings">Bookings</button>
+  <button data-s="content">Content</button>
+  <button data-s="photos">Photos</button>
+  <button data-s="rates">Rates</button>
+  <button data-s="cloudbeds">Cloudbeds</button>
+  <button data-s="stripe">Stripe</button>
+  <button data-s="domain">Domain</button>
+  <button data-s="alerts">Alerts</button>
+</div>
+
+<!-- ═══════════════ DASHBOARD ═══════════════ -->
+<section class="screen" id="dashboard">
+  <div class="dash">
+    <div class="top" style="border-bottom:none; margin-bottom:0; padding-bottom:0">
+      <div>
+        <h1>Hotels</h1>
+        <div class="lead">6 properties · 4 live · 2 in setup · 6 alerts across portfolio</div>
+      </div>
+      <div class="actions"><button class="btn primary">+ New hotel</button></div>
+    </div>
+    <div style="height: 20px"></div>
+    <div class="toolbar">
+      <input type="search" placeholder="Search by name, domain, slug...">
+      <button class="btn sm">All 6</button>
+      <button class="btn sm">Live 4</button>
+      <button class="btn sm">Needs attention 2</button>
+      <button class="btn sm">In setup 2</button>
+    </div>
+    <div class="tile-grid" id="tiles"></div>
+    <p class="note" style="margin-top: 16px">Click a tile → opens that hotel's workspace (sidebar shell). Hotel switcher in sidebar returns here.</p>
+  </div>
+</section>
+
+<!-- ═══════════════ OVERVIEW ═══════════════ -->
+<section class="screen active" id="overview" data-screen="overview">
+  <div class="shell">
+    <aside class="sidebar" data-side></aside>
+    <div class="main">
+      <div class="top">
+        <div>
+          <h1>Overview <span class="badge"><span class="dot" style="width:6px;height:6px;border-radius:50%;background:currentColor;display:inline-block"></span>live</span></h1>
+          <div class="domain">theporticohotel.com · Paddington · GBP</div>
+        </div>
+        <div class="actions">
+          <button class="btn">Preview <kbd>P</kbd></button>
+          <button class="btn">Open site ↗</button>
+          <button class="btn primary">Sync now <kbd>⌘S</kbd></button>
+        </div>
+      </div>
+      <div class="stat-grid">
+        <div class="stat"><div class="label">Bookings · 7d</div><div class="value">14</div><div class="delta up">+3 vs prior</div><div class="spark"><div class="bar" style="height:30%"></div><div class="bar" style="height:60%"></div><div class="bar" style="height:45%"></div><div class="bar" style="height:80%"></div><div class="bar" style="height:50%"></div><div class="bar lit" style="height:90%"></div><div class="bar lit" style="height:75%"></div></div></div>
+        <div class="stat"><div class="label">Revenue · 7d</div><div class="value">£8,420</div><div class="delta up">+12.4%</div><div class="spark"><div class="bar" style="height:50%"></div><div class="bar" style="height:35%"></div><div class="bar" style="height:70%"></div><div class="bar" style="height:60%"></div><div class="bar" style="height:80%"></div><div class="bar lit" style="height:95%"></div><div class="bar lit" style="height:85%"></div></div></div>
+        <div class="stat"><div class="label">Conversion</div><div class="value">3.4%</div><div class="delta">view → book</div><div class="spark"><div class="bar" style="height:40%"></div><div class="bar" style="height:55%"></div><div class="bar" style="height:50%"></div><div class="bar" style="height:65%"></div><div class="bar" style="height:60%"></div><div class="bar lit" style="height:75%"></div><div class="bar lit" style="height:70%"></div></div></div>
+        <div class="stat"><div class="label">Avg booking</div><div class="value">£412</div><div class="delta">2.1n · 1.4g</div><div class="spark"><div class="bar" style="height:60%"></div><div class="bar" style="height:65%"></div><div class="bar" style="height:55%"></div><div class="bar" style="height:75%"></div><div class="bar" style="height:60%"></div><div class="bar lit" style="height:70%"></div><div class="bar lit" style="height:80%"></div></div></div>
+      </div>
+      <div class="grid-2">
+        <div class="stack">
+          <div class="card">
+            <div class="card-head"><h2>Recent bookings</h2><span class="pill blue right">14 this week</span></div>
+            <div class="card-body dense">
+              <div class="row"><span class="ref">CB-3491820</span><span class="grow">Eleanor Whitfield · Master Suite</span><span class="num">£1,140</span><span class="pill green">paid</span></div>
+              <div class="row"><span class="ref">CB-3491819</span><span class="grow">James Park · Deluxe Double</span><span class="num">£480</span><span class="pill green">paid</span></div>
+              <div class="row"><span class="ref">CB-3491812</span><span class="grow">Sara Conti · Classic Single</span><span class="num">£420</span><span class="pill blue">card on file</span></div>
+              <div class="row"><span class="ref">CB-3491790</span><span class="grow">Daniel Roth · Master Suite</span><span class="num">£380</span><span class="pill green">paid</span></div>
+              <div class="row"><span class="ref">CB-3491772</span><span class="grow">Mei Lin · Deluxe Double</span><span class="num">£1,200</span><span class="pill green">paid</span></div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-head"><h2>Needs attention</h2><span class="pill green right"><span class="dot"></span>0 alerts</span></div>
+            <div class="alert ok-state">All clear · last sync 9:14 UTC</div>
+          </div>
+        </div>
+        <div class="stack">
+          <div class="card">
+            <div class="card-head"><h2>Launch checklist</h2><span class="pill green right">11/11</span></div>
+            <div class="card-body dense">
+              <div class="check done"><span class="dot">✓</span><span>Property created</span><span class="meta">Mar 12</span></div>
+              <div class="check done"><span class="dot">✓</span><span>Cloudbeds OAuth</span><span class="meta">auto</span></div>
+              <div class="check done"><span class="dot">✓</span><span>Stripe Connect</span><span class="meta">GBP</span></div>
+              <div class="check done"><span class="dot">✓</span><span>Front-end shipped</span><span class="meta">portico-ivory</span></div>
+              <div class="check done"><span class="dot">✓</span><span>Photos uploaded</span><span class="meta">24</span></div>
+              <div class="check done"><span class="dot">✓</span><span>Copy filled</span><span class="meta">May 02</span></div>
+              <div class="check done"><span class="dot">✓</span><span>DNS · SSL</span><span class="meta">Aug 04</span></div>
+              <div class="check done"><span class="dot">✓</span><span>Test booking</span><span class="meta">Apr 29</span></div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-head"><h2>Quick actions</h2></div>
+            <div class="card-body dense"><div class="qa">
+              <a href="#">Sync inventory</a>
+              <a href="#">Open in Stripe</a>
+              <a href="#">Send test email</a>
+              <a href="#">Preview booking</a>
+            </div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════ BOOKINGS ═══════════════ -->
+<section class="screen" id="bookings" data-screen="bookings">
+  <div class="shell">
+    <aside class="sidebar" data-side></aside>
+    <div class="main" style="max-width: 100%; padding-right: 480px;">
+      <div class="top">
+        <div>
+          <h1>Bookings</h1>
+          <div class="domain">14 in the last 7 days · 38 total this month</div>
+        </div>
+        <div class="actions">
+          <button class="btn">Export CSV</button>
+        </div>
+      </div>
+      <div class="toolbar">
+        <input type="search" placeholder="Search by guest, email, reservation ref...">
+        <button class="btn sm">All 38</button>
+        <button class="btn sm">Paid 31</button>
+        <button class="btn sm">Card on file 5</button>
+        <button class="btn sm">Failed 1</button>
+        <button class="btn sm">Cancelled 1</button>
+        <div class="right">
+          <button class="btn sm">May 2026</button>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-body dense">
+          <table>
+            <thead>
+              <tr><th>Reservation</th><th>Guest</th><th>Check-in</th><th>Nights</th><th>Room · rate</th><th class="num">Total</th><th>Status</th><th>Placed</th></tr>
+            </thead>
+            <tbody>
+              <tr class="selected" style="background: var(--accent-soft);"><td class="mono-c">CB-3491820<br><span style="color:var(--muted);font-size:10.5px">b3a1…f201</span></td><td>Eleanor Whitfield<br><span style="color:var(--muted);font-size:11px">eleanor.w@…</span></td><td class="mono-c">2026-05-12</td><td class="num">3</td><td>Master Suite<br><span style="color:var(--muted);font-size:11px">Flexible</span></td><td class="num">£1,140.00</td><td><span class="pill green">paid</span></td><td class="mono-c" style="color:var(--muted)">6h ago</td></tr>
+              <tr><td class="mono-c">CB-3491819<br><span style="color:var(--muted);font-size:10.5px">a2c0…d188</span></td><td>James Park<br><span style="color:var(--muted);font-size:11px">james.p@…</span></td><td class="mono-c">2026-05-11</td><td class="num">2</td><td>Deluxe Double<br><span style="color:var(--muted);font-size:11px">Non-refundable</span></td><td class="num">£480.00</td><td><span class="pill green">paid</span></td><td class="mono-c" style="color:var(--muted)">11h ago</td></tr>
+              <tr><td class="mono-c">CB-3491812<br><span style="color:var(--muted);font-size:10.5px">9d4e…7a02</span></td><td>Sara Conti<br><span style="color:var(--muted);font-size:11px">sara.c@…</span></td><td class="mono-c">2026-05-20</td><td class="num">2</td><td>Classic Single<br><span style="color:var(--muted);font-size:11px">Flex</span></td><td class="num">£420.00</td><td><span class="pill blue">card on file</span></td><td class="mono-c" style="color:var(--muted)">1d ago</td></tr>
+              <tr><td class="mono-c">CB-3491790<br><span style="color:var(--muted);font-size:10.5px">01ee…b4ca</span></td><td>Daniel Roth<br><span style="color:var(--muted);font-size:11px">daniel.r@…</span></td><td class="mono-c">2026-05-09</td><td class="num">1</td><td>Master Suite<br><span style="color:var(--muted);font-size:11px">Flexible</span></td><td class="num">£380.00</td><td><span class="pill green">paid</span></td><td class="mono-c" style="color:var(--muted)">2d ago</td></tr>
+              <tr><td class="mono-c">CB-3491772<br><span style="color:var(--muted);font-size:10.5px">7c12…a83f</span></td><td>Mei Lin<br><span style="color:var(--muted);font-size:11px">mei.l@…</span></td><td class="mono-c">2026-05-18</td><td class="num">5</td><td>Deluxe Double<br><span style="color:var(--muted);font-size:11px">Non-refundable</span></td><td class="num">£1,200.00</td><td><span class="pill green">paid</span></td><td class="mono-c" style="color:var(--muted)">3d ago</td></tr>
+              <tr><td class="mono-c">—<br><span style="color:var(--muted);font-size:10.5px">fa90…2114</span></td><td>Tom Albright<br><span style="color:var(--muted);font-size:11px">tom.a@…</span></td><td class="mono-c">2026-05-14</td><td class="num">2</td><td>Classic Single<br><span style="color:var(--muted);font-size:11px">Flexible</span></td><td class="num">£440.00</td><td><span class="pill red">failed</span></td><td class="mono-c" style="color:var(--muted)">3d ago</td></tr>
+              <tr><td class="mono-c">CB-3491650<br><span style="color:var(--muted);font-size:10.5px">5b22…e91d</span></td><td>Anya Volkov<br><span style="color:var(--muted);font-size:11px">anya.v@…</span></td><td class="mono-c">2026-04-28</td><td class="num">3</td><td>Master Suite<br><span style="color:var(--muted);font-size:11px">Non-refundable</span></td><td class="num">£980.00</td><td><span class="pill gray">cancelled</span></td><td class="mono-c" style="color:var(--muted)">9d ago</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Slide-over detail panel -->
+    <aside class="detail-pane open">
+      <div class="head">
+        <div>
+          <h2>Eleanor Whitfield</h2>
+          <div class="ref">CB-3491820 · order b3a1…f201</div>
+        </div>
+        <button class="btn ghost sm close">✕</button>
+      </div>
+
+      <div class="pane-section">
+        <h3>Stay</h3>
+        <div class="kv"><div class="k">Check-in</div><div class="v">2026-05-12 · from 4 PM</div></div>
+        <div class="kv"><div class="k">Check-out</div><div class="v">2026-05-15 · 3 nights</div></div>
+        <div class="kv"><div class="k">Room</div><div class="v">Master Suite</div></div>
+        <div class="kv"><div class="k">Rate plan</div><div class="v">Flexible — refundable to May 10</div></div>
+        <div class="kv"><div class="k">Guests</div><div class="v">2 adults · 1 child</div></div>
+      </div>
+
+      <div class="pane-section">
+        <h3>Guest</h3>
+        <div class="kv"><div class="k">Name</div><div class="v">Eleanor Whitfield</div></div>
+        <div class="kv"><div class="k">Email</div><div class="v">eleanor.whitfield@example.com</div></div>
+        <div class="kv"><div class="k">Phone</div><div class="v">+44 7700 900042</div></div>
+        <div class="kv"><div class="k">Country</div><div class="v">United Kingdom</div></div>
+        <div class="kv"><div class="k">Special requests</div><div class="v">Late check-in (after 9 PM)</div></div>
+      </div>
+
+      <div class="pane-section">
+        <h3>Folio</h3>
+        <div class="kv"><div class="k">Room (3 × £340)</div><div class="v num" style="font-family:'JetBrains Mono',monospace">£1,020.00</div></div>
+        <div class="kv"><div class="k">Continental Breakfast (× 3)</div><div class="v num" style="font-family:'JetBrains Mono',monospace">£60.00</div></div>
+        <div class="kv"><div class="k">Taxes &amp; fees</div><div class="v num" style="font-family:'JetBrains Mono',monospace">£60.00</div></div>
+        <div class="kv" style="font-weight:600"><div class="k">Total paid</div><div class="v num" style="font-family:'JetBrains Mono',monospace">£1,140.00</div></div>
+      </div>
+
+      <div class="pane-section">
+        <h3>Payment</h3>
+        <div class="kv"><div class="k">Method</div><div class="v">Visa •• 4242 · 12/27</div></div>
+        <div class="kv"><div class="k">Stripe PI</div><div class="v mono">pi_3OcK…1aBz</div></div>
+        <div class="kv"><div class="k">Application fee</div><div class="v num" style="font-family:'JetBrains Mono',monospace">£34.20</div></div>
+        <div class="kv"><div class="k">Cloudbeds folio</div><div class="v"><span class="pill green">synced</span></div></div>
+        <div class="kv"><div class="k">Confirmation email</div><div class="v"><span class="pill green">sent</span> · 6h ago</div></div>
+      </div>
+
+      <div class="actions-row">
+        <button class="btn">Resend confirmation</button>
+        <button class="btn">View on Stripe ↗</button>
+        <button class="btn">View on Cloudbeds ↗</button>
+        <button class="btn danger">Cancel · refund</button>
+      </div>
+    </aside>
+  </div>
+</section>
+
+<!-- ═══════════════ CONTENT ═══════════════ -->
+<section class="screen" id="content" data-screen="content">
+  <div class="shell">
+    <aside class="sidebar" data-side></aside>
+    <div class="main">
+      <div class="top">
+        <div>
+          <h1>Content &amp; copy</h1>
+          <div class="domain">Edit text shown on theporticohotel.com · saved live, no deploy required</div>
+        </div>
+        <div class="actions">
+          <button class="btn">Discard</button>
+          <button class="btn primary">Save changes</button>
+        </div>
+      </div>
+
+      <div class="grid-2-1">
+        <div class="stack">
+          <div class="card">
+            <div class="card-head"><h2>Hero</h2><span class="muted right" style="color:var(--muted);font-size:11.5px">shown above the fold on /</span></div>
+            <div class="card-body">
+              <div class="field"><label>Headline</label><input value="A quiet portico in Paddington."></div>
+              <div class="field"><label>Sub-headline</label><input value="Eight rooms behind a Georgian door, three minutes from the station."></div>
+              <div class="field"><label>Press quote</label><input value="“The most charming small hotel in West London” — Condé Nast Traveller"></div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-head"><h2>Neighbourhood</h2></div>
+            <div class="card-body">
+              <div class="grid-1-1">
+                <div class="field"><label>Eyebrow</label><input value="01 · Neighbourhood"></div>
+                <div class="field"><label>Title</label><input value="Behind a Paddington portico, the city quiets."></div>
+              </div>
+              <div class="field"><label>Body</label><textarea rows="3">Hyde Park is a six-minute stroll. Connaught Village's tea rooms and bookshops are closer still. Paddington Station — Heathrow Express, the Bakerloo, four mainline platforms — is three minutes on foot.</textarea></div>
+              <div class="field"><label>Nearby places</label><textarea rows="5">Hyde Park · 6 min walk
+Paddington Station · 3 min walk
+Connaught Village · 4 min walk
+Marble Arch · 12 min walk
+Notting Hill · 18 min walk</textarea><div class="hint">One per line · "Place · distance".</div></div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-head"><h2>Good to know</h2></div>
+            <div class="card-body">
+              <div class="grid-1-1">
+                <div class="field"><label>Check-in</label><input value="From 4:00 PM"></div>
+                <div class="field"><label>Check-out</label><input value="Until 11:00 AM"></div>
+                <div class="field"><label>Wifi</label><input value="Complimentary throughout"></div>
+                <div class="field"><label>Breakfast</label><input value="Continental, 7–10am"></div>
+                <div class="field"><label>Parking</label><input value="Street only — congestion zone"></div>
+                <div class="field"><label>Pets</label><input value="On request, £25/night"></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-head"><h2>Footer &amp; legal</h2></div>
+            <div class="card-body">
+              <div class="field"><label>Fine-print copy</label><textarea rows="2">Independently owned. Bookings made directly receive the lowest available rate.</textarea></div>
+              <div class="grid-1-1">
+                <div class="field"><label>Terms URL</label><input value="/terms"></div>
+                <div class="field"><label>Privacy URL</label><input value="/privacy"></div>
+                <div class="field"><label>Instagram</label><input value="https://instagram.com/theporticohotel"></div>
+                <div class="field"><label>Newsletter URL</label><input value="https://buttondown.email/portico"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="stack">
+          <div class="card">
+            <div class="card-head"><h2>Contact</h2></div>
+            <div class="card-body">
+              <div class="field"><label>Address</label><textarea rows="2">32 Sussex Gardens
+Paddington, London W2 1UJ</textarea></div>
+              <div class="field"><label>Phone</label><input value="+44 20 7402 0190"></div>
+              <div class="field"><label>Booking email</label><input value="stay@theporticohotel.com"></div>
+              <div class="field"><label>General email</label><input value="hello@theporticohotel.com"></div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-head"><h2>Last edits</h2></div>
+            <div class="card-body dense">
+              <div class="check"><span style="font-family:'JetBrains Mono',monospace; font-size: 11px; color: var(--muted)">May 02</span><span style="font-size:12px">Hero headline updated</span></div>
+              <div class="check"><span style="font-family:'JetBrains Mono',monospace; font-size: 11px; color: var(--muted)">Apr 27</span><span style="font-size:12px">Pet policy added</span></div>
+              <div class="check"><span style="font-family:'JetBrains Mono',monospace; font-size: 11px; color: var(--muted)">Apr 18</span><span style="font-size:12px">Neighbourhood body</span></div>
+              <div class="check"><span style="font-family:'JetBrains Mono',monospace; font-size: 11px; color: var(--muted)">Apr 12</span><span style="font-size:12px">Press quote added</span></div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-head"><h2>Preview</h2></div>
+            <div class="card-body" style="font-size:12px; color:var(--muted)">
+              Saved changes appear immediately on theporticohotel.com — no deploy needed.
+              <button class="btn" style="margin-top:10px; width:100%;">Open live preview ↗</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════ PHOTOS ═══════════════ -->
+<section class="screen" id="photos" data-screen="photos">
+  <div class="shell">
+    <aside class="sidebar" data-side></aside>
+    <div class="main">
+      <div class="top">
+        <div>
+          <h1>Photos &amp; media</h1>
+          <div class="domain">24 photos · hosted on Cloudflare R2 · auto-resized to hero/gallery/thumb variants</div>
+        </div>
+        <div class="actions">
+          <button class="btn primary">+ Upload photos</button>
+        </div>
+      </div>
+
+      <div class="toolbar">
+        <button class="btn sm">All 24</button>
+        <button class="btn sm">Hero · 4</button>
+        <button class="btn sm">Gallery · 8</button>
+        <button class="btn sm">Rooms · 12</button>
+        <button class="btn sm">Neighbourhood · 0</button>
+        <div class="right">
+          <span class="mono" style="font-size:11px; color:var(--muted)">storage 12.4 / 100 MB</span>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><h2>Hero &amp; marketing</h2><span class="right" style="color:var(--muted);font-size:11.5px">shown on /</span></div>
+        <div class="card-body">
+          <div class="photo-grid">
+            <div class="photo"><span class="label">hero · facade dusk</span></div>
+            <div class="photo alt-1"><span class="label">hero · drawing room</span></div>
+            <div class="photo alt-2"><span class="label">gallery · stairs</span></div>
+            <div class="photo alt-3"><span class="label">gallery · wardrobe</span></div>
+            <div class="photo alt-4"><span class="label">gallery · tea</span></div>
+            <div class="photo alt-5"><span class="label">gallery · window</span></div>
+            <div class="photo"><span class="label">gallery · garden</span></div>
+            <div class="upload"><div class="plus">+</div><div>Drop or click</div></div>
+          </div>
+        </div>
+      </div>
+
+      <div style="height:16px"></div>
+
+      <div class="card">
+        <div class="card-head"><h2>Per-room galleries</h2><span class="right" style="color:var(--muted);font-size:11.5px">drag a photo into a room to assign</span></div>
+        <div class="card-body" style="padding-bottom: 4px">
+          <h3 style="font-size:12px; font-weight:600; margin-bottom:8px">Master Suite <span style="font-weight:400; color:var(--muted); font-family:'JetBrains Mono',monospace; font-size:11px">· 4 photos</span></h3>
+          <div class="photo-grid"><div class="photo alt-1"><span class="label">hero</span></div><div class="photo alt-2"><span class="label">detail</span></div><div class="photo alt-3"><span class="label">bath</span></div><div class="photo alt-4"><span class="label">view</span></div><div class="upload"><div class="plus">+</div><div>Add</div></div></div>
+          <div style="height:16px"></div>
+          <h3 style="font-size:12px; font-weight:600; margin-bottom:8px">Deluxe Double <span style="font-weight:400; color:var(--muted); font-family:'JetBrains Mono',monospace; font-size:11px">· 4 photos</span></h3>
+          <div class="photo-grid"><div class="photo alt-3"><span class="label">hero</span></div><div class="photo alt-4"><span class="label">detail</span></div><div class="photo alt-5"><span class="label">bath</span></div><div class="photo"><span class="label">view</span></div><div class="upload"><div class="plus">+</div><div>Add</div></div></div>
+          <div style="height:16px"></div>
+          <h3 style="font-size:12px; font-weight:600; margin-bottom:8px">Classic Single <span style="font-weight:400; color:var(--muted); font-family:'JetBrains Mono',monospace; font-size:11px">· 4 photos</span></h3>
+          <div class="photo-grid"><div class="photo alt-2"><span class="label">hero</span></div><div class="photo alt-1"><span class="label">detail</span></div><div class="photo alt-4"><span class="label">bath</span></div><div class="photo alt-5"><span class="label">view</span></div><div class="upload"><div class="plus">+</div><div>Add</div></div></div>
+          <div style="height:8px"></div>
+        </div>
+      </div>
+
+      <div class="note" style="margin-top:14px">
+        <strong style="color:var(--ink-2)">Why R2 not Cloudbeds:</strong> Cloudbeds REST doesn't reliably expose room imagery, and what's there is sized for their booking widget. Self-hosted = bespoke crops, multiple resolutions, swap a hero without touching the PMS. Upload here → CDN-served on the hotel's domain → bespoke React reads via property config.
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════ RATES ═══════════════ -->
+<section class="screen" id="rates" data-screen="rates">
+  <div class="shell">
+    <aside class="sidebar" data-side></aside>
+    <div class="main">
+      <div class="top">
+        <div>
+          <h1>Rate plans</h1>
+          <div class="domain">8 rate plans · synced from Cloudbeds · admin-editable: refundability, supporting note, inclusions, display order</div>
+        </div>
+        <div class="actions">
+          <button class="btn">Re-sync from Cloudbeds</button>
+        </div>
+      </div>
+
+      <p class="note" style="margin: 0 0 16px">Click a row to edit. CB-side rate name &amp; price stay authoritative — admin only edits display + policy.</p>
+
+      <div class="rate-row open">
+        <div class="rate-row-head">
+          <span class="chevron">›</span>
+          <div><div class="name">Flexible Room Only</div><div class="id">CB rateID 1124 · roomTypeID 8821</div></div>
+          <div style="margin-left:auto; display:flex; gap:6px;"><span class="pill green">refundable</span><span class="mono" style="font-size:11px; color:var(--muted)">order 0</span></div>
+        </div>
+        <div class="rate-row-body">
+          <div class="grid-1-1">
+            <div class="field"><label>Refundable</label><select><option selected>Yes — guest can cancel</option><option>No — non-refundable</option></select></div>
+            <div class="field"><label>Free-cancel deadline (hours before arrival)</label><input type="number" value="48"></div>
+          </div>
+          <div class="field"><label>Supporting note (shown under rate name on /rooms)</label><input value="Free cancellation up to 48h before arrival."><div class="hint">Replaces the regex pattern in <code>rate-plan-notes.ts</code>.</div></div>
+          <div class="grid-1-1">
+            <div class="field"><label>Includes</label><div style="display:flex; gap:14px; padding-top:4px"><label class="checkbox"><input type="checkbox"> Breakfast</label><label class="checkbox"><input type="checkbox"> Parking</label><label class="checkbox"><input type="checkbox"> Welcome drink</label></div></div>
+            <div class="field"><label>Display order</label><input type="number" value="0"><div class="hint">Lower = higher in the rate ladder.</div></div>
+          </div>
+          <div style="display:flex; gap:6px; margin-top:8px;"><button class="btn primary sm">Save</button><span class="note" style="margin:0">Last edit · 2026-04-22</span></div>
+        </div>
+      </div>
+
+      <div class="rate-row">
+        <div class="rate-row-head"><span class="chevron">›</span><div><div class="name">Flexible + Breakfast</div><div class="id">CB rateID 1125 · roomTypeID 8821</div></div><div style="margin-left:auto; display:flex; gap:6px;"><span class="pill green">refundable</span><span class="pill blue">breakfast</span></div></div>
+      </div>
+      <div class="rate-row">
+        <div class="rate-row-head"><span class="chevron">›</span><div><div class="name">Non-refundable Room Only</div><div class="id">CB rateID 1126 · roomTypeID 8821</div></div><div style="margin-left:auto; display:flex; gap:6px;"><span class="pill gray">non-refundable</span></div></div>
+      </div>
+      <div class="rate-row">
+        <div class="rate-row-head"><span class="chevron">›</span><div><div class="name">Portico Saver</div><div class="id">CB rateID 1127 · roomTypeID 8821</div></div><div style="margin-left:auto; display:flex; gap:6px;"><span class="pill gray">non-refundable</span></div></div>
+      </div>
+      <div class="rate-row">
+        <div class="rate-row-head"><span class="chevron">›</span><div><div class="name">Direct Rate — 72h cancellation</div><div class="id">CB rateID 1130 · roomTypeID 8822</div></div><div style="margin-left:auto; display:flex; gap:6px;"><span class="pill green">refundable</span></div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════ CLOUDBEDS ═══════════════ -->
+<section class="screen" id="cloudbeds" data-screen="cloudbeds">
+  <div class="shell">
+    <aside class="sidebar" data-side></aside>
+    <div class="main">
+      <div class="top">
+        <div>
+          <h1>Cloudbeds <span class="badge"><span class="dot" style="width:6px;height:6px;border-radius:50%;background:currentColor;display:inline-block"></span>connected</span></h1>
+          <div class="domain">propertyID 302817 · token refreshes auto · 720 inventory rows synced</div>
+        </div>
+        <div class="actions">
+          <button class="btn">Re-authorise</button>
+          <button class="btn primary">Sync now</button>
+        </div>
+      </div>
+
+      <div class="grid-2">
+        <div class="stack">
+          <div class="card">
+            <div class="card-head"><h2>Inventory sync</h2><span class="right" style="font-size:11px; color:var(--muted); font-family:'JetBrains Mono',monospace">cron · 0 */6 * * *</span></div>
+            <div class="card-body dense">
+              <div class="kv"><div class="k">Last sync</div><div class="v">2026-05-07 09:14 UTC <span style="color:var(--muted)">· 4.1s · 720 rows</span></div></div>
+              <div class="kv"><div class="k">Next scheduled</div><div class="v">in 2h 47m</div></div>
+              <div class="kv"><div class="k">Cold-start fire-and-forget</div><div class="v"><span class="pill green">enabled</span></div></div>
+              <div class="kv"><div class="k">Cache</div><div class="v"><code>availability:portico</code> · revalidate 30s</div></div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-head"><h2>Recent runs</h2></div>
+            <div class="card-body dense">
+              <table>
+                <thead><tr><th>When</th><th>Trigger</th><th>Result</th><th class="num">Duration</th></tr></thead>
+                <tbody>
+                  <tr><td class="mono-c" style="color:var(--muted)">9:14 UTC</td><td>cron</td><td><span class="pill green">ok · 720 rows · 0 deleted</span></td><td class="num">4.1s</td></tr>
+                  <tr><td class="mono-c" style="color:var(--muted)">7:32 UTC</td><td>webhook · reservation/created</td><td><span class="pill green">ok</span></td><td class="num">2.8s</td></tr>
+                  <tr><td class="mono-c" style="color:var(--muted)">3:14 UTC</td><td>cron</td><td><span class="pill green">ok · 720 rows</span></td><td class="num">3.9s</td></tr>
+                  <tr><td class="mono-c" style="color:var(--muted)">21:14 UTC</td><td>cron · prev day</td><td><span class="pill green">ok</span></td><td class="num">4.0s</td></tr>
+                  <tr><td class="mono-c" style="color:var(--muted)">15:14 UTC</td><td>cron · prev day</td><td><span class="pill green">ok</span></td><td class="num">3.7s</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <div class="stack">
+          <div class="card">
+            <div class="card-head"><h2>Connection</h2></div>
+            <div class="card-body dense">
+              <div class="kv"><div class="k">Property ID</div><div class="v mono">302817</div></div>
+              <div class="kv"><div class="k">OAuth</div><div class="v"><span class="pill green">connected</span></div></div>
+              <div class="kv"><div class="k">Token expires</div><div class="v mono">2026-05-08 14:22 UTC</div></div>
+              <div class="kv"><div class="k">Auto-refresh</div><div class="v"><span class="pill green">enabled</span></div></div>
+              <div class="kv"><div class="k">Scopes</div><div class="v" style="font-family:'JetBrains Mono',monospace; font-size:10.5px; line-height:1.6">read:addon read:hotel read:rate write:rate read:reservation write:reservation read:room read:guest write:guest read:taxesAndFees read:user</div></div>
+            </div>
+            <div class="card-body" style="border-top:1px solid var(--border-soft); display:flex; gap:6px;">
+              <button class="btn sm">Re-authorise</button>
+              <button class="btn sm danger">Disconnect</button>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-head"><h2>Webhooks</h2></div>
+            <div class="card-body dense">
+              <div class="kv"><div class="k">Endpoint</div><div class="v mono" style="font-size:10.5px">…/api/cloudbeds/webhooks/0a8f9c…</div></div>
+              <div class="kv"><div class="k">Last event</div><div class="v">7:32 UTC <span style="color:var(--muted)">· 35.93.165.6</span></div></div>
+            </div>
+            <div class="card-body dense" style="border-top:1px solid var(--border-soft)">
+              <div class="check"><span class="dot" style="background:var(--green); width:6px; height:6px"></span><span>reservation/created</span><span class="meta">subscribed</span></div>
+              <div class="check"><span class="dot" style="background:var(--green); width:6px; height:6px"></span><span>reservation/modified</span><span class="meta">subscribed</span></div>
+              <div class="check"><span class="dot" style="background:var(--green); width:6px; height:6px"></span><span>reservation/cancelled</span><span class="meta">subscribed</span></div>
+              <div class="check"><span class="dot" style="background:var(--green); width:6px; height:6px"></span><span>availability/closeout_changed</span><span class="meta">subscribed</span></div>
+              <div class="check"><span class="dot" style="background:var(--green); width:6px; height:6px"></span><span>api_queue_task/rate_status_changed</span><span class="meta">subscribed</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════ STRIPE ═══════════════ -->
+<section class="screen" id="stripe" data-screen="stripe">
+  <div class="shell">
+    <aside class="sidebar" data-side></aside>
+    <div class="main">
+      <div class="top">
+        <div>
+          <h1>Stripe &amp; payouts <span class="badge"><span class="dot" style="width:6px;height:6px;border-radius:50%;background:currentColor;display:inline-block"></span>active</span></h1>
+          <div class="domain">acct_1Q…ZxYa · Standard · GBP · United Kingdom</div>
+        </div>
+        <div class="actions">
+          <button class="btn">Open in Stripe ↗</button>
+        </div>
+      </div>
+
+      <h3 style="font-size:11px; text-transform:uppercase; letter-spacing:0.06em; color:var(--muted); font-weight:500; margin-bottom:8px">Your platform</h3>
+      <div class="stat-grid">
+        <div class="stat"><div class="label">Fees · 30d</div><div class="value">£241.40</div><div class="delta">3% of £8,047 · your revenue</div></div>
+        <div class="stat"><div class="label">Platform balance</div><div class="value">£182.10</div><div class="delta">pending payout to you</div></div>
+        <div class="stat"><div class="label">Last platform payout</div><div class="value">£420.80</div><div class="delta">Apr 28 · weekly</div></div>
+        <div class="stat"><div class="label">Bookings (this hotel · 30d)</div><div class="value">38</div><div class="delta">£241.40 fees collected</div></div>
+      </div>
+
+      <h3 style="font-size:11px; text-transform:uppercase; letter-spacing:0.06em; color:var(--muted); font-weight:500; margin: 16px 0 8px">Hotel side · read-only</h3>
+      <p class="note" style="margin: 0 0 12px">The hotel owns this account. Money settles to their bank, not yours. You see this via the connected-account API.</p>
+
+      <div class="grid-2">
+        <div class="stack">
+          <div class="card">
+            <div class="card-head"><h2>Their recent payouts</h2></div>
+            <div class="card-body dense">
+              <table>
+                <thead><tr><th>Date</th><th class="num">Amount</th><th>Bookings</th><th>Status</th></tr></thead>
+                <tbody>
+                  <tr><td class="mono-c">2026-05-02</td><td class="num">£3,640.00</td><td>11</td><td><span class="pill green">paid</span></td></tr>
+                  <tr><td class="mono-c">2026-04-25</td><td class="num">£4,120.00</td><td>14</td><td><span class="pill green">paid</span></td></tr>
+                  <tr><td class="mono-c">2026-04-18</td><td class="num">£2,880.00</td><td>9</td><td><span class="pill green">paid</span></td></tr>
+                  <tr><td class="mono-c">2026-04-11</td><td class="num">£3,210.00</td><td>10</td><td><span class="pill green">paid</span></td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-head"><h2>Failed Flex auto-charges</h2><span class="right" style="font-size:11.5px;color:var(--muted)">Phase 5 · not started</span></div>
+            <div class="alert ok-state">No failures. When the auto-charge cron can't take a card on cutoff, it'll land here with a "send re-auth link" action and 24h grace timer.</div>
+          </div>
+
+          <div class="card">
+            <div class="card-head"><h2>Refunds issued</h2></div>
+            <div class="card-body dense">
+              <table>
+                <thead><tr><th>Booking</th><th>Guest</th><th class="num">Amount</th><th>Reason</th><th>Date</th></tr></thead>
+                <tbody>
+                  <tr><td class="mono-c">CB-3491650</td><td>Anya Volkov</td><td class="num">£980.00</td><td>Guest cancellation (NR · goodwill)</td><td class="mono-c" style="color:var(--muted)">Apr 28</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <div class="stack">
+          <div class="card">
+            <div class="card-head"><h2>Account</h2></div>
+            <div class="card-body dense">
+              <div class="kv"><div class="k">Account ID</div><div class="v mono">acct_1Q…ZxYa</div></div>
+              <div class="kv"><div class="k">Type</div><div class="v">Standard</div></div>
+              <div class="kv"><div class="k">Country</div><div class="v">United Kingdom</div></div>
+              <div class="kv"><div class="k">Default currency</div><div class="v">GBP</div></div>
+              <div class="kv"><div class="k">Capabilities</div><div class="v"><span class="pill green">card_payments</span> <span class="pill green">transfers</span></div></div>
+              <div class="kv"><div class="k">Requirements</div><div class="v"><span class="pill green">none</span></div></div>
+              <div class="kv"><div class="k">Platform fee</div><div class="v">3.00%</div></div>
+              <div class="kv"><div class="k">Their payout schedule</div><div class="v">Weekly · Friday</div></div>
+              <div class="kv"><div class="k">Their next payout</div><div class="v num" style="font-family:'JetBrains Mono',monospace">£3,820.00 · Fri May 09</div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════ DOMAIN ═══════════════ -->
+<section class="screen" id="domain" data-screen="domain">
+  <div class="shell">
+    <aside class="sidebar" data-side></aside>
+    <div class="main">
+      <div class="top">
+        <div>
+          <h1>Domain &amp; deploy</h1>
+          <div class="domain">theporticohotel.com · live · main @ 47e472a · Railway service portico-prod</div>
+        </div>
+        <div class="actions">
+          <button class="btn">Preview ↗</button>
+          <button class="btn">Open site ↗</button>
+        </div>
+      </div>
+
+      <div class="grid-2">
+        <div class="stack">
+          <div class="card">
+            <div class="card-head"><h2>Domain</h2></div>
+            <div class="card-body">
+              <div class="field"><label>Custom domain</label><input value="theporticohotel.com"></div>
+            </div>
+            <div class="card-body dense" style="border-top:1px solid var(--border-soft)">
+              <div class="kv"><div class="k">DNS resolves</div><div class="v"><span class="pill green">CNAME → 76-76-21-21.railway.app</span></div></div>
+              <div class="kv"><div class="k">SSL</div><div class="v"><span class="pill green">valid</span> · expires 2026-08-04</div></div>
+              <div class="kv"><div class="k">Preview URL</div><div class="v mono">booking-engine-portico.up.railway.app</div></div>
+              <div class="kv"><div class="k">Last health check</div><div class="v">4 min ago · 200 OK · 142ms</div></div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-head"><h2>DNS records to set at Cloudflare</h2></div>
+            <div class="card-body">
+              <div class="dns">
+<span class="k">type</span>     <span class="v">CNAME</span><br>
+<span class="k">name</span>     <span class="v">www</span><br>
+<span class="k">target</span>   <span class="v">76-76-21-21.railway.app</span><br>
+<span class="k">ttl</span>      <span class="v">auto</span><br>
+<span class="k">proxy</span>    <span class="v">DNS only</span>
+              </div>
+              <div style="height:8px"></div>
+              <p class="note" style="margin:0">Apex (theporticohotel.com) → ALIAS / ANAME if registrar supports, else 301 redirect to www.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="stack">
+          <div class="card">
+            <div class="card-head"><h2>Deploy</h2></div>
+            <div class="card-body dense">
+              <div class="kv"><div class="k">Railway service</div><div class="v">portico-prod</div></div>
+              <div class="kv"><div class="k">Theme env</div><div class="v"><code>portico-ivory</code></div></div>
+              <div class="kv"><div class="k">Front-end source</div><div class="v"><code>src/hotels/portico/</code></div></div>
+              <div class="kv"><div class="k">Last deploy</div><div class="v">2026-05-06 18:02 <span style="color:var(--muted)">· main @ 47e472a</span></div></div>
+              <div class="kv"><div class="k">Build status</div><div class="v"><span class="pill green">ok · 92s</span></div></div>
+            </div>
+            <div class="card-body" style="border-top:1px solid var(--border-soft)">
+              <p class="note" style="margin:0 0 8px">The bespoke design lives in <code>src/hotels/portico/</code> or extends a template. Theme is read-only here — change it by editing code, not from admin.</p>
+              <button class="btn sm">View on GitHub ↗</button>
+              <button class="btn sm">View on Railway ↗</button>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-head"><h2>Recent deploys</h2></div>
+            <div class="card-body dense">
+              <div class="check"><span class="dot" style="background:var(--green); width:8px; height:8px"></span><span class="grow"><span class="mono" style="font-size:11px">47e472a</span> · Portico mobile overflow fixes</span><span class="meta">May 06</span></div>
+              <div class="check"><span class="dot" style="background:var(--green); width:8px; height:8px"></span><span class="grow"><span class="mono" style="font-size:11px">572d90b</span> · Portico Ivory long-scroll</span><span class="meta">May 06</span></div>
+              <div class="check"><span class="dot" style="background:var(--green); width:8px; height:8px"></span><span class="grow"><span class="mono" style="font-size:11px">f70b536</span> · Stripe Connect step 11+12</span><span class="meta">May 04</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════ ALERTS ═══════════════ -->
+<section class="screen" id="alerts" data-screen="alerts">
+  <div class="shell">
+    <aside class="sidebar" data-side></aside>
+    <div class="main">
+      <div class="top">
+        <div>
+          <h1>Alerts</h1>
+          <div class="domain">Auto-generated from operational signals · Marina Boutique example shown · The Portico Hotel currently has 0 alerts</div>
+        </div>
+        <div class="actions">
+          <button class="btn">Mark all read</button>
+        </div>
+      </div>
+
+      <div class="toolbar">
+        <button class="btn sm">All 4</button>
+        <button class="btn sm">Critical 2</button>
+        <button class="btn sm">Warning 2</button>
+        <button class="btn sm">Info 0</button>
+        <div class="right">
+          <button class="btn sm">Open only</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-body dense">
+          <div class="alert danger">
+            <span class="icon">!</span>
+            <div class="body">
+              <div class="title">No webhook activity in 36h</div>
+              <div class="desc">Last event 2026-05-05 22:11 UTC. Inventory may be stale. Manual resync recommended. <span class="mono">cb-302817</span></div>
+            </div>
+            <div class="actions">
+              <button class="btn sm primary">Sync now</button>
+              <button class="btn ghost sm">✕</button>
+            </div>
+          </div>
+          <div class="alert danger">
+            <span class="icon">!</span>
+            <div class="body">
+              <div class="title">postReservation failed (orderId 4f10…)</div>
+              <div class="desc">Stripe charged £1,200 but Cloudbeds returned 503. Booking left in <code>pending</code> state. Money taken, no PMS reservation. <span class="mono">CB returned 503 · Service Unavailable</span></div>
+            </div>
+            <div class="actions">
+              <button class="btn sm primary">Resolve</button>
+              <button class="btn ghost sm">✕</button>
+            </div>
+          </div>
+          <div class="alert warn">
+            <span class="icon">!</span>
+            <div class="body">
+              <div class="title">2 dropped extras on reservation CB-2200194</div>
+              <div class="desc">Continental Breakfast × 2 failed to attach. Money taken on the room, folio incomplete on hotel side.</div>
+            </div>
+            <div class="actions">
+              <button class="btn sm">Retry</button>
+              <button class="btn ghost sm">✕</button>
+            </div>
+          </div>
+          <div class="alert warn">
+            <span class="icon">!</span>
+            <div class="body">
+              <div class="title">Cloudbeds token expires in 5 days</div>
+              <div class="desc">Auto-refresh should handle it but worth a glance. <span class="mono">expires 2026-05-12 14:22 UTC</span></div>
+            </div>
+            <div class="actions">
+              <button class="btn ghost sm">✕</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <p class="note" style="margin-top:14px">
+        Each alert is auto-generated from concrete signals: webhook timeout, <code>postReservation</code> 5xx, <code>postCustomItem</code> failure, expiring tokens, Stripe restrictions. Each one points at a specific action — never decoration.
+      </p>
+    </div>
+  </div>
+</section>
+
+<script>
+// ───────── data ─────────
+const HOTELS = [
+  { id: 'portico', name: 'The Portico Hotel', domain: 'theporticohotel.com', loc: 'Paddington, London', currency: 'GBP', pills: [['green','live'],['green','cloudbeds'],['green','stripe']], b7: 14, r7: '£8,420', alerts: 0, ck: '11/11', av: 'P' },
+  { id: 'kensington', name: 'The Kensington Arms', domain: 'kensingtonarms.co.uk', loc: 'Kensington', currency: 'GBP', pills: [['green','live'],['green','cloudbeds'],['amber','stripe restricted']], b7: 9, r7: '£5,180', alerts: 2, ck: '10/11', av: 'K' },
+  { id: 'urbanstay', name: 'UrbanStay Apartments', domain: 'urbanstay.example', loc: 'Berlin, DE', currency: 'EUR', pills: [['amber','setup'],['red','cloudbeds'],['gray','stripe']], b7: 0, r7: '—', alerts: 0, ck: '4/11', av: 'U' },
+  { id: 'warwick', name: 'House on Warwick', domain: 'houseonwarwick.com', loc: 'Bath, UK', currency: 'GBP', pills: [['green','live'],['green','cloudbeds'],['green','stripe']], b7: 6, r7: '£3,940', alerts: 0, ck: '11/11', av: 'W' },
+  { id: 'marina', name: 'Marina Boutique', domain: 'marinaboutique.ae', loc: 'Dubai Marina', currency: 'AED', pills: [['green','live'],['red','webhook stale'],['green','stripe']], b7: 22, r7: 'AED 41,200', alerts: 4, ck: '11/11', av: 'M' },
+  { id: 'edinburgh', name: 'Edinburgh Townhouse', domain: 'edinburghtownhouse.scot', loc: 'New Town', currency: 'GBP', pills: [['blue','pre-launch'],['green','cloudbeds'],['amber','stripe pending']], b7: 0, r7: '—', alerts: 0, ck: '8/11', av: 'E' },
+];
+
+// ───────── render dashboard tiles ─────────
+const tilesEl = document.getElementById('tiles');
+tilesEl.innerHTML = HOTELS.map(h => `
+  <div class="tile" data-hotel="${h.id}">
+    <div class="tile-head">
+      <div>
+        <div class="tile-name">${h.name}</div>
+        <div class="tile-domain">${h.domain}</div>
+      </div>
+      ${h.alerts ? `<span class="alert-badge pill red">${h.alerts} alert${h.alerts===1?'':'s'}</span>` : ''}
+    </div>
+    <div class="tile-pills">${h.pills.map(p => `<span class="pill ${p[0]}"><span class="dot"></span>${p[1]}</span>`).join('')}</div>
+    <div class="tile-stats">
+      <div><span class="num">${h.b7}</span> bookings · 7d</div>
+      <div><span class="num">${h.r7}</span> revenue · 7d</div>
+      <div class="right-meta" style="color:${h.ck === '11/11' ? 'var(--green)' : 'var(--amber)'}">${h.ck}</div>
+    </div>
+  </div>
+`).join('');
+
+// click tile → open overview
+tilesEl.querySelectorAll('.tile').forEach(t => {
+  t.addEventListener('click', () => show('overview'));
+});
+
+// ───────── render sidebar into each hotel screen ─────────
+function sidebarHTML(activeScreen) {
+  const items = [
+    { group: 'Property', items: [
+      { id: 'overview', ico: '◉', label: 'Overview' },
+      { id: 'bookings', ico: '▤', label: 'Bookings', count: 14 },
+      { id: 'content', ico: '¶', label: 'Content' },
+      { id: 'photos', ico: '▣', label: 'Photos', count: 24 },
+      { id: 'rates', ico: '≡', label: 'Rate plans', count: 8 },
+      { id: 'alerts', ico: '⇄', label: 'Alerts', count: 0 },
+    ]},
+    { group: 'Integrations', items: [
+      { id: 'cloudbeds', ico: '●', label: 'Cloudbeds' },
+      { id: 'stripe', ico: '$', label: 'Stripe' },
+      { id: 'domain', ico: '⌘', label: 'Domain & deploy' },
+    ]},
+  ];
+  return `
+    <div class="switcher-card" data-go="dashboard">
+      <div class="av">P</div>
+      <div class="name">The Portico Hotel</div>
+      <div class="chev">⇅</div>
+    </div>
+    ${items.map(g => `
+      <div class="nav-section">
+        <div class="nav-label">${g.group}</div>
+        ${g.items.map(it => `
+          <div class="nav-item ${activeScreen === it.id ? 'active' : ''}" data-go="${it.id}">
+            <span class="ico">${it.ico}</span>${it.label}
+            ${it.count !== undefined ? `<span class="count ${it.id === 'alerts' && it.count > 0 ? 'alert' : ''}">${it.count}</span>` : ''}
+          </div>
+        `).join('')}
+      </div>
+    `).join('')}
+    <div class="nav-section">
+      <div class="nav-label">Other</div>
+      <div class="nav-item"><span class="ico">↗</span>Open site</div>
+      <div class="nav-item"><span class="ico">⏵</span>Preview as guest</div>
+    </div>
+    <div class="sidebar-footer">
+      <div class="user"><div class="av"></div><div>karol@rockenue.com</div></div>
+    </div>
+  `;
+}
+
+document.querySelectorAll('aside.sidebar[data-side]').forEach(el => {
+  const screen = el.closest('.screen').dataset.screen;
+  el.innerHTML = sidebarHTML(screen);
+  el.querySelectorAll('[data-go]').forEach(item => {
+    item.addEventListener('click', () => show(item.dataset.go));
+  });
+});
+
+// ───────── switcher ─────────
+const buttons = document.querySelectorAll('.switcher button');
+const screens = document.querySelectorAll('.screen');
+function show(id) {
+  buttons.forEach(b => b.classList.toggle('active', b.dataset.s === id));
+  screens.forEach(s => s.classList.toggle('active', s.id === id));
+  history.replaceState(null, '', '#' + id);
+  window.scrollTo({ top: 0, behavior: 'instant' });
+}
+buttons.forEach(b => b.addEventListener('click', () => show(b.dataset.s)));
+const init = location.hash.replace('#', '') || 'overview';
+show(init);
+
+// detail pane close
+document.querySelectorAll('.detail-pane .close').forEach(b => {
+  b.addEventListener('click', () => b.closest('.detail-pane').classList.remove('open'));
+});
+
+// rate row toggle
+document.querySelectorAll('.rate-row-head').forEach(h => {
+  h.addEventListener('click', () => h.parentElement.classList.toggle('open'));
+});
+</script>
+
+</body>
+</html>

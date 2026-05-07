@@ -1,0 +1,1218 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Admin — Booking Engine</title>
+<style>
+  :root {
+    --bg: #F2F2F2;
+    --surface: #FFFFFF;
+    --border: #E5E0D8;
+    --border-soft: #EFEAE0;
+    --ink: #1A1A1A;
+    --ink-2: #4B5563;
+    --muted: #6B7280;
+    --navy: #2C3E50;
+    --navy-soft: #34495E;
+    --green: #059669;
+    --green-soft: #D1FAE5;
+    --amber: #B45309;
+    --amber-soft: #FEF3C7;
+    --red: #B91C1C;
+    --red-soft: #FEE2E2;
+    --blue: #1D4ED8;
+    --blue-soft: #DBEAFE;
+    --link: #2563EB;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+    font-size: 14px;
+    color: var(--ink);
+    background: var(--bg);
+    line-height: 1.5;
+  }
+  a { color: var(--link); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  button { font-family: inherit; cursor: pointer; }
+
+  /* Topbar */
+  .topbar {
+    background: #fff;
+    border-bottom: 1px solid var(--border);
+    padding: 0 24px;
+    height: 56px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: sticky; top: 0; z-index: 50;
+  }
+  .topbar .brand { font-weight: 600; font-size: 15px; letter-spacing: -0.01em; }
+  .topbar .brand .muted { color: var(--muted); font-weight: 400; margin-left: 8px; }
+  .topbar .right { display: flex; align-items: center; gap: 16px; color: var(--muted); font-size: 13px; }
+  .topbar .right .pill { background: var(--bg); padding: 4px 10px; border-radius: 999px; font-size: 12px; }
+
+  /* Layout */
+  main { max-width: 1240px; margin: 0 auto; padding: 28px 24px 80px; }
+  h1 { font-size: 22px; font-weight: 600; letter-spacing: -0.01em; margin: 0 0 4px; }
+  h2 { font-size: 16px; font-weight: 600; margin: 0 0 12px; }
+  h3 { font-size: 13px; font-weight: 600; margin: 0 0 8px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-2); }
+  .lead { color: var(--muted); margin: 0 0 20px; }
+  .row { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
+  .grow { flex: 1; }
+  .right { margin-left: auto; }
+  .muted { color: var(--muted); }
+
+  /* Pills */
+  .pill {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 3px 9px; border-radius: 999px;
+    font-size: 11.5px; font-weight: 500;
+    border: 1px solid transparent;
+  }
+  .pill.dot::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; display: inline-block; }
+  .pill.green { background: var(--green-soft); color: var(--green); }
+  .pill.amber { background: var(--amber-soft); color: var(--amber); }
+  .pill.red { background: var(--red-soft); color: var(--red); }
+  .pill.blue { background: var(--blue-soft); color: var(--blue); }
+  .pill.gray { background: #F3F4F6; color: var(--muted); }
+
+  /* Buttons */
+  .btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 7px 14px; border-radius: 4px;
+    border: 1px solid var(--border);
+    background: #fff;
+    font-size: 13px; font-weight: 500;
+    color: var(--ink);
+  }
+  .btn:hover { background: var(--bg); }
+  .btn.primary { background: var(--navy); color: #fff; border-color: var(--navy); }
+  .btn.primary:hover { background: var(--navy-soft); }
+  .btn.danger { color: var(--red); border-color: var(--red-soft); }
+  .btn.sm { padding: 4px 10px; font-size: 12px; }
+  .btn.ghost { border-color: transparent; }
+  .btn.ghost:hover { background: var(--bg); }
+
+  /* Cards */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    overflow: hidden;
+  }
+  .card-head {
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--border-soft);
+    display: flex; align-items: center; gap: 12px;
+  }
+  .card-body { padding: 16px; }
+  .card-body.dense { padding: 0; }
+
+  /* Tile grid */
+  .tile-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  .tile {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 16px;
+    cursor: pointer;
+    transition: box-shadow .15s, transform .15s;
+  }
+  .tile:hover {
+    box-shadow: 0 8px 24px rgba(0,0,0,.06);
+    transform: translateY(-1px);
+  }
+  .tile-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+  .tile-name { font-weight: 600; letter-spacing: -0.005em; }
+  .tile-domain { color: var(--muted); font-size: 12.5px; margin-top: 2px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .tile-pills { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 12px; }
+  .tile-stats {
+    display: flex; gap: 14px;
+    margin-top: 14px; padding-top: 12px;
+    border-top: 1px solid var(--border-soft);
+    font-size: 12.5px;
+    color: var(--muted);
+  }
+  .tile-stats .num { color: var(--ink); font-weight: 600; }
+
+  /* Workspace */
+  .ws-head {
+    display: flex; align-items: center; gap: 12px;
+    margin-bottom: 18px;
+  }
+  .ws-back { font-size: 13px; color: var(--muted); cursor: pointer; }
+  .ws-back:hover { color: var(--ink); }
+  .ws-title { font-size: 22px; font-weight: 600; letter-spacing: -0.01em; }
+  .ws-domain { color: var(--muted); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; }
+
+  /* Tabs */
+  .tabs {
+    display: flex; gap: 0;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 24px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .tabs::-webkit-scrollbar { display: none; }
+  .tab {
+    padding: 10px 16px;
+    font-size: 13px;
+    color: var(--muted);
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+    white-space: nowrap;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .tab:hover { color: var(--ink); }
+  .tab.active { color: var(--ink); border-bottom-color: var(--navy); font-weight: 500; }
+  .tab .count { background: var(--bg); border-radius: 999px; padding: 1px 7px; font-size: 11px; font-weight: 500; }
+  .tab.has-alert .count { background: var(--red-soft); color: var(--red); }
+
+  /* Two-col workspace layout */
+  .ws-grid { display: grid; grid-template-columns: 2fr 1fr; gap: 16px; align-items: start; }
+  @media (max-width: 900px) { .ws-grid { grid-template-columns: 1fr; } }
+
+  /* Checklist */
+  .checklist { list-style: none; padding: 0; margin: 0; }
+  .checklist li {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--border-soft);
+    font-size: 13.5px;
+  }
+  .checklist li:last-child { border-bottom: none; }
+  .checklist .icon {
+    width: 18px; height: 18px;
+    border-radius: 50%;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: 700; flex-shrink: 0;
+  }
+  .checklist .icon.done { background: var(--green-soft); color: var(--green); }
+  .checklist .icon.todo { background: #F3F4F6; color: var(--muted); border: 1px solid var(--border); }
+  .checklist .icon.warn { background: var(--amber-soft); color: var(--amber); }
+  .checklist .text { flex: 1; }
+  .checklist .meta { color: var(--muted); font-size: 12px; }
+  .checklist li.done .text { color: var(--ink-2); }
+
+  /* Tables */
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 10px 16px; border-bottom: 1px solid var(--border-soft); }
+  th { font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); font-weight: 600; }
+  tbody tr { cursor: pointer; }
+  tbody tr:hover { background: var(--bg); }
+  tbody tr:last-child td { border-bottom: none; }
+  td.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; color: var(--ink-2); }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+
+  /* Forms */
+  .field { margin-bottom: 14px; }
+  .field label { display: block; font-size: 12px; font-weight: 500; color: var(--ink-2); margin-bottom: 4px; }
+  .field input, .field textarea, .field select {
+    width: 100%; padding: 8px 10px;
+    border: 1px solid var(--border); border-radius: 4px;
+    font-family: inherit; font-size: 13px;
+    background: #fff;
+  }
+  .field textarea { resize: vertical; min-height: 64px; }
+  .field .hint { font-size: 11.5px; color: var(--muted); margin-top: 4px; }
+
+  /* Photos grid */
+  .photo-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+  .photo {
+    aspect-ratio: 4/3;
+    background: linear-gradient(135deg, #d4c5a9 0%, #8c7a5b 100%);
+    border-radius: 4px;
+    position: relative;
+    overflow: hidden;
+    cursor: pointer;
+    color: rgba(255,255,255,0.85);
+    font-size: 11px;
+    display: flex; align-items: flex-end;
+    padding: 8px;
+    border: 1px solid var(--border);
+  }
+  .photo .label { background: rgba(0,0,0,0.45); padding: 2px 6px; border-radius: 2px; }
+  .photo.alt-1 { background: linear-gradient(135deg, #b8a888 0%, #6b5a3f 100%); }
+  .photo.alt-2 { background: linear-gradient(135deg, #c9b89a 0%, #7d6a4d 100%); }
+  .photo.alt-3 { background: linear-gradient(135deg, #a39177 0%, #574936 100%); }
+  .photo.alt-4 { background: linear-gradient(135deg, #d8c8a8 0%, #948167 100%); }
+  .photo.alt-5 { background: linear-gradient(135deg, #b09a7d 0%, #6e5d44 100%); }
+
+  .upload {
+    aspect-ratio: 4/3;
+    border: 2px dashed var(--border);
+    border-radius: 4px;
+    display: flex; align-items: center; justify-content: center;
+    flex-direction: column; gap: 4px;
+    color: var(--muted);
+    font-size: 12px;
+    cursor: pointer;
+  }
+  .upload:hover { border-color: var(--navy); color: var(--ink); }
+  .upload .plus { font-size: 22px; line-height: 1; }
+
+  /* Rate plan rows */
+  .rate-row {
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    margin-bottom: 8px;
+    background: #fff;
+  }
+  .rate-row-head {
+    padding: 12px 16px;
+    display: flex; align-items: center; gap: 12px;
+    cursor: pointer;
+  }
+  .rate-row-head:hover { background: var(--bg); }
+  .rate-row.open .rate-row-body { display: block; }
+  .rate-row-body { display: none; padding: 16px; border-top: 1px solid var(--border-soft); background: var(--bg); }
+  .rate-row .name { font-weight: 500; }
+  .rate-row .id { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: var(--muted); }
+  .chevron { color: var(--muted); transition: transform .15s; }
+  .rate-row.open .chevron { transform: rotate(90deg); }
+
+  /* Stat blocks */
+  .stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px; }
+  .stat {
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 14px 16px;
+  }
+  .stat .label { font-size: 11.5px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+  .stat .value { font-size: 22px; font-weight: 600; letter-spacing: -0.01em; margin-top: 2px; }
+  .stat .delta { font-size: 12px; margin-top: 2px; }
+
+  /* Alert rows */
+  .alert {
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--amber);
+    border-radius: 4px;
+    background: #fff;
+    padding: 12px 14px;
+    margin-bottom: 8px;
+    display: flex; gap: 12px; align-items: flex-start;
+  }
+  .alert.danger { border-left-color: var(--red); }
+  .alert.info { border-left-color: var(--blue); }
+  .alert .body { flex: 1; }
+  .alert .title { font-weight: 500; font-size: 13.5px; }
+  .alert .desc { color: var(--muted); font-size: 12.5px; margin-top: 2px; }
+
+  /* Empty state */
+  .empty {
+    padding: 48px 24px;
+    text-align: center;
+    color: var(--muted);
+    font-size: 13.5px;
+  }
+
+  /* Mock-only hint */
+  .mock-banner {
+    background: #FEF3C7;
+    color: #78350F;
+    text-align: center;
+    padding: 6px 12px;
+    font-size: 12px;
+    font-weight: 500;
+  }
+
+  /* DNS table */
+  .dns {
+    background: #0F172A;
+    color: #E2E8F0;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 12px;
+    padding: 12px 14px;
+    border-radius: 4px;
+    line-height: 1.7;
+  }
+  .dns .k { color: #94A3B8; }
+
+  /* Toolbar */
+  .toolbar {
+    display: flex; gap: 8px; align-items: center;
+    margin-bottom: 14px;
+  }
+  .toolbar input[type=search] {
+    flex: 1; max-width: 320px;
+    padding: 7px 12px;
+    border: 1px solid var(--border); border-radius: 4px;
+    font-size: 13px; background: #fff;
+  }
+
+  /* Misc */
+  .kv { display: flex; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--border-soft); font-size: 13px; }
+  .kv:last-child { border-bottom: none; }
+  .kv .k { width: 160px; color: var(--muted); flex-shrink: 0; }
+  .kv .v { flex: 1; }
+
+  .stack > * + * { margin-top: 16px; }
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+<div class="mock-banner">UX Mockup · all data is fake · click around to test the flow</div>
+<header class="topbar">
+  <div class="brand">Booking Engine <span class="muted">Admin</span></div>
+  <div class="right">
+    <span class="pill gray dot" id="env-pill" style="color:var(--green)">production</span>
+    <span>karol@rockenue.com</span>
+  </div>
+</header>
+<main id="app"></main>
+
+<script>
+// ───────────────────── Mock data ─────────────────────
+const HOTELS = [
+  {
+    id: 'portico',
+    name: 'The Portico Hotel',
+    domain: 'theporticohotel.com',
+    location: 'Paddington, London',
+    currency: 'GBP',
+    health: 'live',
+    pills: [
+      { kind: 'green', text: 'Live' },
+      { kind: 'green', text: 'Cloudbeds' },
+      { kind: 'green', text: 'Stripe' },
+    ],
+    bookings7d: 14,
+    revenue7d: '£8,420',
+    alerts: 0,
+    template: 'portico-ivory',
+    checklist: { done: 11, total: 11 },
+  },
+  {
+    id: 'kensington',
+    name: 'The Kensington Arms',
+    domain: 'kensingtonarms.co.uk',
+    location: 'Kensington, London',
+    currency: 'GBP',
+    health: 'live-warn',
+    pills: [
+      { kind: 'green', text: 'Live' },
+      { kind: 'green', text: 'Cloudbeds' },
+      { kind: 'amber', text: 'Stripe restricted' },
+    ],
+    bookings7d: 9,
+    revenue7d: '£5,180',
+    alerts: 2,
+    template: 'bespoke',
+    checklist: { done: 10, total: 11 },
+  },
+  {
+    id: 'urbanstay',
+    name: 'UrbanStay Apartments',
+    domain: 'urbanstay.example',
+    location: 'Berlin, DE',
+    currency: 'EUR',
+    health: 'setup',
+    pills: [
+      { kind: 'amber', text: 'Setup' },
+      { kind: 'red', text: 'Cloudbeds' },
+      { kind: 'gray', text: 'Stripe' },
+    ],
+    bookings7d: 0,
+    revenue7d: '—',
+    alerts: 0,
+    template: 'bespoke',
+    checklist: { done: 4, total: 11 },
+  },
+  {
+    id: 'warwick',
+    name: 'House on Warwick',
+    domain: 'houseonwarwick.com',
+    location: 'Bath, UK',
+    currency: 'GBP',
+    health: 'live',
+    pills: [
+      { kind: 'green', text: 'Live' },
+      { kind: 'green', text: 'Cloudbeds' },
+      { kind: 'green', text: 'Stripe' },
+    ],
+    bookings7d: 6,
+    revenue7d: '£3,940',
+    alerts: 0,
+    template: 'portico-ivory',
+    checklist: { done: 11, total: 11 },
+  },
+  {
+    id: 'marina',
+    name: 'Marina Boutique',
+    domain: 'marinaboutique.ae',
+    location: 'Dubai Marina, UAE',
+    currency: 'AED',
+    health: 'live-error',
+    pills: [
+      { kind: 'green', text: 'Live' },
+      { kind: 'red', text: 'Webhook stale' },
+      { kind: 'green', text: 'Stripe' },
+    ],
+    bookings7d: 22,
+    revenue7d: 'AED 41,200',
+    alerts: 4,
+    template: 'bespoke',
+    checklist: { done: 11, total: 11 },
+  },
+  {
+    id: 'edinburgh',
+    name: 'Edinburgh Townhouse',
+    domain: 'edinburghtownhouse.scot',
+    location: 'New Town, Edinburgh',
+    currency: 'GBP',
+    health: 'pre-launch',
+    pills: [
+      { kind: 'blue', text: 'Pre-launch' },
+      { kind: 'green', text: 'Cloudbeds' },
+      { kind: 'amber', text: 'Stripe pending' },
+    ],
+    bookings7d: 0,
+    revenue7d: '—',
+    alerts: 0,
+    template: 'bespoke',
+    checklist: { done: 8, total: 11 },
+  },
+];
+
+const BOOKINGS = {
+  portico: [
+    { ref: 'CB-3491820', orderId: 'b3a1…f201', guest: 'Eleanor Whitfield', email: 'eleanor.w@…', checkIn: '2026-05-12', checkOut: '2026-05-15', nights: 3, room: 'Master Suite', rate: 'Flexible', total: '£1,140', status: 'paid', placedAt: '6h ago' },
+    { ref: 'CB-3491819', orderId: 'a2c0…d188', guest: 'James Park', email: 'james.p@…', checkIn: '2026-05-11', checkOut: '2026-05-13', nights: 2, room: 'Deluxe Double', rate: 'Non-refundable', total: '£480', status: 'paid', placedAt: '11h ago' },
+    { ref: 'CB-3491812', orderId: '9d4e…7a02', guest: 'Sara Conti', email: 'sara.c@…', checkIn: '2026-05-20', checkOut: '2026-05-22', nights: 2, room: 'Classic Single', rate: 'Flex (card on file)', total: '£420', status: 'card-on-file', placedAt: '1d ago' },
+    { ref: 'CB-3491790', orderId: '01ee…b4ca', guest: 'Daniel Roth', email: 'daniel.r@…', checkIn: '2026-05-09', checkOut: '2026-05-10', nights: 1, room: 'Master Suite', rate: 'Flexible', total: '£380', status: 'paid', placedAt: '2d ago' },
+    { ref: 'CB-3491772', orderId: '7c12…a83f', guest: 'Mei Lin', email: 'mei.l@…', checkIn: '2026-05-18', checkOut: '2026-05-23', nights: 5, room: 'Deluxe Double', rate: 'Non-refundable', total: '£1,200', status: 'paid', placedAt: '3d ago' },
+    { ref: '—', orderId: 'fa90…2114', guest: 'Tom Albright', email: 'tom.a@…', checkIn: '2026-05-14', checkOut: '2026-05-16', nights: 2, room: 'Classic Single', rate: 'Flexible', total: '£440', status: 'failed', placedAt: '3d ago' },
+  ],
+};
+
+const RATE_PLANS = {
+  portico: [
+    { id: 'rp_1124', name: 'Flexible Room Only', cbId: '1124', isRefundable: true, deadlineHours: 48, note: 'Free cancellation up to 48h before arrival.', includes: [] },
+    { id: 'rp_1125', name: 'Flexible + Breakfast', cbId: '1125', isRefundable: true, deadlineHours: 48, note: 'Includes continental breakfast.', includes: ['breakfast'] },
+    { id: 'rp_1126', name: 'Non-refundable Room Only', cbId: '1126', isRefundable: false, deadlineHours: null, note: 'Save 10% — non-refundable.', includes: [] },
+    { id: 'rp_1127', name: 'Portico Saver', cbId: '1127', isRefundable: false, deadlineHours: null, note: 'Member rate — best available.', includes: [] },
+  ],
+};
+
+const ALERTS = {
+  portico: [],
+  kensington: [
+    { kind: 'amber', title: 'Stripe account requires verification', desc: 'Stripe flagged 2 documents pending. Hotel notified 2026-05-05.', cta: 'Open in Stripe' },
+    { kind: 'info', title: 'Cloudbeds token refreshed', desc: 'Auto-refresh succeeded. No action needed.', cta: null },
+  ],
+  marina: [
+    { kind: 'danger', title: 'No webhook activity in 36h', desc: 'Last event 2026-05-05 22:11. Inventory may be stale. Manual resync recommended.', cta: 'Sync now' },
+    { kind: 'danger', title: 'postReservation failed (orderId 4f10…)', desc: 'Stripe charged £1,200 but Cloudbeds returned 503. Booking left in pending state.', cta: 'Resolve' },
+    { kind: 'amber', title: '2 dropped extras', desc: 'Continental Breakfast × 2 failed to attach to reservation CB-2200194. Money taken, folio incomplete.', cta: 'Retry' },
+    { kind: 'amber', title: 'Cloudbeds token expires in 5 days', desc: 'Auto-refresh should handle it but worth a glance.', cta: null },
+  ],
+};
+
+// ───────────────────── Router ─────────────────────
+const state = { view: 'dashboard', hotelId: null, tab: 'overview' };
+const app = document.getElementById('app');
+
+function go(view, opts = {}) {
+  state.view = view;
+  if (opts.hotelId !== undefined) state.hotelId = opts.hotelId;
+  if (opts.tab) state.tab = opts.tab;
+  render();
+  window.scrollTo({ top: 0, behavior: 'instant' });
+}
+
+function render() {
+  app.innerHTML = '';
+  if (state.view === 'dashboard') return renderDashboard();
+  if (state.view === 'hotel') return renderHotel();
+}
+
+// ───────────────────── Dashboard ─────────────────────
+function renderDashboard() {
+  const live = HOTELS.filter(h => h.health.startsWith('live')).length;
+  const setup = HOTELS.filter(h => h.health === 'setup' || h.health === 'pre-launch').length;
+  const alerts = HOTELS.reduce((n, h) => n + h.alerts, 0);
+
+  app.innerHTML = `
+    <div class="row" style="margin-bottom: 24px;">
+      <div>
+        <h1>Hotels</h1>
+        <p class="lead">${HOTELS.length} properties · ${live} live · ${setup} in setup · ${alerts} alerts</p>
+      </div>
+      <button class="btn primary right" onclick="alert('Opens onboarding checklist for a new hotel')">+ New hotel</button>
+    </div>
+
+    <div class="toolbar">
+      <input type="search" placeholder="Search hotels by name, domain, slug…">
+      <button class="btn sm">All ${HOTELS.length}</button>
+      <button class="btn sm">Live ${live}</button>
+      <button class="btn sm">Needs attention ${HOTELS.filter(h => h.alerts > 0).length}</button>
+      <button class="btn sm">In setup ${setup}</button>
+    </div>
+
+    <div class="tile-grid">
+      ${HOTELS.map(tileHTML).join('')}
+    </div>
+  `;
+
+  document.querySelectorAll('[data-hotel-id]').forEach(el => {
+    el.addEventListener('click', () => go('hotel', { hotelId: el.dataset.hotelId, tab: 'overview' }));
+  });
+}
+
+function tileHTML(h) {
+  const checklistColor = h.checklist.done === h.checklist.total ? 'var(--green)' : 'var(--amber)';
+  const alertBadge = h.alerts > 0 ? `<span class="pill red dot">${h.alerts} alert${h.alerts === 1 ? '' : 's'}</span>` : '';
+  return `
+    <div class="tile" data-hotel-id="${h.id}">
+      <div class="tile-head">
+        <div>
+          <div class="tile-name">${h.name}</div>
+          <div class="tile-domain">${h.domain}</div>
+        </div>
+        ${alertBadge}
+      </div>
+      <div class="tile-pills">
+        ${h.pills.map(p => `<span class="pill ${p.kind} dot">${p.text}</span>`).join('')}
+      </div>
+      <div class="tile-stats">
+        <div><span class="num">${h.bookings7d}</span> bookings · 7d</div>
+        <div><span class="num">${h.revenue7d}</span> revenue · 7d</div>
+        <div style="margin-left:auto; color:${checklistColor}">${h.checklist.done}/${h.checklist.total} ✓</div>
+      </div>
+    </div>
+  `;
+}
+
+// ───────────────────── Hotel workspace ─────────────────────
+function renderHotel() {
+  const h = HOTELS.find(x => x.id === state.hotelId);
+  if (!h) return go('dashboard');
+
+  const tabs = [
+    { id: 'overview', label: 'Overview' },
+    { id: 'bookings', label: 'Bookings', count: (BOOKINGS[h.id] || []).length },
+    { id: 'content', label: 'Content & copy' },
+    { id: 'photos', label: 'Photos' },
+    { id: 'rates', label: 'Rate plans', count: (RATE_PLANS[h.id] || []).length },
+    { id: 'cloudbeds', label: 'Cloudbeds' },
+    { id: 'stripe', label: 'Stripe & payouts' },
+    { id: 'domain', label: 'Domain & deploy' },
+    { id: 'alerts', label: 'Alerts', count: (ALERTS[h.id] || []).length, hasAlert: (ALERTS[h.id] || []).length > 0 },
+  ];
+
+  app.innerHTML = `
+    <div class="ws-head">
+      <span class="ws-back" id="back">← All hotels</span>
+    </div>
+    <div class="row" style="margin-bottom: 18px;">
+      <div>
+        <div class="ws-title">${h.name}</div>
+        <div class="ws-domain">${h.domain} · ${h.location} · ${h.currency}</div>
+      </div>
+      <div class="right row" style="gap: 8px;">
+        <a href="https://${h.domain}" target="_blank" class="btn sm">Open site ↗</a>
+        <button class="btn sm">Preview as guest</button>
+      </div>
+    </div>
+
+    <div class="tabs">
+      ${tabs.map(t => `
+        <div class="tab ${state.tab === t.id ? 'active' : ''} ${t.hasAlert ? 'has-alert' : ''}" data-tab="${t.id}">
+          ${t.label}
+          ${t.count !== undefined ? `<span class="count">${t.count}</span>` : ''}
+        </div>
+      `).join('')}
+    </div>
+
+    <div id="tab-body"></div>
+  `;
+
+  document.getElementById('back').addEventListener('click', () => go('dashboard'));
+  document.querySelectorAll('.tab').forEach(t => {
+    t.addEventListener('click', () => go('hotel', { hotelId: h.id, tab: t.dataset.tab }));
+  });
+
+  renderTab(h);
+}
+
+function renderTab(h) {
+  const body = document.getElementById('tab-body');
+  const tabs = {
+    overview: () => renderOverview(h),
+    bookings: () => renderBookings(h),
+    content: () => renderContent(h),
+    photos: () => renderPhotos(h),
+    rates: () => renderRates(h),
+    cloudbeds: () => renderCloudbeds(h),
+    stripe: () => renderStripe(h),
+    domain: () => renderDomain(h),
+    alerts: () => renderAlerts(h),
+  };
+  body.innerHTML = (tabs[state.tab] || tabs.overview)();
+  // Rate plan accordion
+  document.querySelectorAll('.rate-row-head').forEach(el => {
+    el.addEventListener('click', () => el.parentElement.classList.toggle('open'));
+  });
+}
+
+// ─────── Overview ───────
+function renderOverview(h) {
+  const checklist = [
+    { state: 'done', text: 'Property created in DB', meta: 'created 2026-03-12' },
+    { state: 'done', text: 'Cloudbeds OAuth connected', meta: 'token refreshes auto' },
+    { state: 'done', text: 'Stripe Connect onboarded', meta: 'status: active · GBP' },
+    { state: h.template !== 'bespoke' ? 'done' : (h.health === 'setup' ? 'todo' : 'done'), text: 'Front-end shipped', meta: h.template === 'bespoke' ? 'src/hotels/' + h.id + '/' : 'template: ' + h.template },
+    { state: h.health === 'setup' ? 'todo' : 'done', text: 'Photos uploaded', meta: '24 in library · all rooms covered' },
+    { state: h.health === 'setup' ? 'todo' : 'done', text: 'Copy filled (hero, contact, footer)', meta: 'last edited 2026-05-02' },
+    { state: 'done', text: 'Domain set in DB', meta: h.domain },
+    { state: h.health === 'setup' ? 'todo' : 'done', text: 'DNS resolves to Railway', meta: 'CNAME → 76-76-21-21.railway.app' },
+    { state: h.health === 'setup' ? 'todo' : 'done', text: 'SSL valid', meta: 'expires 2026-08-04' },
+    { state: h.health === 'pre-launch' ? 'todo' : 'done', text: 'Stripe in live mode', meta: '' },
+    { state: h.health.startsWith('live') ? 'done' : 'todo', text: 'Test booking completed', meta: 'last verified 2026-04-29' },
+  ];
+
+  const alertCount = (ALERTS[h.id] || []).length;
+  const alertWidget = alertCount > 0 ? `
+    <div class="card" style="border-left: 3px solid var(--amber);">
+      <div class="card-head">
+        <h2 style="margin: 0;">Needs attention</h2>
+        <span class="pill amber dot right">${alertCount} item${alertCount === 1 ? '' : 's'}</span>
+      </div>
+      <div class="card-body">
+        ${(ALERTS[h.id] || []).slice(0, 3).map(a => `
+          <div class="alert ${a.kind}">
+            <div class="body">
+              <div class="title">${a.title}</div>
+              <div class="desc">${a.desc}</div>
+            </div>
+            ${a.cta ? `<button class="btn sm">${a.cta}</button>` : ''}
+          </div>
+        `).join('')}
+        ${alertCount > 3 ? `<a href="#" onclick="event.preventDefault(); go('hotel', { hotelId: '${h.id}', tab: 'alerts' })">See all ${alertCount} →</a>` : ''}
+      </div>
+    </div>
+  ` : '';
+
+  return `
+    <div class="stat-grid">
+      <div class="stat"><div class="label">Bookings · 7d</div><div class="value">${h.bookings7d}</div><div class="delta muted">vs 11 prior</div></div>
+      <div class="stat"><div class="label">Revenue · 7d</div><div class="value">${h.revenue7d}</div><div class="delta muted">net of fees</div></div>
+      <div class="stat"><div class="label">Conversion</div><div class="value">3.4%</div><div class="delta muted">view → book</div></div>
+      <div class="stat"><div class="label">Avg booking</div><div class="value">£412</div><div class="delta muted">2.1 nights</div></div>
+    </div>
+
+    <div class="ws-grid">
+      <div class="stack">
+        ${alertWidget}
+        <div class="card">
+          <div class="card-head">
+            <h2 style="margin: 0;">Recent bookings</h2>
+            <a href="#" class="right" onclick="event.preventDefault(); go('hotel', { hotelId: '${h.id}', tab: 'bookings' })">All bookings →</a>
+          </div>
+          <div class="card-body dense">
+            <table>
+              <thead><tr><th>Ref</th><th>Guest</th><th>Stay</th><th>Total</th><th>Status</th></tr></thead>
+              <tbody>
+                ${(BOOKINGS[h.id] || []).slice(0, 4).map(b => `
+                  <tr>
+                    <td class="mono">${b.ref}</td>
+                    <td>${b.guest}</td>
+                    <td>${b.checkIn} · ${b.nights}n</td>
+                    <td class="num">${b.total}</td>
+                    <td>${statusPill(b.status)}</td>
+                  </tr>
+                `).join('') || `<tr><td colspan="5" class="empty" style="padding:32px">No bookings yet</td></tr>`}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="stack">
+        <div class="card">
+          <div class="card-head">
+            <h2 style="margin: 0;">Launch checklist</h2>
+            <span class="pill ${h.checklist.done === h.checklist.total ? 'green' : 'amber'} right">${h.checklist.done}/${h.checklist.total}</span>
+          </div>
+          <ul class="checklist">
+            ${checklist.map(c => `
+              <li class="${c.state}">
+                <span class="icon ${c.state}">${c.state === 'done' ? '✓' : ''}</span>
+                <div class="text">${c.text}<div class="meta">${c.meta || ''}</div></div>
+              </li>
+            `).join('')}
+          </ul>
+        </div>
+
+        <div class="card">
+          <div class="card-head"><h2 style="margin: 0;">Quick actions</h2></div>
+          <div class="card-body" style="display: flex; flex-direction: column; gap: 8px; align-items: flex-start;">
+            <button class="btn sm" style="width: 100%; justify-content: flex-start;">Sync inventory now</button>
+            <button class="btn sm" style="width: 100%; justify-content: flex-start;">Open in Stripe Dashboard ↗</button>
+            <button class="btn sm" style="width: 100%; justify-content: flex-start;">Send test confirmation email</button>
+            <button class="btn sm" style="width: 100%; justify-content: flex-start;">Preview booking flow</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function statusPill(s) {
+  const map = {
+    paid: { kind: 'green', text: 'Paid' },
+    'card-on-file': { kind: 'blue', text: 'Card on file' },
+    failed: { kind: 'red', text: 'Failed' },
+    cancelled: { kind: 'gray', text: 'Cancelled' },
+  };
+  const m = map[s] || { kind: 'gray', text: s };
+  return `<span class="pill ${m.kind} dot">${m.text}</span>`;
+}
+
+// ─────── Bookings ───────
+function renderBookings(h) {
+  const list = BOOKINGS[h.id] || [];
+  return `
+    <div class="toolbar">
+      <input type="search" placeholder="Search by guest, email, reservation ref…">
+      <button class="btn sm">All</button>
+      <button class="btn sm">Paid</button>
+      <button class="btn sm">Card on file</button>
+      <button class="btn sm">Failed</button>
+      <button class="btn sm">This week</button>
+      <button class="btn sm right">Export CSV</button>
+    </div>
+    <div class="card">
+      <div class="card-body dense">
+        <table>
+          <thead>
+            <tr>
+              <th>Reservation</th>
+              <th>Guest</th>
+              <th>Check-in</th>
+              <th>Nights</th>
+              <th>Room · rate</th>
+              <th>Total</th>
+              <th>Status</th>
+              <th>Placed</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${list.map(b => `
+              <tr>
+                <td><div class="mono">${b.ref}</div><div class="muted" style="font-size:11.5px">${b.orderId}</div></td>
+                <td>${b.guest}<div class="muted" style="font-size:11.5px">${b.email}</div></td>
+                <td>${b.checkIn}</td>
+                <td>${b.nights}</td>
+                <td>${b.room}<div class="muted" style="font-size:11.5px">${b.rate}</div></td>
+                <td class="num">${b.total}</td>
+                <td>${statusPill(b.status)}</td>
+                <td class="muted">${b.placedAt}</td>
+              </tr>
+            `).join('') || `<tr><td colspan="8" class="empty">No bookings yet for this property.</td></tr>`}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <p class="muted" style="font-size:12px; margin-top:12px">Click any row → booking detail panel (guest details · folio · payment · cancel · refund · resend confirmation email).</p>
+  `;
+}
+
+// ─────── Content ───────
+function renderContent(h) {
+  return `
+    <div class="ws-grid">
+      <div class="stack">
+        <div class="card">
+          <div class="card-head"><h2 style="margin:0">Hero</h2><span class="muted right" style="font-size:12px">shown above the fold on /</span></div>
+          <div class="card-body">
+            <div class="field"><label>Headline</label><input value="A quiet portico in Paddington."></div>
+            <div class="field"><label>Sub-headline</label><input value="Eight rooms behind a Georgian door, three minutes from the station."></div>
+            <div class="field"><label>Press quote</label><input value="“The most charming small hotel in West London” — Condé Nast Traveller"></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-head"><h2 style="margin:0">Neighbourhood</h2></div>
+          <div class="card-body">
+            <div class="field"><label>Eyebrow</label><input value="01 · Neighbourhood"></div>
+            <div class="field"><label>Title</label><input value="Behind a Paddington portico, the city quiets."></div>
+            <div class="field"><label>Body</label><textarea rows="4">Hyde Park is a six-minute stroll. Connaught Village's tea rooms and bookshops are closer still. Paddington Station — Heathrow Express, the Bakerloo, four mainline platforms — is three minutes on foot.</textarea></div>
+            <div class="field"><label>Nearby places (one per line)</label><textarea rows="5">Hyde Park · 6 min walk
+Paddington Station · 3 min walk
+Connaught Village · 4 min walk
+Marble Arch · 12 min walk
+Notting Hill · 18 min walk</textarea></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-head"><h2 style="margin:0">Good to know</h2></div>
+          <div class="card-body">
+            <div class="grid-2">
+              <div class="field"><label>Check-in</label><input value="From 4:00 PM"></div>
+              <div class="field"><label>Check-out</label><input value="Until 11:00 AM"></div>
+              <div class="field"><label>Wifi</label><input value="Complimentary throughout"></div>
+              <div class="field"><label>Breakfast</label><input value="Continental, 7–10am"></div>
+              <div class="field"><label>Parking</label><input value="Street only — congestion zone"></div>
+              <div class="field"><label>Pets</label><input value="On request, £25/night"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="stack">
+        <div class="card">
+          <div class="card-head"><h2 style="margin:0">Contact</h2></div>
+          <div class="card-body">
+            <div class="field"><label>Address</label><textarea rows="3">32 Sussex Gardens
+Paddington, London W2 1UJ</textarea></div>
+            <div class="field"><label>Phone</label><input value="+44 20 7402 0190"></div>
+            <div class="field"><label>Booking email</label><input value="stay@theporticohotel.com"></div>
+            <div class="field"><label>General email</label><input value="hello@theporticohotel.com"></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-head"><h2 style="margin:0">Footer & legal</h2></div>
+          <div class="card-body">
+            <div class="field"><label>Fine-print copy</label><textarea rows="2">Independently owned. Bookings made directly receive the lowest available rate.</textarea></div>
+            <div class="field"><label>Instagram</label><input value="https://instagram.com/theporticohotel"></div>
+            <div class="field"><label>Newsletter form URL</label><input value="https://buttondown.email/portico"></div>
+            <div class="field"><label>Terms URL</label><input value="/terms"></div>
+            <div class="field"><label>Privacy URL</label><input value="/privacy"></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-head"><h2 style="margin:0">Save</h2></div>
+          <div class="card-body" style="display: flex; gap: 8px; align-items: center;">
+            <button class="btn primary">Save changes</button>
+            <span class="muted" style="font-size: 12px;">Last edited 2026-05-02 by you</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+// ─────── Photos ───────
+function renderPhotos(h) {
+  return `
+    <div class="toolbar">
+      <button class="btn sm">All photos · 24</button>
+      <button class="btn sm">Hero · 4</button>
+      <button class="btn sm">Gallery · 8</button>
+      <button class="btn sm">Rooms · 12</button>
+      <button class="btn sm">Neighbourhood · 0</button>
+      <span class="muted right" style="font-size:12px">Hosted on Cloudflare R2 · auto-resized to hero/gallery/thumb variants</span>
+    </div>
+
+    <div class="card" style="margin-bottom: 16px;">
+      <div class="card-head"><h2 style="margin:0">Hero & marketing</h2><span class="muted right" style="font-size:12px">shown on /</span></div>
+      <div class="card-body">
+        <div class="photo-grid">
+          <div class="photo"><span class="label">Hero · Facade dusk</span></div>
+          <div class="photo alt-1"><span class="label">Hero · Drawing room</span></div>
+          <div class="photo alt-2"><span class="label">Gallery · Stairs</span></div>
+          <div class="photo alt-3"><span class="label">Gallery · Wardrobe</span></div>
+          <div class="photo alt-4"><span class="label">Gallery · Tea</span></div>
+          <div class="photo alt-5"><span class="label">Gallery · Window</span></div>
+          <div class="photo"><span class="label">Gallery · Garden</span></div>
+          <div class="upload"><div class="plus">+</div><div>Drop photos or click</div></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <h2 style="margin:0">Per-room galleries</h2>
+        <span class="muted right" style="font-size:12px">drag a photo into a room to assign it</span>
+      </div>
+      <div class="card-body">
+        ${['Master Suite', 'Deluxe Double', 'Classic Single'].map((rm, i) => `
+          <div style="margin-bottom: 18px;">
+            <h3>${rm} · 4 photos</h3>
+            <div class="photo-grid">
+              <div class="photo alt-${i+1}"><span class="label">Hero</span></div>
+              <div class="photo alt-${(i+2)%5}"><span class="label">Detail</span></div>
+              <div class="photo alt-${(i+3)%5}"><span class="label">Bath</span></div>
+              <div class="photo alt-${(i+4)%5}"><span class="label">View</span></div>
+              <div class="upload" style="aspect-ratio:4/3"><div class="plus">+</div><div>Add</div></div>
+            </div>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+
+    <p class="muted" style="font-size: 12px; margin-top: 16px;">
+      <strong>Why R2 not Cloudbeds:</strong> Cloudbeds REST doesn't reliably expose room imagery, and what's there is sized for their booking widget.
+      Self-hosted photos give you bespoke crops, multiple resolutions, and the ability to swap a hero without touching the PMS.
+      Upload here → CDN-served on hotel domain → bespoke React reads via property config.
+    </p>
+  `;
+}
+
+// ─────── Rate plans ───────
+function renderRates(h) {
+  const rates = RATE_PLANS[h.id] || [];
+  return `
+    <p class="muted" style="margin-bottom: 16px;">Pulled from Cloudbeds (read-only: name, price, restrictions). Editable here: refundability, cancellation deadline, supporting note shown on /rooms, inclusions.</p>
+    ${rates.map(r => `
+      <div class="rate-row">
+        <div class="rate-row-head">
+          <span class="chevron">›</span>
+          <div>
+            <div class="name">${r.name}</div>
+            <div class="id">CB rateID ${r.cbId}</div>
+          </div>
+          <div class="row right" style="gap:6px">
+            ${r.isRefundable ? '<span class="pill green dot">Refundable</span>' : '<span class="pill gray dot">Non-refundable</span>'}
+            ${r.includes.includes('breakfast') ? '<span class="pill blue">Breakfast</span>' : ''}
+          </div>
+        </div>
+        <div class="rate-row-body">
+          <div class="grid-2">
+            <div class="field">
+              <label>Refundable</label>
+              <select><option ${r.isRefundable ? 'selected' : ''}>Yes — guest can cancel</option><option ${!r.isRefundable ? 'selected' : ''}>No — non-refundable</option></select>
+            </div>
+            <div class="field">
+              <label>Free-cancel deadline (hours before arrival)</label>
+              <input type="number" value="${r.deadlineHours || ''}" ${!r.isRefundable ? 'disabled' : ''}>
+            </div>
+            <div class="field" style="grid-column: 1 / span 2">
+              <label>Supporting note (shown under rate name on /rooms)</label>
+              <input value="${r.note}">
+              <div class="hint">Replaces the pattern matching in <code>rate-plan-notes.ts</code> — per-rate copy, no regex.</div>
+            </div>
+            <div class="field">
+              <label>Includes</label>
+              <div class="row" style="gap: 12px;">
+                <label style="display:flex;align-items:center;gap:6px;font-weight:400;font-size:13px"><input type="checkbox" ${r.includes.includes('breakfast') ? 'checked' : ''}> Breakfast</label>
+                <label style="display:flex;align-items:center;gap:6px;font-weight:400;font-size:13px"><input type="checkbox"> Parking</label>
+                <label style="display:flex;align-items:center;gap:6px;font-weight:400;font-size:13px"><input type="checkbox"> Welcome drink</label>
+              </div>
+            </div>
+            <div class="field">
+              <label>Display order</label>
+              <input type="number" value="0">
+              <div class="hint">Lower = higher in the rate ladder.</div>
+            </div>
+          </div>
+          <div class="row" style="margin-top: 8px;">
+            <button class="btn primary sm">Save</button>
+            <span class="muted" style="font-size: 12px;">CB-side rate name & price stay authoritative — you're only editing display + policy.</span>
+          </div>
+        </div>
+      </div>
+    `).join('')}
+  `;
+}
+
+// ─────── Cloudbeds ───────
+function renderCloudbeds(h) {
+  return `
+    <div class="ws-grid">
+      <div class="stack">
+        <div class="card">
+          <div class="card-head"><h2 style="margin:0">Connection</h2></div>
+          <div class="card-body">
+            <div class="kv"><div class="k">Cloudbeds property ID</div><div class="v" style="font-family:ui-monospace,monospace">302817</div></div>
+            <div class="kv"><div class="k">OAuth status</div><div class="v"><span class="pill green dot">Connected</span></div></div>
+            <div class="kv"><div class="k">Token expires</div><div class="v">2026-05-08 14:22 UTC <span class="muted">· auto-refresh enabled</span></div></div>
+            <div class="kv"><div class="k">Scopes</div><div class="v" style="font-size:12px">read:addon · read:hotel · read:rate · write:rate · read:reservation · write:reservation · read:room · read:guest · write:guest · read:taxesAndFees · read:user</div></div>
+            <div class="row" style="margin-top: 12px;">
+              <button class="btn">Re-authorise</button>
+              <button class="btn danger">Disconnect</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-head"><h2 style="margin:0">Inventory sync</h2><button class="btn sm right">Sync now</button></div>
+          <div class="card-body dense">
+            <div style="padding: 12px 16px;">
+              <div class="kv"><div class="k">Last sync</div><div class="v">2026-05-07 09:14 UTC <span class="muted">· 4.1s · 720 inventory rows</span></div></div>
+              <div class="kv"><div class="k">Next scheduled</div><div class="v">in 2h 47m <span class="muted">· cron 0 */6 * * *</span></div></div>
+              <div class="kv"><div class="k">Cold-start fire-and-forget</div><div class="v"><span class="pill green dot">Enabled</span></div></div>
+            </div>
+            <table>
+              <thead><tr><th>When</th><th>Trigger</th><th>Result</th><th>Duration</th></tr></thead>
+              <tbody>
+                <tr><td class="muted">9:14 UTC</td><td>Cron</td><td><span class="pill green dot">OK · 720 rows · 0 deleted</span></td><td>4.1s</td></tr>
+                <tr><td class="muted">7:32 UTC</td><td>Webhook reservation/created</td><td><span class="pill green dot">OK</span></td><td>2.8s</td></tr>
+                <tr><td class="muted">3:14 UTC</td><td>Cron</td><td><span class="pill green dot">OK · 720 rows</span></td><td>3.9s</td></tr>
+                <tr><td class="muted">Yesterday 21:14</td><td>Cron</td><td><span class="pill green dot">OK</span></td><td>4.0s</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="stack">
+        <div class="card">
+          <div class="card-head"><h2 style="margin:0">Webhooks</h2></div>
+          <div class="card-body dense">
+            <div style="padding: 12px 16px;">
+              <div class="kv"><div class="k">Endpoint</div><div class="v" style="font-size:12px;font-family:ui-monospace,monospace">…/api/cloudbeds/webhooks/0a8f9c…</div></div>
+              <div class="kv"><div class="k">Last event</div><div class="v">7:32 UTC · 35.93.165.6</div></div>
+            </div>
+            <table>
+              <thead><tr><th>Event</th><th>Status</th></tr></thead>
+              <tbody>
+                <tr><td>reservation/created</td><td><span class="pill green dot">Subscribed</span></td></tr>
+                <tr><td>reservation/modified</td><td><span class="pill green dot">Subscribed</span></td></tr>
+                <tr><td>reservation/cancelled</td><td><span class="pill green dot">Subscribed</span></td></tr>
+                <tr><td>availability/closeout_changed</td><td><span class="pill green dot">Subscribed</span></td></tr>
+                <tr><td>api_queue_task/rate_status_changed</td><td><span class="pill green dot">Subscribed</span></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+// ─────── Stripe ───────
+function renderStripe(h) {
+  return `
+    <div class="stat-grid">
+      <div class="stat"><div class="label">Connect status</div><div class="value" style="font-size:18px"><span class="pill green dot">Active</span></div></div>
+      <div class="stat"><div class="label">Currency</div><div class="value" style="font-size:18px">${h.currency}</div></div>
+      <div class="stat"><div class="label">Fees · 30d</div><div class="value">£241.40</div><div class="delta muted">3% of £8,047</div></div>
+      <div class="stat"><div class="label">Next payout</div><div class="value">£3,820</div><div class="delta muted">Friday · weekly</div></div>
+    </div>
+
+    <div class="ws-grid">
+      <div class="stack">
+        <div class="card">
+          <div class="card-head"><h2 style="margin:0">Recent payouts</h2></div>
+          <div class="card-body dense">
+            <table>
+              <thead><tr><th>Date</th><th>Amount</th><th>Bookings</th><th>Status</th></tr></thead>
+              <tbody>
+                <tr><td>2026-05-02</td><td class="num">£3,640</td><td>11</td><td><span class="pill green dot">Paid</span></td></tr>
+                <tr><td>2026-04-25</td><td class="num">£4,120</td><td>14</td><td><span class="pill green dot">Paid</span></td></tr>
+                <tr><td>2026-04-18</td><td class="num">£2,880</td><td>9</td><td><span class="pill green dot">Paid</span></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-head"><h2 style="margin:0">Failed charges queue</h2><span class="muted right" style="font-size:12px">Phase 5 Flex auto-charge failures</span></div>
+          <div class="card-body">
+            <p class="muted" style="margin: 0; font-size:13px">No failures right now. When the auto-charge cron can't take a Flex card on the cutoff, the booking lands here with a "send re-auth link" action and a 24h grace timer.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="stack">
+        <div class="card">
+          <div class="card-head"><h2 style="margin:0">Account</h2></div>
+          <div class="card-body">
+            <div class="kv"><div class="k">Account ID</div><div class="v mono" style="font-family:ui-monospace,monospace">acct_1Q…ZxYa</div></div>
+            <div class="kv"><div class="k">Type</div><div class="v">Standard</div></div>
+            <div class="kv"><div class="k">Country</div><div class="v">United Kingdom</div></div>
+            <div class="kv"><div class="k">Platform fee</div><div class="v">3.00%</div></div>
+            <div class="kv"><div class="k">Payout schedule</div><div class="v">Weekly (Friday)</div></div>
+            <div class="row" style="margin-top: 12px;">
+              <a href="#" class="btn">Open in Stripe ↗</a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+// ─────── Domain ───────
+function renderDomain(h) {
+  return `
+    <div class="ws-grid">
+      <div class="stack">
+        <div class="card">
+          <div class="card-head"><h2 style="margin:0">Domain</h2></div>
+          <div class="card-body">
+            <div class="field"><label>Custom domain</label><input value="${h.domain}"></div>
+            <div class="kv"><div class="k">DNS resolves</div><div class="v"><span class="pill green dot">CNAME → 76-76-21-21.railway.app</span></div></div>
+            <div class="kv"><div class="k">SSL</div><div class="v"><span class="pill green dot">Valid · expires 2026-08-04</span></div></div>
+            <div class="kv"><div class="k">Preview URL</div><div class="v mono">booking-engine-${h.id}.up.railway.app</div></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-head"><h2 style="margin:0">DNS to set at registrar / Cloudflare</h2></div>
+          <div class="card-body">
+            <div class="dns">
+<span class="k">Type</span>     CNAME<br>
+<span class="k">Name</span>     www<br>
+<span class="k">Target</span>   76-76-21-21.railway.app<br>
+<span class="k">TTL</span>      Auto<br>
+<span class="k">Proxy</span>    DNS only
+            </div>
+            <p class="muted" style="font-size: 12px; margin-top: 10px;">Apex (${h.domain.replace(/^www\./, '')}) → use ALIAS / ANAME if registrar supports it, else 301 redirect to www.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="stack">
+        <div class="card">
+          <div class="card-head"><h2 style="margin:0">Deploy</h2></div>
+          <div class="card-body">
+            <div class="kv"><div class="k">Railway service</div><div class="v">portico-prod</div></div>
+            <div class="kv"><div class="k">Theme</div><div class="v"><code>${h.template}</code></div></div>
+            <div class="kv"><div class="k">Last deploy</div><div class="v">2026-05-06 18:02 <span class="muted">· main @ 47e472a</span></div></div>
+            <div class="kv"><div class="k">Build status</div><div class="v"><span class="pill green dot">OK · 92s</span></div></div>
+            <p class="muted" style="font-size: 12px; margin-top: 10px;">
+              The bespoke design lives in <code>src/hotels/${h.id}/</code> (or extends a template under <code>src/hotels/_templates/</code>). Theme is read-only here — change it by editing code, not from admin.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+// ─────── Alerts ───────
+function renderAlerts(h) {
+  const alerts = ALERTS[h.id] || [];
+  if (!alerts.length) {
+    return `<div class="card"><div class="empty">All clear. Nothing needing attention.</div></div>`;
+  }
+  return `
+    <div class="toolbar">
+      <button class="btn sm">All ${alerts.length}</button>
+      <button class="btn sm">Critical ${alerts.filter(a => a.kind === 'danger').length}</button>
+      <button class="btn sm">Warning ${alerts.filter(a => a.kind === 'amber').length}</button>
+      <button class="btn sm">Info ${alerts.filter(a => a.kind === 'info').length}</button>
+    </div>
+    ${alerts.map(a => `
+      <div class="alert ${a.kind}">
+        <div class="body">
+          <div class="title">${a.title}</div>
+          <div class="desc">${a.desc}</div>
+        </div>
+        ${a.cta ? `<button class="btn sm">${a.cta}</button>` : ''}
+        <button class="btn ghost sm" title="Dismiss">✕</button>
+      </div>
+    `).join('')}
+    <p class="muted" style="font-size: 12px; margin-top: 16px;">
+      Alerts are auto-generated from the operational signals (failed postReservation, dropped extras, expiring tokens, stale webhooks, Stripe restrictions). Each one points at a concrete action — no decoration.
+    </p>
+  `;
+}
+
+// ───────────────────── Boot ─────────────────────
+render();
+</script>
+</body>
+</html>

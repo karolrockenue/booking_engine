@@ -1,3 +1,4 @@
+import { revalidateTag } from "next/cache";
 import { db } from "@/db";
 import { properties, roomTypes, ratePlans, inventory } from "@/db/schema";
 import { eq, sql } from "drizzle-orm";
@@ -275,6 +276,13 @@ export async function syncInventoryForProperty(
       }`
     );
   }
+
+  // Flush the /api/availability cache for this property so the next request
+  // recomputes against fresh inventory instead of waiting up to 30s for the
+  // time-based revalidation. { expire: 0 } per the Next 16 webhook pattern —
+  // immediate expiration since the sync is itself triggered by an external
+  // event (webhook or cold-start).
+  revalidateTag(`availability:${propertyId}`, { expire: 0 });
 
   return {
     propertyId,

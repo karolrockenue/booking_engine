@@ -1,0 +1,1166 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Admin Overview — 4 design concepts</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=Instrument+Serif&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { font-family: 'Inter', system-ui, sans-serif; color: #0A0A0A; }
+  button { font-family: inherit; cursor: pointer; border: none; background: none; }
+  a { color: inherit; text-decoration: none; }
+
+  /* Switcher */
+  .switcher {
+    position: sticky; top: 0; z-index: 100;
+    background: rgba(255,255,255,0.9);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border-bottom: 1px solid #E5E5E5;
+    padding: 10px 24px;
+    display: flex; gap: 4px;
+    align-items: center;
+  }
+  .switcher .meta {
+    margin-right: auto;
+    font-size: 12px; color: #737373;
+    font-weight: 500;
+  }
+  .switcher .meta strong { color: #0A0A0A; font-weight: 600; }
+  .switcher button {
+    padding: 7px 14px;
+    border-radius: 999px;
+    font-size: 12.5px; font-weight: 500;
+    color: #525252;
+    transition: all .15s;
+  }
+  .switcher button:hover { background: #F5F5F5; color: #0A0A0A; }
+  .switcher button.active { background: #0A0A0A; color: #fff; }
+
+  .concept { display: none; min-height: calc(100vh - 53px); }
+  .concept.active { display: block; }
+
+/* ═══════════════════════════════════════════════════════
+   CONCEPT A — Modern AI / Linear / Vercel
+   black + white, mono for data, hairlines, square edges
+   ═══════════════════════════════════════════════════════ */
+  .ca {
+    --bg: #FAFAFA;
+    --surface: #FFFFFF;
+    --border: #E5E5E5;
+    --border-soft: #F0F0F0;
+    --ink: #0A0A0A;
+    --ink-2: #404040;
+    --muted: #737373;
+    --accent: #5B5BD6;
+    --green: #00875A;
+    --amber: #B45309;
+    --red: #C62828;
+    background: var(--bg);
+    color: var(--ink);
+    font-feature-settings: 'cv11', 'ss01';
+  }
+  .ca .wrap { max-width: 1280px; margin: 0 auto; padding: 32px 32px 80px; }
+  .ca .crumb {
+    font-size: 12px; color: var(--muted);
+    display: flex; align-items: center; gap: 8px;
+    margin-bottom: 16px;
+  }
+  .ca .crumb a { color: var(--muted); }
+  .ca .crumb .arrow { color: #D4D4D4; }
+  .ca .ws-head { display: flex; align-items: flex-start; gap: 24px; padding-bottom: 24px; border-bottom: 1px solid var(--border); margin-bottom: 24px; }
+  .ca .ws-head h1 { font-size: 24px; font-weight: 600; letter-spacing: -0.02em; }
+  .ca .ws-head .domain { font-family: 'JetBrains Mono', monospace; font-size: 12.5px; color: var(--muted); margin-top: 4px; }
+  .ca .ws-head .actions { margin-left: auto; display: flex; gap: 6px; align-items: center; }
+  .ca .nav { display: flex; gap: 0; margin-bottom: 32px; }
+  .ca .nav a { padding: 8px 14px; font-size: 13px; color: var(--muted); border-bottom: 1px solid transparent; margin-bottom: -1px; }
+  .ca .nav a:hover { color: var(--ink); }
+  .ca .nav a.active { color: var(--ink); border-bottom-color: var(--ink); }
+
+  .ca .stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; background: var(--surface); margin-bottom: 24px; }
+  .ca .stat { padding: 18px 20px; border-right: 1px solid var(--border-soft); }
+  .ca .stat:last-child { border-right: none; }
+  .ca .stat .label { font-size: 11.5px; color: var(--muted); display: flex; align-items: center; gap: 6px; }
+  .ca .stat .label::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+  .ca .stat .value { font-size: 28px; font-weight: 600; letter-spacing: -0.02em; margin-top: 6px; font-variant-numeric: tabular-nums; }
+  .ca .stat .delta { font-size: 12px; color: var(--muted); margin-top: 2px; font-family: 'JetBrains Mono', monospace; }
+  .ca .stat .delta.up { color: var(--green); }
+  .ca .spark {
+    margin-top: 10px;
+    height: 24px;
+    display: flex; align-items: flex-end; gap: 2px;
+  }
+  .ca .spark .bar { flex: 1; background: var(--accent); opacity: 0.15; border-radius: 1px; }
+  .ca .spark .bar.lit { opacity: 1; }
+
+  .ca .grid-2 { display: grid; grid-template-columns: 2fr 1fr; gap: 16px; }
+  @media (max-width: 900px) { .ca .grid-2 { grid-template-columns: 1fr; } }
+
+  .ca .card { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+  .ca .card-head { padding: 14px 18px; display: flex; align-items: center; gap: 10px; border-bottom: 1px solid var(--border-soft); }
+  .ca .card-head h2 { font-size: 13px; font-weight: 600; letter-spacing: -0.005em; }
+  .ca .card-head .right { margin-left: auto; }
+  .ca .card-body { padding: 4px 0; }
+
+  .ca .row { display: flex; align-items: center; gap: 12px; padding: 10px 18px; font-size: 13px; }
+  .ca .row + .row { border-top: 1px solid var(--border-soft); }
+  .ca .row .mono { font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--ink-2); }
+  .ca .row .grow { flex: 1; }
+  .ca .row .num { font-variant-numeric: tabular-nums; font-family: 'JetBrains Mono', monospace; }
+
+  .ca .checklist { padding: 4px 0; }
+  .ca .check {
+    display: flex; align-items: center; gap: 12px;
+    padding: 10px 18px; font-size: 13px;
+  }
+  .ca .check + .check { border-top: 1px solid var(--border-soft); }
+  .ca .check .dot {
+    width: 14px; height: 14px; border-radius: 50%;
+    flex-shrink: 0;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 9px; font-weight: 700;
+  }
+  .ca .check.done .dot { background: var(--ink); color: #fff; }
+  .ca .check.todo .dot { border: 1px dashed #C0C0C0; }
+  .ca .check .meta { color: var(--muted); font-size: 11.5px; font-family: 'JetBrains Mono', monospace; margin-left: auto; }
+  .ca .check.done span:not(.dot):not(.meta) { color: var(--ink-2); }
+
+  .ca .pill {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 2px 8px; border-radius: 4px;
+    font-size: 11px; font-weight: 500;
+    font-family: 'JetBrains Mono', monospace;
+    border: 1px solid;
+  }
+  .ca .pill.green { color: var(--green); border-color: rgba(0,135,90,0.2); background: rgba(0,135,90,0.06); }
+  .ca .pill.amber { color: var(--amber); border-color: rgba(180,83,9,0.2); background: rgba(180,83,9,0.06); }
+  .ca .pill.red   { color: var(--red);   border-color: rgba(198,40,40,0.2); background: rgba(198,40,40,0.06); }
+  .ca .pill.blue  { color: var(--accent); border-color: rgba(91,91,214,0.2); background: rgba(91,91,214,0.06); }
+
+  .ca .btn {
+    padding: 6px 12px; border-radius: 4px;
+    font-size: 12.5px; font-weight: 500;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--ink);
+  }
+  .ca .btn:hover { background: #F5F5F5; }
+  .ca .btn.primary { background: var(--ink); color: #fff; border-color: var(--ink); }
+  .ca .btn.primary:hover { background: #262626; }
+  .ca .alert { padding: 12px 18px; border-bottom: 1px solid var(--border-soft); display: flex; gap: 10px; align-items: flex-start; }
+  .ca .alert:last-child { border-bottom: none; }
+  .ca .alert .body { flex: 1; font-size: 13px; }
+  .ca .alert .desc { color: var(--muted); font-size: 12px; margin-top: 2px; }
+  .ca .alert.ok { color: var(--muted); padding: 24px; text-align: center; }
+  .ca .qa { display: flex; flex-direction: column; }
+  .ca .qa a { padding: 10px 18px; border-bottom: 1px solid var(--border-soft); font-size: 13px; display: flex; align-items: center; gap: 8px; }
+  .ca .qa a::before { content: '→'; color: var(--muted); }
+  .ca .qa a:last-child { border-bottom: none; }
+  .ca .qa a:hover { background: #FAFAFA; }
+
+  .ca kbd {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10.5px; font-weight: 500;
+    padding: 1px 5px; border-radius: 3px;
+    border: 1px solid var(--border); background: #F8F8F8;
+    color: var(--muted);
+  }
+
+/* ═══════════════════════════════════════════════════════
+   CONCEPT B — Editorial / Light / Hospitality
+   warm cream, serif display, slow & calm
+   ═══════════════════════════════════════════════════════ */
+  .cb {
+    --bg: #F8F4EC;
+    --surface: #FDFAF3;
+    --border: #E8DFCB;
+    --border-soft: #F0E8D6;
+    --ink: #1F1611;
+    --ink-2: #4A3D31;
+    --muted: #7A6A55;
+    --accent: #8B3A1F;
+    --accent-soft: #E8D8CD;
+    --green: #4A6B3A;
+    --amber: #8A5A1F;
+    --red: #8B2820;
+    background: var(--bg);
+    color: var(--ink);
+  }
+  .cb .wrap { max-width: 1180px; margin: 0 auto; padding: 48px 40px 80px; }
+  .cb .crumb { font-family: 'Inter', sans-serif; font-size: 11.5px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--muted); margin-bottom: 32px; }
+  .cb .crumb a { border-bottom: 1px solid currentColor; }
+  .cb .ws-head { padding-bottom: 32px; border-bottom: 1px solid var(--border); margin-bottom: 40px; display: flex; align-items: flex-end; gap: 32px; }
+  .cb .ws-head h1 { font-family: 'Cormorant Garamond', serif; font-weight: 500; font-size: 44px; line-height: 1; letter-spacing: -0.01em; }
+  .cb .ws-head .domain { font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--muted); margin-top: 10px; }
+  .cb .ws-head .actions { margin-left: auto; display: flex; gap: 8px; }
+
+  .cb .nav { display: flex; gap: 24px; margin-bottom: 40px; font-family: 'Inter', sans-serif; }
+  .cb .nav a { font-size: 11.5px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--muted); padding-bottom: 4px; }
+  .cb .nav a.active { color: var(--ink); border-bottom: 1px solid var(--accent); }
+
+  .cb .eyebrow {
+    font-family: 'Inter', sans-serif;
+    font-size: 11px; letter-spacing: 0.2em; text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 8px;
+  }
+  .cb h2 { font-family: 'Cormorant Garamond', serif; font-weight: 500; font-size: 26px; letter-spacing: -0.005em; }
+  .cb .stat-grid {
+    display: grid; grid-template-columns: repeat(4, 1fr);
+    gap: 1px;
+    background: var(--border);
+    border: 1px solid var(--border);
+    margin-bottom: 56px;
+  }
+  .cb .stat { background: var(--surface); padding: 24px 24px 28px; }
+  .cb .stat .label { font-family: 'Inter', sans-serif; font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--muted); }
+  .cb .stat .value { font-family: 'Cormorant Garamond', serif; font-weight: 500; font-size: 38px; letter-spacing: -0.02em; line-height: 1; margin-top: 12px; }
+  .cb .stat .delta { font-family: 'Inter', sans-serif; font-size: 12px; color: var(--muted); margin-top: 8px; }
+  .cb .stat .delta em { font-style: italic; color: var(--green); }
+
+  .cb .grid-2 { display: grid; grid-template-columns: 1.6fr 1fr; gap: 56px; align-items: start; }
+  @media (max-width: 900px) { .cb .grid-2 { grid-template-columns: 1fr; gap: 32px; } }
+
+  .cb .section { margin-bottom: 48px; }
+  .cb .section-head { display: flex; align-items: baseline; gap: 16px; margin-bottom: 20px; }
+  .cb .section-head .more { margin-left: auto; font-size: 12px; color: var(--accent); }
+
+  .cb table { width: 100%; border-collapse: collapse; }
+  .cb thead th { font-family: 'Inter', sans-serif; font-weight: 500; font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); text-align: left; padding: 12px 0; border-bottom: 1px solid var(--border); }
+  .cb tbody td { padding: 16px 0; border-bottom: 1px solid var(--border-soft); font-size: 14px; }
+  .cb tbody tr:last-child td { border-bottom: none; }
+  .cb td.guest { font-family: 'Cormorant Garamond', serif; font-size: 18px; font-weight: 500; }
+  .cb td.num { text-align: right; font-variant-numeric: tabular-nums; }
+
+  .cb .pill {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 3px 9px; border-radius: 999px;
+    font-family: 'Inter', sans-serif;
+    font-size: 11px; font-weight: 500;
+    letter-spacing: 0.04em;
+  }
+  .cb .pill.green { background: #E1EAD7; color: var(--green); }
+  .cb .pill.amber { background: #F5E5C8; color: var(--amber); }
+  .cb .pill.red   { background: #F2D9D5; color: var(--red); }
+  .cb .pill.blue  { background: var(--accent-soft); color: var(--accent); }
+
+  .cb .checklist { list-style: none; padding: 0; }
+  .cb .check { display: flex; align-items: center; gap: 14px; padding: 14px 0; border-bottom: 1px solid var(--border-soft); font-size: 14px; }
+  .cb .check:last-child { border-bottom: none; }
+  .cb .check .dot {
+    width: 18px; height: 18px; border-radius: 50%;
+    flex-shrink: 0;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: 600;
+  }
+  .cb .check.done .dot { background: var(--accent); color: var(--surface); }
+  .cb .check.todo .dot { border: 1px solid var(--border); }
+  .cb .check .meta { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--muted); margin-left: auto; }
+  .cb .check.done span:not(.dot):not(.meta) { color: var(--ink-2); }
+
+  .cb .alert {
+    padding: 18px 22px;
+    background: var(--surface);
+    border-left: 3px solid var(--amber);
+    margin-bottom: 12px;
+  }
+  .cb .alert.danger { border-left-color: var(--red); }
+  .cb .alert .title { font-family: 'Cormorant Garamond', serif; font-weight: 500; font-size: 18px; }
+  .cb .alert .desc { font-size: 13px; color: var(--muted); margin-top: 4px; line-height: 1.5; }
+  .cb .alert .row { display: flex; align-items: center; margin-top: 10px; gap: 8px; }
+  .cb .ok-state { font-family: 'Cormorant Garamond', serif; font-size: 22px; font-style: italic; color: var(--muted); padding: 32px 24px; text-align: center; background: var(--surface); border: 1px solid var(--border); }
+
+  .cb .btn {
+    font-family: 'Inter', sans-serif;
+    font-size: 11.5px; font-weight: 500; letter-spacing: 0.1em; text-transform: uppercase;
+    padding: 8px 16px;
+    border: 1px solid var(--ink);
+    background: transparent;
+    color: var(--ink);
+    border-radius: 0;
+  }
+  .cb .btn:hover { background: var(--ink); color: var(--surface); }
+  .cb .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--surface); }
+  .cb .btn.primary:hover { background: #6E2D17; border-color: #6E2D17; }
+
+  .cb .qa { display: grid; gap: 1px; background: var(--border); border: 1px solid var(--border); }
+  .cb .qa a { background: var(--surface); padding: 14px 18px; font-family: 'Cormorant Garamond', serif; font-size: 18px; }
+  .cb .qa a:hover { background: var(--accent-soft); }
+  .cb .qa a::after { content: ' ›'; color: var(--accent); }
+
+/* ═══════════════════════════════════════════════════════
+   CONCEPT C — Technical / Monitoring / Dense
+   GitHub Actions + Grafana, monospace-first
+   ═══════════════════════════════════════════════════════ */
+  .cc {
+    --bg: #FFFFFF;
+    --surface: #FFFFFF;
+    --surface-2: #F6F8FA;
+    --border: #D8DEE4;
+    --border-soft: #ECEEF1;
+    --ink: #0F172A;
+    --ink-2: #344054;
+    --muted: #64748B;
+    --accent: #2563EB;
+    --green: #16A34A;
+    --amber: #D97706;
+    --red: #DC2626;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: 'Inter', sans-serif;
+    font-size: 13px;
+  }
+  .cc .wrap { max-width: 1380px; margin: 0 auto; padding: 16px 20px 80px; }
+  .cc .topstrip { display: flex; align-items: center; gap: 12px; padding: 8px 0 12px; border-bottom: 1px solid var(--border); margin-bottom: 16px; font-family: 'JetBrains Mono', monospace; font-size: 12px; }
+  .cc .topstrip .crumb { color: var(--muted); }
+  .cc .topstrip .crumb strong { color: var(--ink); }
+  .cc .topstrip .badge { display: inline-flex; gap: 5px; align-items: center; padding: 2px 8px; background: var(--surface-2); border: 1px solid var(--border-soft); border-radius: 4px; }
+  .cc .topstrip .right { margin-left: auto; display: flex; gap: 8px; }
+
+  .cc .ws-head { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
+  .cc .ws-head h1 { font-size: 20px; font-weight: 600; letter-spacing: -0.01em; }
+  .cc .ws-head .id { font-family: 'JetBrains Mono', monospace; font-size: 11.5px; color: var(--muted); padding: 2px 8px; background: var(--surface-2); border-radius: 4px; }
+  .cc .ws-head .actions { margin-left: auto; display: flex; gap: 6px; }
+
+  .cc .nav { display: flex; gap: 0; border-bottom: 1px solid var(--border); margin-bottom: 16px; }
+  .cc .nav a { padding: 8px 12px; font-size: 12.5px; color: var(--muted); border-bottom: 2px solid transparent; margin-bottom: -1px; }
+  .cc .nav a:hover { color: var(--ink); }
+  .cc .nav a.active { color: var(--ink); border-bottom-color: var(--accent); font-weight: 500; }
+  .cc .nav .count { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--muted); margin-left: 6px; }
+
+  .cc .stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 16px; }
+  .cc .stat { background: var(--surface); border: 1px solid var(--border); border-radius: 4px; padding: 10px 14px; }
+  .cc .stat .label { font-family: 'JetBrains Mono', monospace; font-size: 10.5px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; display: flex; align-items: center; gap: 6px; }
+  .cc .stat .label::before { content: '●'; color: var(--green); }
+  .cc .stat .value { font-size: 22px; font-weight: 600; letter-spacing: -0.01em; margin-top: 4px; font-variant-numeric: tabular-nums; font-family: 'JetBrains Mono', monospace; }
+  .cc .stat .delta { display: flex; align-items: center; gap: 6px; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--muted); margin-top: 2px; }
+  .cc .stat .delta .up { color: var(--green); }
+  .cc .stat .delta .down { color: var(--red); }
+  .cc .stat .spark { display: flex; gap: 1px; margin-top: 8px; height: 18px; align-items: flex-end; }
+  .cc .stat .spark span { flex: 1; background: var(--accent); opacity: 0.18; border-radius: 1px; }
+  .cc .stat .spark span.lit { opacity: 1; }
+
+  .cc .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+  .cc .grid-2-1 { display: grid; grid-template-columns: 2fr 1fr; gap: 8px; }
+  @media (max-width: 1100px) { .cc .grid-3 { grid-template-columns: 1fr; } .cc .grid-2-1 { grid-template-columns: 1fr; } }
+
+  .cc .panel { background: var(--surface); border: 1px solid var(--border); border-radius: 4px; overflow: hidden; }
+  .cc .panel-head { padding: 8px 14px; border-bottom: 1px solid var(--border); background: var(--surface-2); display: flex; align-items: center; gap: 10px; }
+  .cc .panel-head h2 { font-family: 'JetBrains Mono', monospace; font-size: 11.5px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.06em; }
+  .cc .panel-head .right { margin-left: auto; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--muted); }
+
+  .cc table { width: 100%; border-collapse: collapse; }
+  .cc th, .cc td { padding: 7px 14px; border-bottom: 1px solid var(--border-soft); text-align: left; }
+  .cc th { font-family: 'JetBrains Mono', monospace; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); font-weight: 500; }
+  .cc tbody tr:hover { background: var(--surface-2); }
+  .cc tbody tr:last-child td { border-bottom: none; }
+  .cc td.mono { font-family: 'JetBrains Mono', monospace; font-size: 11.5px; }
+  .cc td.num { text-align: right; font-variant-numeric: tabular-nums; font-family: 'JetBrains Mono', monospace; }
+
+  .cc .badge {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 2px 7px; border-radius: 3px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px; font-weight: 500;
+    line-height: 1.4;
+  }
+  .cc .badge.green { background: #DCFCE7; color: var(--green); }
+  .cc .badge.amber { background: #FEF3C7; color: var(--amber); }
+  .cc .badge.red   { background: #FEE2E2; color: var(--red); }
+  .cc .badge.blue  { background: #DBEAFE; color: var(--accent); }
+  .cc .badge.gray  { background: var(--surface-2); color: var(--muted); }
+  .cc .badge .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+
+  .cc .check {
+    display: flex; align-items: center; gap: 10px;
+    padding: 7px 14px; font-size: 12.5px;
+    border-bottom: 1px solid var(--border-soft);
+  }
+  .cc .check:last-child { border-bottom: none; }
+  .cc .check .icon {
+    width: 16px; height: 16px; border-radius: 3px;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 10px; font-weight: 700;
+    flex-shrink: 0;
+  }
+  .cc .check .icon.done { background: var(--green); color: #fff; }
+  .cc .check .icon.todo { background: var(--surface-2); color: var(--muted); border: 1px dashed var(--border); }
+  .cc .check .meta { font-family: 'JetBrains Mono', monospace; font-size: 10.5px; color: var(--muted); margin-left: auto; }
+
+  .cc .alert {
+    padding: 8px 14px; display: flex; gap: 10px; align-items: center;
+    border-bottom: 1px solid var(--border-soft);
+    font-size: 12.5px;
+  }
+  .cc .alert:last-child { border-bottom: none; }
+  .cc .alert .icon { width: 18px; height: 18px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: 3px; font-weight: 700; font-size: 10px; }
+  .cc .alert .desc { color: var(--muted); font-size: 11.5px; margin-top: 2px; }
+  .cc .alert.danger .icon { background: #FEE2E2; color: var(--red); }
+  .cc .alert.warn .icon { background: #FEF3C7; color: var(--amber); }
+  .cc .alert .body { flex: 1; }
+  .cc .ok-state { padding: 24px; text-align: center; color: var(--muted); font-family: 'JetBrains Mono', monospace; font-size: 12px; }
+
+  .cc .btn {
+    font-family: 'Inter', sans-serif;
+    font-size: 12px; font-weight: 500;
+    padding: 5px 11px;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--ink);
+  }
+  .cc .btn:hover { background: var(--surface-2); }
+  .cc .btn.primary { background: var(--ink); color: #fff; border-color: var(--ink); }
+  .cc .btn.danger { color: var(--red); border-color: #FCA5A5; }
+
+  .cc .qa { display: flex; flex-direction: column; }
+  .cc .qa a { padding: 7px 14px; border-bottom: 1px solid var(--border-soft); font-family: 'JetBrains Mono', monospace; font-size: 12px; display: flex; align-items: center; gap: 8px; color: var(--ink); }
+  .cc .qa a:last-child { border-bottom: none; }
+  .cc .qa a:hover { background: var(--surface-2); }
+  .cc .qa a::before { content: '$'; color: var(--green); }
+
+/* ═══════════════════════════════════════════════════════
+   CONCEPT D — Soft Modern SaaS / Cron / Linear-light
+   lavender bg, soft shadows, rounded, friendly
+   ═══════════════════════════════════════════════════════ */
+  .cd {
+    --bg: #F7F6FB;
+    --surface: #FFFFFF;
+    --border: #ECEAF4;
+    --border-soft: #F4F2FA;
+    --ink: #1A1525;
+    --ink-2: #44394F;
+    --muted: #786C8B;
+    --accent: #6E56CF;
+    --accent-soft: #EDE9FE;
+    --green: #059669;
+    --green-soft: #D1FAE5;
+    --amber: #D97706;
+    --amber-soft: #FEF3C7;
+    --red: #DC2626;
+    --red-soft: #FEE2E2;
+    --blue: #2563EB;
+    --blue-soft: #DBEAFE;
+    --shadow: 0 1px 2px rgba(20, 14, 60, 0.04), 0 4px 16px rgba(20, 14, 60, 0.04);
+    background: var(--bg);
+    color: var(--ink);
+    background-image:
+      radial-gradient(at 10% 0%, rgba(110, 86, 207, 0.05) 0%, transparent 40%),
+      radial-gradient(at 100% 100%, rgba(199, 86, 207, 0.04) 0%, transparent 40%);
+  }
+  .cd .wrap { max-width: 1280px; margin: 0 auto; padding: 32px 32px 80px; }
+  .cd .crumb { font-size: 12.5px; color: var(--muted); margin-bottom: 20px; }
+  .cd .crumb a { color: var(--muted); }
+  .cd .crumb a:hover { color: var(--ink); }
+  .cd .ws-head { display: flex; align-items: center; gap: 16px; margin-bottom: 28px; flex-wrap: wrap; }
+  .cd .ws-head .avatar {
+    width: 48px; height: 48px; border-radius: 12px;
+    background: linear-gradient(135deg, #C4B5FD 0%, #818CF8 100%);
+    display: inline-flex; align-items: center; justify-content: center;
+    color: #fff; font-weight: 600; font-size: 16px;
+    box-shadow: var(--shadow);
+  }
+  .cd .ws-head h1 { font-size: 22px; font-weight: 600; letter-spacing: -0.01em; }
+  .cd .ws-head .domain { color: var(--muted); font-size: 13px; margin-top: 2px; display: flex; align-items: center; gap: 8px; }
+  .cd .ws-head .domain .pill { background: var(--green-soft); color: var(--green); padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 500; display: inline-flex; gap: 4px; align-items: center; }
+  .cd .ws-head .actions { margin-left: auto; display: flex; gap: 8px; }
+
+  .cd .nav { display: flex; gap: 4px; padding: 4px; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; margin-bottom: 28px; box-shadow: var(--shadow); width: fit-content; max-width: 100%; overflow-x: auto; }
+  .cd .nav a { padding: 7px 14px; font-size: 13px; color: var(--muted); border-radius: 8px; white-space: nowrap; }
+  .cd .nav a:hover { color: var(--ink); }
+  .cd .nav a.active { background: var(--accent-soft); color: var(--accent); font-weight: 500; }
+
+  .cd .stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 24px; }
+  .cd .stat { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 18px 20px; box-shadow: var(--shadow); }
+  .cd .stat .head { display: flex; align-items: center; gap: 8px; }
+  .cd .stat .icon {
+    width: 28px; height: 28px; border-radius: 8px;
+    background: var(--accent-soft); color: var(--accent);
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 14px;
+  }
+  .cd .stat .label { font-size: 12px; color: var(--muted); }
+  .cd .stat .value { font-size: 26px; font-weight: 600; letter-spacing: -0.02em; margin-top: 10px; }
+  .cd .stat .delta { font-size: 12px; margin-top: 2px; display: flex; gap: 5px; align-items: center; }
+  .cd .stat .delta .up { color: var(--green); }
+  .cd .stat .delta .arrow { font-size: 11px; }
+  .cd .stat .bar {
+    margin-top: 12px;
+    height: 4px; background: var(--accent-soft); border-radius: 999px;
+    overflow: hidden;
+  }
+  .cd .stat .bar .fill { height: 100%; background: var(--accent); border-radius: 999px; }
+
+  .cd .grid-2 { display: grid; grid-template-columns: 1.7fr 1fr; gap: 16px; align-items: start; }
+  @media (max-width: 900px) { .cd .grid-2 { grid-template-columns: 1fr; } }
+
+  .cd .card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; box-shadow: var(--shadow); overflow: hidden; }
+  .cd .card-head { padding: 16px 20px 12px; display: flex; align-items: center; gap: 12px; }
+  .cd .card-head h2 { font-size: 14px; font-weight: 600; }
+  .cd .card-head .right { margin-left: auto; }
+  .cd .card-body { padding: 4px 0 8px; }
+
+  .cd table { width: 100%; border-collapse: collapse; }
+  .cd th, .cd td { padding: 11px 20px; text-align: left; font-size: 13px; border-bottom: 1px solid var(--border-soft); }
+  .cd th { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); font-weight: 500; }
+  .cd tbody tr:hover { background: var(--bg); cursor: pointer; }
+  .cd tbody tr:last-child td { border-bottom: none; }
+  .cd td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .cd .avatar-mini {
+    width: 28px; height: 28px; border-radius: 8px;
+    background: linear-gradient(135deg, #FECACA 0%, #FBBF24 100%);
+    display: inline-flex; align-items: center; justify-content: center;
+    color: #fff; font-weight: 600; font-size: 11px;
+    margin-right: 8px; vertical-align: middle;
+  }
+  .cd .avatar-mini.b { background: linear-gradient(135deg, #A7F3D0 0%, #2DD4BF 100%); }
+  .cd .avatar-mini.c { background: linear-gradient(135deg, #FBCFE8 0%, #C084FC 100%); }
+  .cd .avatar-mini.d { background: linear-gradient(135deg, #BFDBFE 0%, #60A5FA 100%); }
+  .cd .avatar-mini.e { background: linear-gradient(135deg, #FEF3C7 0%, #FCA5A5 100%); }
+  .cd .avatar-mini.f { background: linear-gradient(135deg, #DDD6FE 0%, #A78BFA 100%); }
+
+  .cd .pill {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 3px 10px; border-radius: 999px;
+    font-size: 11.5px; font-weight: 500;
+  }
+  .cd .pill.green { background: var(--green-soft); color: var(--green); }
+  .cd .pill.amber { background: var(--amber-soft); color: var(--amber); }
+  .cd .pill.red   { background: var(--red-soft); color: var(--red); }
+  .cd .pill.blue  { background: var(--blue-soft); color: var(--blue); }
+  .cd .pill.gray  { background: #F1EFF7; color: var(--muted); }
+  .cd .pill .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+
+  .cd .checklist { padding: 4px 0; }
+  .cd .check {
+    display: flex; align-items: center; gap: 12px;
+    padding: 11px 20px;
+    font-size: 13px;
+    border-bottom: 1px solid var(--border-soft);
+  }
+  .cd .check:last-child { border-bottom: none; }
+  .cd .check .icon {
+    width: 20px; height: 20px; border-radius: 50%;
+    flex-shrink: 0;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: 700;
+  }
+  .cd .check.done .icon { background: var(--green-soft); color: var(--green); }
+  .cd .check.todo .icon { background: var(--bg); color: var(--muted); border: 1px dashed var(--border); }
+  .cd .check .meta { font-size: 11.5px; color: var(--muted); margin-left: auto; }
+  .cd .check.done span:not(.icon):not(.meta) { color: var(--ink-2); }
+  .cd .checklist-bar { padding: 14px 20px; border-bottom: 1px solid var(--border-soft); display: flex; align-items: center; gap: 12px; }
+  .cd .progress { flex: 1; height: 6px; background: var(--bg); border-radius: 999px; overflow: hidden; }
+  .cd .progress .fill { height: 100%; background: linear-gradient(90deg, var(--accent) 0%, #C084FC 100%); border-radius: 999px; }
+
+  .cd .alert { padding: 14px 20px; display: flex; gap: 12px; align-items: flex-start; border-bottom: 1px solid var(--border-soft); }
+  .cd .alert:last-child { border-bottom: none; }
+  .cd .alert .icon {
+    width: 32px; height: 32px; border-radius: 10px;
+    flex-shrink: 0;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 14px;
+  }
+  .cd .alert.amber .icon { background: var(--amber-soft); color: var(--amber); }
+  .cd .alert.red .icon { background: var(--red-soft); color: var(--red); }
+  .cd .alert.info .icon { background: var(--blue-soft); color: var(--blue); }
+  .cd .alert .title { font-weight: 500; font-size: 13.5px; }
+  .cd .alert .desc { color: var(--muted); font-size: 12.5px; margin-top: 2px; }
+  .cd .alert .body { flex: 1; }
+  .cd .ok-state { padding: 32px 20px; text-align: center; color: var(--muted); font-size: 13px; }
+  .cd .ok-state .emoji-fake {
+    width: 36px; height: 36px; margin: 0 auto 8px;
+    border-radius: 50%; background: var(--green-soft); color: var(--green);
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 18px;
+  }
+
+  .cd .btn {
+    padding: 7px 14px; border-radius: 8px;
+    font-size: 13px; font-weight: 500;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--ink);
+    box-shadow: var(--shadow);
+  }
+  .cd .btn:hover { background: var(--bg); }
+  .cd .btn.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .cd .btn.primary:hover { background: #5B46AD; border-color: #5B46AD; }
+  .cd .btn.sm { padding: 5px 10px; font-size: 12px; }
+
+  .cd .qa { padding: 4px 0; }
+  .cd .qa a { padding: 11px 20px; display: flex; align-items: center; gap: 10px; font-size: 13px; border-bottom: 1px solid var(--border-soft); }
+  .cd .qa a:last-child { border-bottom: none; }
+  .cd .qa a:hover { background: var(--bg); }
+  .cd .qa .icon-sq {
+    width: 28px; height: 28px; border-radius: 8px;
+    display: inline-flex; align-items: center; justify-content: center;
+    background: var(--accent-soft); color: var(--accent);
+    font-size: 14px;
+  }
+
+  /* shared mock content widths */
+  .ca .row .ref { width: 110px; }
+  .cb td.guest { width: 35%; }
+</style>
+</head>
+<body>
+
+<div class="switcher">
+  <div class="meta">Admin · Overview · <strong>The Portico Hotel</strong></div>
+  <button data-c="ca" class="active">A · Modern AI</button>
+  <button data-c="cb">B · Editorial</button>
+  <button data-c="cc">C · Technical</button>
+  <button data-c="cd">D · Soft SaaS</button>
+</div>
+
+<!-- ════════════ CONCEPT A — Modern AI / Linear ════════════ -->
+<section class="concept ca active" id="ca">
+  <div class="wrap">
+    <div class="crumb">
+      <a href="#">All hotels</a>
+      <span class="arrow">/</span>
+      <span>The Portico Hotel</span>
+    </div>
+
+    <div class="ws-head">
+      <div>
+        <h1>The Portico Hotel</h1>
+        <div class="domain">theporticohotel.com · Paddington · GBP</div>
+      </div>
+      <div class="actions">
+        <button class="btn">Preview <kbd>P</kbd></button>
+        <button class="btn">Open site ↗</button>
+        <button class="btn primary">Sync now <kbd>⌘S</kbd></button>
+      </div>
+    </div>
+
+    <div class="nav">
+      <a href="#" class="active">Overview</a>
+      <a href="#">Bookings</a>
+      <a href="#">Content</a>
+      <a href="#">Photos</a>
+      <a href="#">Rates</a>
+      <a href="#">Cloudbeds</a>
+      <a href="#">Stripe</a>
+      <a href="#">Domain</a>
+      <a href="#">Alerts</a>
+    </div>
+
+    <div class="stat-grid">
+      <div class="stat">
+        <div class="label">Bookings · 7d</div>
+        <div class="value">14</div>
+        <div class="delta up">+3 vs prior week</div>
+        <div class="spark">
+          <div class="bar" style="height:30%"></div>
+          <div class="bar" style="height:60%"></div>
+          <div class="bar" style="height:45%"></div>
+          <div class="bar" style="height:80%"></div>
+          <div class="bar" style="height:50%"></div>
+          <div class="bar lit" style="height:90%"></div>
+          <div class="bar lit" style="height:75%"></div>
+        </div>
+      </div>
+      <div class="stat">
+        <div class="label">Revenue · 7d</div>
+        <div class="value">£8,420</div>
+        <div class="delta up">+12.4%</div>
+        <div class="spark">
+          <div class="bar" style="height:50%"></div>
+          <div class="bar" style="height:35%"></div>
+          <div class="bar" style="height:70%"></div>
+          <div class="bar" style="height:60%"></div>
+          <div class="bar" style="height:80%"></div>
+          <div class="bar lit" style="height:95%"></div>
+          <div class="bar lit" style="height:85%"></div>
+        </div>
+      </div>
+      <div class="stat">
+        <div class="label">Conversion</div>
+        <div class="value">3.4%</div>
+        <div class="delta">view → book</div>
+        <div class="spark">
+          <div class="bar" style="height:40%"></div>
+          <div class="bar" style="height:55%"></div>
+          <div class="bar" style="height:50%"></div>
+          <div class="bar" style="height:65%"></div>
+          <div class="bar" style="height:60%"></div>
+          <div class="bar lit" style="height:75%"></div>
+          <div class="bar lit" style="height:70%"></div>
+        </div>
+      </div>
+      <div class="stat">
+        <div class="label">Avg booking</div>
+        <div class="value">£412</div>
+        <div class="delta">2.1 nights · 1.4 guests</div>
+        <div class="spark">
+          <div class="bar" style="height:60%"></div>
+          <div class="bar" style="height:65%"></div>
+          <div class="bar" style="height:55%"></div>
+          <div class="bar" style="height:75%"></div>
+          <div class="bar" style="height:60%"></div>
+          <div class="bar lit" style="height:70%"></div>
+          <div class="bar lit" style="height:80%"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid-2">
+      <div style="display:flex; flex-direction:column; gap:16px;">
+        <div class="card">
+          <div class="card-head"><h2>Recent bookings</h2><span class="pill blue right">14 this week</span></div>
+          <div class="card-body">
+            <div class="row"><span class="ref mono">CB-3491820</span><span class="grow">Eleanor Whitfield · Master Suite</span><span class="num">£1,140</span><span class="pill green">paid</span></div>
+            <div class="row"><span class="ref mono">CB-3491819</span><span class="grow">James Park · Deluxe Double</span><span class="num">£480</span><span class="pill green">paid</span></div>
+            <div class="row"><span class="ref mono">CB-3491812</span><span class="grow">Sara Conti · Classic Single</span><span class="num">£420</span><span class="pill blue">card on file</span></div>
+            <div class="row"><span class="ref mono">CB-3491790</span><span class="grow">Daniel Roth · Master Suite</span><span class="num">£380</span><span class="pill green">paid</span></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-head"><h2>Needs attention</h2></div>
+          <div class="alert ok">All clear · last sync 9:14 UTC</div>
+        </div>
+      </div>
+
+      <div style="display:flex; flex-direction:column; gap:16px;">
+        <div class="card">
+          <div class="card-head"><h2>Launch checklist</h2><span class="pill green right">11/11</span></div>
+          <div class="checklist">
+            <div class="check done"><span class="dot">✓</span><span>Property created</span><span class="meta">2026-03-12</span></div>
+            <div class="check done"><span class="dot">✓</span><span>Cloudbeds OAuth</span><span class="meta">auto-refresh</span></div>
+            <div class="check done"><span class="dot">✓</span><span>Stripe Connect</span><span class="meta">active · GBP</span></div>
+            <div class="check done"><span class="dot">✓</span><span>Front-end shipped</span><span class="meta">portico-ivory</span></div>
+            <div class="check done"><span class="dot">✓</span><span>Photos uploaded</span><span class="meta">24 in library</span></div>
+            <div class="check done"><span class="dot">✓</span><span>Copy filled</span><span class="meta">2026-05-02</span></div>
+            <div class="check done"><span class="dot">✓</span><span>Domain · DNS · SSL</span><span class="meta">expires Aug 4</span></div>
+            <div class="check done"><span class="dot">✓</span><span>Test booking</span><span class="meta">2026-04-29</span></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-head"><h2>Quick actions</h2></div>
+          <div class="qa">
+            <a href="#">Sync inventory now</a>
+            <a href="#">Open in Stripe ↗</a>
+            <a href="#">Send test confirmation</a>
+            <a href="#">Preview booking flow</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ════════════ CONCEPT B — Editorial / Hospitality ════════════ -->
+<section class="concept cb" id="cb">
+  <div class="wrap">
+    <div class="crumb"><a href="#">All hotels</a> · The Portico Hotel</div>
+
+    <div class="ws-head">
+      <div>
+        <div class="eyebrow" style="margin-bottom: 4px;">Property · GBP · United Kingdom</div>
+        <h1>The Portico Hotel</h1>
+        <div class="domain">theporticohotel.com · 32 Sussex Gardens, Paddington W2 1UJ</div>
+      </div>
+      <div class="actions">
+        <button class="btn">Preview</button>
+        <button class="btn primary">Sync now</button>
+      </div>
+    </div>
+
+    <div class="nav">
+      <a href="#" class="active">Overview</a>
+      <a href="#">Bookings</a>
+      <a href="#">Content</a>
+      <a href="#">Photos</a>
+      <a href="#">Rates</a>
+      <a href="#">Cloudbeds</a>
+      <a href="#">Stripe</a>
+      <a href="#">Domain</a>
+    </div>
+
+    <div class="stat-grid">
+      <div class="stat"><div class="label">Bookings · 7d</div><div class="value">14</div><div class="delta"><em>+ 3</em> vs prior</div></div>
+      <div class="stat"><div class="label">Revenue · 7d</div><div class="value">£8,420</div><div class="delta"><em>+ 12.4%</em></div></div>
+      <div class="stat"><div class="label">Conversion</div><div class="value">3.4%</div><div class="delta">view to book</div></div>
+      <div class="stat"><div class="label">Avg stay</div><div class="value">£412</div><div class="delta">2.1 nights</div></div>
+    </div>
+
+    <div class="grid-2">
+      <div>
+        <section class="section">
+          <div class="section-head">
+            <div>
+              <div class="eyebrow">This week</div>
+              <h2>Recent bookings</h2>
+            </div>
+            <a href="#" class="more">All bookings →</a>
+          </div>
+          <table>
+            <thead>
+              <tr><th>Reservation</th><th>Guest</th><th>Stay</th><th class="num">Total</th><th>Status</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td style="font-family:'JetBrains Mono',monospace; font-size:11.5px; color:var(--muted)">CB-3491820</td>
+                <td class="guest">Eleanor Whitfield</td>
+                <td>May 12 · 3 nights · Master Suite</td>
+                <td class="num">£1,140</td>
+                <td><span class="pill green">Paid</span></td>
+              </tr>
+              <tr>
+                <td style="font-family:'JetBrains Mono',monospace; font-size:11.5px; color:var(--muted)">CB-3491819</td>
+                <td class="guest">James Park</td>
+                <td>May 11 · 2 nights · Deluxe Double</td>
+                <td class="num">£480</td>
+                <td><span class="pill green">Paid</span></td>
+              </tr>
+              <tr>
+                <td style="font-family:'JetBrains Mono',monospace; font-size:11.5px; color:var(--muted)">CB-3491812</td>
+                <td class="guest">Sara Conti</td>
+                <td>May 20 · 2 nights · Classic Single</td>
+                <td class="num">£420</td>
+                <td><span class="pill blue">Card on file</span></td>
+              </tr>
+              <tr>
+                <td style="font-family:'JetBrains Mono',monospace; font-size:11.5px; color:var(--muted)">CB-3491790</td>
+                <td class="guest">Daniel Roth</td>
+                <td>May 09 · 1 night · Master Suite</td>
+                <td class="num">£380</td>
+                <td><span class="pill green">Paid</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </section>
+
+        <section class="section">
+          <div class="section-head">
+            <div><div class="eyebrow">Operations</div><h2>Needs attention</h2></div>
+          </div>
+          <div class="ok-state">All quiet. The signals are good.</div>
+        </section>
+      </div>
+
+      <aside>
+        <section class="section">
+          <div class="section-head">
+            <div><div class="eyebrow">Eleven of eleven</div><h2>Launch checklist</h2></div>
+          </div>
+          <ul class="checklist">
+            <li class="check done"><span class="dot">✓</span><span>Property created</span><span class="meta">Mar 12</span></li>
+            <li class="check done"><span class="dot">✓</span><span>Cloudbeds OAuth</span><span class="meta">auto</span></li>
+            <li class="check done"><span class="dot">✓</span><span>Stripe Connect</span><span class="meta">GBP</span></li>
+            <li class="check done"><span class="dot">✓</span><span>Front-end shipped</span><span class="meta">portico-ivory</span></li>
+            <li class="check done"><span class="dot">✓</span><span>Photos uploaded</span><span class="meta">24 photos</span></li>
+            <li class="check done"><span class="dot">✓</span><span>Copy filled</span><span class="meta">May 02</span></li>
+            <li class="check done"><span class="dot">✓</span><span>Domain &amp; DNS</span><span class="meta">live</span></li>
+            <li class="check done"><span class="dot">✓</span><span>SSL valid</span><span class="meta">Aug 04</span></li>
+            <li class="check done"><span class="dot">✓</span><span>Test booking</span><span class="meta">Apr 29</span></li>
+          </ul>
+        </section>
+
+        <section class="section">
+          <div class="section-head">
+            <div><div class="eyebrow">In a hurry</div><h2>Quick actions</h2></div>
+          </div>
+          <div class="qa">
+            <a href="#">Sync inventory</a>
+            <a href="#">Open in Stripe</a>
+            <a href="#">Send test email</a>
+            <a href="#">Preview booking</a>
+          </div>
+        </section>
+      </aside>
+    </div>
+  </div>
+</section>
+
+<!-- ════════════ CONCEPT C — Technical / Monitoring ════════════ -->
+<section class="concept cc" id="cc">
+  <div class="wrap">
+    <div class="topstrip">
+      <span class="crumb"><a href="#">admin</a> / hotels / <strong>portico</strong> / overview</span>
+      <span class="badge">env: production</span>
+      <span class="badge" style="color:var(--green)">● healthy</span>
+      <div class="right">
+        <button class="btn">⌘K · search</button>
+      </div>
+    </div>
+
+    <div class="ws-head">
+      <h1>The Portico Hotel</h1>
+      <span class="id">slug: portico</span>
+      <span class="id">cb: 302817</span>
+      <span class="id">stripe: acct_1Q…ZxYa</span>
+      <span class="badge green"><span class="dot"></span>live</span>
+      <div class="actions">
+        <button class="btn">Preview</button>
+        <button class="btn">Open site ↗</button>
+        <button class="btn primary">Sync</button>
+      </div>
+    </div>
+
+    <div class="nav">
+      <a href="#" class="active">Overview <span class="count">∙</span></a>
+      <a href="#">Bookings <span class="count">14</span></a>
+      <a href="#">Content</a>
+      <a href="#">Photos <span class="count">24</span></a>
+      <a href="#">Rates <span class="count">8</span></a>
+      <a href="#">Cloudbeds <span class="count" style="color:var(--green)">●</span></a>
+      <a href="#">Stripe <span class="count" style="color:var(--green)">●</span></a>
+      <a href="#">Domain</a>
+      <a href="#">Alerts <span class="count">0</span></a>
+    </div>
+
+    <div class="stat-grid">
+      <div class="stat">
+        <div class="label">bookings_7d</div>
+        <div class="value">14</div>
+        <div class="delta"><span class="up">↑ +27.3%</span> · vs prior</div>
+        <div class="spark"><span style="height:30%"></span><span style="height:60%"></span><span style="height:45%"></span><span style="height:80%"></span><span style="height:50%"></span><span class="lit" style="height:95%"></span><span class="lit" style="height:75%"></span></div>
+      </div>
+      <div class="stat">
+        <div class="label">revenue_7d_gbp</div>
+        <div class="value">8,420</div>
+        <div class="delta"><span class="up">↑ +12.4%</span> · net of fees</div>
+        <div class="spark"><span style="height:50%"></span><span style="height:35%"></span><span style="height:70%"></span><span style="height:60%"></span><span style="height:80%"></span><span class="lit" style="height:95%"></span><span class="lit" style="height:85%"></span></div>
+      </div>
+      <div class="stat">
+        <div class="label">conv_7d_pct</div>
+        <div class="value">3.4</div>
+        <div class="delta"><span class="up">↑ 0.2pp</span> · 412 sessions</div>
+        <div class="spark"><span style="height:40%"></span><span style="height:55%"></span><span style="height:50%"></span><span style="height:65%"></span><span style="height:60%"></span><span class="lit" style="height:75%"></span><span class="lit" style="height:70%"></span></div>
+      </div>
+      <div class="stat">
+        <div class="label">adr_gbp</div>
+        <div class="value">412</div>
+        <div class="delta">avg 2.1n · 1.4g</div>
+        <div class="spark"><span style="height:60%"></span><span style="height:65%"></span><span style="height:55%"></span><span style="height:75%"></span><span style="height:60%"></span><span class="lit" style="height:70%"></span><span class="lit" style="height:80%"></span></div>
+      </div>
+    </div>
+
+    <div class="grid-2-1">
+      <div style="display:flex; flex-direction:column; gap:8px;">
+        <div class="panel">
+          <div class="panel-head"><h2>recent_bookings</h2><span class="right">14 rows · 7d</span></div>
+          <table>
+            <thead><tr><th>reservation</th><th>guest</th><th>check_in</th><th>nights</th><th>room · rate</th><th class="num">total</th><th>status</th><th>placed</th></tr></thead>
+            <tbody>
+              <tr><td class="mono">CB-3491820</td><td>Eleanor Whitfield</td><td class="mono">2026-05-12</td><td class="num">3</td><td>Master Suite · Flexible</td><td class="num">£1,140.00</td><td><span class="badge green"><span class="dot"></span>paid</span></td><td class="mono">6h</td></tr>
+              <tr><td class="mono">CB-3491819</td><td>James Park</td><td class="mono">2026-05-11</td><td class="num">2</td><td>Deluxe Double · NR</td><td class="num">£480.00</td><td><span class="badge green"><span class="dot"></span>paid</span></td><td class="mono">11h</td></tr>
+              <tr><td class="mono">CB-3491812</td><td>Sara Conti</td><td class="mono">2026-05-20</td><td class="num">2</td><td>Classic Single · Flex</td><td class="num">£420.00</td><td><span class="badge blue"><span class="dot"></span>card_on_file</span></td><td class="mono">1d</td></tr>
+              <tr><td class="mono">CB-3491790</td><td>Daniel Roth</td><td class="mono">2026-05-09</td><td class="num">1</td><td>Master Suite · Flex</td><td class="num">£380.00</td><td><span class="badge green"><span class="dot"></span>paid</span></td><td class="mono">2d</td></tr>
+              <tr><td class="mono">CB-3491772</td><td>Mei Lin</td><td class="mono">2026-05-18</td><td class="num">5</td><td>Deluxe Double · NR</td><td class="num">£1,200.00</td><td><span class="badge green"><span class="dot"></span>paid</span></td><td class="mono">3d</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="panel">
+          <div class="panel-head"><h2>signals</h2><span class="right">last 24h</span></div>
+          <table>
+            <tbody>
+              <tr><td class="mono">cloudbeds.sync</td><td><span class="badge green"><span class="dot"></span>ok</span></td><td class="num">4.1s</td><td class="mono" style="color:var(--muted)">cron · 9:14 UTC</td><td class="num">720 rows</td></tr>
+              <tr><td class="mono">cloudbeds.webhook</td><td><span class="badge green"><span class="dot"></span>ok</span></td><td class="mono" style="color:var(--muted)">reservation/created</td><td class="mono" style="color:var(--muted)">7:32 UTC</td><td class="num">35.93.165.6</td></tr>
+              <tr><td class="mono">stripe.account.updated</td><td><span class="badge green"><span class="dot"></span>ok</span></td><td colspan="2" class="mono" style="color:var(--muted)">capabilities unchanged</td><td class="mono" style="color:var(--muted)">12h ago</td></tr>
+              <tr><td class="mono">availability.cache</td><td><span class="badge green"><span class="dot"></span>warm</span></td><td colspan="2" class="mono" style="color:var(--muted)">tag: availability:portico · revalidate 30s</span></td><td class="num">38 hits/h</td></tr>
+              <tr><td class="mono">cloudbeds.token</td><td><span class="badge amber"><span class="dot"></span>expires_25h</span></td><td colspan="2" class="mono" style="color:var(--muted)">auto-refresh enabled</span></td><td class="mono" style="color:var(--muted)">harmless</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div style="display:flex; flex-direction:column; gap:8px;">
+        <div class="panel">
+          <div class="panel-head"><h2>launch_checklist</h2><span class="right" style="color:var(--green)">11/11 ✓</span></div>
+          <div>
+            <div class="check"><span class="icon done">✓</span><span>property_row</span><span class="meta">2026-03-12</span></div>
+            <div class="check"><span class="icon done">✓</span><span>cloudbeds_oauth</span><span class="meta">auto</span></div>
+            <div class="check"><span class="icon done">✓</span><span>stripe_connect</span><span class="meta">active</span></div>
+            <div class="check"><span class="icon done">✓</span><span>frontend_shipped</span><span class="meta">portico-ivory</span></div>
+            <div class="check"><span class="icon done">✓</span><span>photos_uploaded</span><span class="meta">24</span></div>
+            <div class="check"><span class="icon done">✓</span><span>copy_filled</span><span class="meta">2026-05-02</span></div>
+            <div class="check"><span class="icon done">✓</span><span>dns_resolves</span><span class="meta">CNAME</span></div>
+            <div class="check"><span class="icon done">✓</span><span>ssl_valid</span><span class="meta">2026-08-04</span></div>
+            <div class="check"><span class="icon done">✓</span><span>stripe_live_mode</span><span class="meta">on</span></div>
+            <div class="check"><span class="icon done">✓</span><span>test_booking</span><span class="meta">2026-04-29</span></div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-head"><h2>alerts</h2><span class="right">0 open</span></div>
+          <div class="ok-state">$ all_clear · last_check 9:14 UTC</div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-head"><h2>quick_actions</h2></div>
+          <div class="qa">
+            <a href="#">sync_inventory --property=portico --days=90</a>
+            <a href="#">open_stripe_dashboard --account=acct_1Q…ZxYa</a>
+            <a href="#">send_test_email --to=karol@rockenue.com</a>
+            <a href="#">preview --route=/ --as-guest</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ════════════ CONCEPT D — Soft Modern SaaS ════════════ -->
+<section class="concept cd" id="cd">
+  <div class="wrap">
+    <div class="crumb"><a href="#">All hotels</a> · The Portico Hotel</div>
+
+    <div class="ws-head">
+      <div class="avatar">P</div>
+      <div>
+        <h1>The Portico Hotel</h1>
+        <div class="domain">theporticohotel.com · Paddington · GBP <span class="pill"><span style="width:6px; height:6px; border-radius:50%; background:currentColor; display:inline-block"></span>Live</span></div>
+      </div>
+      <div class="actions">
+        <button class="btn">Preview</button>
+        <button class="btn">Open site ↗</button>
+        <button class="btn primary">⚡ Sync now</button>
+      </div>
+    </div>
+
+    <div class="nav">
+      <a href="#" class="active">Overview</a>
+      <a href="#">Bookings</a>
+      <a href="#">Content</a>
+      <a href="#">Photos</a>
+      <a href="#">Rate plans</a>
+      <a href="#">Cloudbeds</a>
+      <a href="#">Stripe</a>
+      <a href="#">Domain</a>
+      <a href="#">Alerts</a>
+    </div>
+
+    <div class="stat-grid">
+      <div class="stat">
+        <div class="head"><div class="icon">✦</div><div class="label">Bookings · 7d</div></div>
+        <div class="value">14</div>
+        <div class="delta"><span class="up">↑ +27%</span> <span style="color:var(--muted)">vs prior week</span></div>
+        <div class="bar"><div class="fill" style="width:78%"></div></div>
+      </div>
+      <div class="stat">
+        <div class="head"><div class="icon" style="background:#D1FAE5; color:var(--green)">£</div><div class="label">Revenue · 7d</div></div>
+        <div class="value">£8,420</div>
+        <div class="delta"><span class="up">↑ +12.4%</span> <span style="color:var(--muted)">net of fees</span></div>
+        <div class="bar"><div class="fill" style="width:64%; background:linear-gradient(90deg, #10B981 0%, #6EE7B7 100%);"></div></div>
+      </div>
+      <div class="stat">
+        <div class="head"><div class="icon" style="background:#FEF3C7; color:#D97706">→</div><div class="label">Conversion</div></div>
+        <div class="value">3.4%</div>
+        <div class="delta"><span class="up">↑ 0.2pp</span> <span style="color:var(--muted)">412 sessions</span></div>
+        <div class="bar"><div class="fill" style="width:34%; background:linear-gradient(90deg, #F59E0B 0%, #FBBF24 100%);"></div></div>
+      </div>
+      <div class="stat">
+        <div class="head"><div class="icon" style="background:#DBEAFE; color:var(--blue)">⌂</div><div class="label">Avg booking</div></div>
+        <div class="value">£412</div>
+        <div class="delta"><span style="color:var(--muted)">2.1 nights · 1.4 guests</span></div>
+        <div class="bar"><div class="fill" style="width:55%; background:linear-gradient(90deg, #2563EB 0%, #60A5FA 100%);"></div></div>
+      </div>
+    </div>
+
+    <div class="grid-2">
+      <div style="display:flex; flex-direction:column; gap:16px;">
+        <div class="card">
+          <div class="card-head">
+            <h2>Recent bookings</h2>
+            <span class="pill blue right">14 this week</span>
+          </div>
+          <div class="card-body">
+            <table>
+              <thead><tr><th>Guest</th><th>Stay</th><th class="num">Total</th><th>Status</th></tr></thead>
+              <tbody>
+                <tr>
+                  <td><span class="avatar-mini">EW</span>Eleanor Whitfield<div style="color:var(--muted); font-size:11.5px; margin-left:36px">CB-3491820</div></td>
+                  <td>May 12 · 3n · Master Suite</td>
+                  <td class="num">£1,140</td>
+                  <td><span class="pill green"><span class="dot"></span>Paid</span></td>
+                </tr>
+                <tr>
+                  <td><span class="avatar-mini b">JP</span>James Park<div style="color:var(--muted); font-size:11.5px; margin-left:36px">CB-3491819</div></td>
+                  <td>May 11 · 2n · Deluxe Double</td>
+                  <td class="num">£480</td>
+                  <td><span class="pill green"><span class="dot"></span>Paid</span></td>
+                </tr>
+                <tr>
+                  <td><span class="avatar-mini c">SC</span>Sara Conti<div style="color:var(--muted); font-size:11.5px; margin-left:36px">CB-3491812</div></td>
+                  <td>May 20 · 2n · Classic Single</td>
+                  <td class="num">£420</td>
+                  <td><span class="pill blue"><span class="dot"></span>Card on file</span></td>
+                </tr>
+                <tr>
+                  <td><span class="avatar-mini d">DR</span>Daniel Roth<div style="color:var(--muted); font-size:11.5px; margin-left:36px">CB-3491790</div></td>
+                  <td>May 09 · 1n · Master Suite</td>
+                  <td class="num">£380</td>
+                  <td><span class="pill green"><span class="dot"></span>Paid</span></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-head"><h2>Needs attention</h2><span class="pill green right"><span class="dot"></span>0 alerts</span></div>
+          <div class="ok-state">
+            <div class="emoji-fake">✓</div>
+            <div>All clear. Last sync 9:14 UTC · all signals healthy.</div>
+          </div>
+        </div>
+      </div>
+
+      <div style="display:flex; flex-direction:column; gap:16px;">
+        <div class="card">
+          <div class="card-head"><h2>Launch checklist</h2><span class="pill green right">11 of 11</span></div>
+          <div class="checklist-bar">
+            <div class="progress"><div class="fill" style="width:100%"></div></div>
+            <span style="font-size:12px; color:var(--muted); font-weight:500;">100%</span>
+          </div>
+          <div class="checklist">
+            <div class="check done"><span class="icon">✓</span><span>Property created</span><span class="meta">Mar 12</span></div>
+            <div class="check done"><span class="icon">✓</span><span>Cloudbeds OAuth</span><span class="meta">auto</span></div>
+            <div class="check done"><span class="icon">✓</span><span>Stripe Connect</span><span class="meta">active</span></div>
+            <div class="check done"><span class="icon">✓</span><span>Front-end shipped</span><span class="meta">portico-ivory</span></div>
+            <div class="check done"><span class="icon">✓</span><span>Photos uploaded</span><span class="meta">24</span></div>
+            <div class="check done"><span class="icon">✓</span><span>Copy filled</span><span class="meta">May 2</span></div>
+            <div class="check done"><span class="icon">✓</span><span>Domain · DNS</span><span class="meta">live</span></div>
+            <div class="check done"><span class="icon">✓</span><span>SSL valid</span><span class="meta">Aug 4</span></div>
+            <div class="check done"><span class="icon">✓</span><span>Test booking</span><span class="meta">Apr 29</span></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-head"><h2>Quick actions</h2></div>
+          <div class="qa">
+            <a href="#"><span class="icon-sq">⟳</span><span>Sync inventory now</span></a>
+            <a href="#"><span class="icon-sq" style="background:#D1FAE5; color:var(--green)">$</span><span>Open in Stripe Dashboard ↗</span></a>
+            <a href="#"><span class="icon-sq" style="background:#FEF3C7; color:var(--amber)">✉</span><span>Send test confirmation</span></a>
+            <a href="#"><span class="icon-sq" style="background:#DBEAFE; color:var(--blue)">◷</span><span>Preview booking flow</span></a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<script>
+  const buttons = document.querySelectorAll('.switcher button');
+  const concepts = document.querySelectorAll('.concept');
+  function show(c) {
+    buttons.forEach(b => b.classList.toggle('active', b.dataset.c === c));
+    concepts.forEach(s => s.classList.toggle('active', s.id === c));
+    history.replaceState(null, '', '#' + c);
+    window.scrollTo({ top: 0 });
+  }
+  buttons.forEach(b => b.addEventListener('click', () => show(b.dataset.c)));
+  const init = location.hash.replace('#', '') || 'ca';
+  show(init);
+</script>
+
+</body>
+</html>

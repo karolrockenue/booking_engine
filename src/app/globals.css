@@ -25,6 +25,39 @@ body {
   font-family: Arial, Helvetica, sans-serif;
 }
 
+/* ───────── admin v3 design tokens ───────── */
+.admin-root {
+  --a-bg: #ffffff;
+  --a-side: #fafafa;
+  --a-surface: #ffffff;
+  --a-surface-2: #fafafa;
+  --a-border: #ebebeb;
+  --a-border-soft: #f1f1f1;
+  --a-ink: #0a0a0a;
+  --a-ink-2: #404040;
+  --a-muted: #737373;
+  --a-accent: #5b5bd6;
+  --a-accent-soft: rgba(91, 91, 214, 0.08);
+  --a-green: #00875a;
+  --a-green-soft: rgba(0, 135, 90, 0.08);
+  --a-amber: #b45309;
+  --a-amber-soft: rgba(180, 83, 9, 0.08);
+  --a-red: #c62828;
+  --a-red-soft: rgba(198, 40, 40, 0.08);
+  --a-blue: #1d4ed8;
+  --a-blue-soft: rgba(29, 78, 216, 0.08);
+
+  font-family: "Inter", system-ui, -apple-system, sans-serif;
+  font-feature-settings: "cv11", "ss01";
+  color: var(--a-ink);
+  background: var(--a-bg);
+  min-height: 100vh;
+}
+
+.admin-root .font-jbm {
+  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
 /* react-day-picker v9 — force styles over Tailwind resets */
 .rdp-root {
   --rdp-day-height: 40px;

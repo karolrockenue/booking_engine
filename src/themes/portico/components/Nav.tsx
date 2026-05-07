@@ -6,9 +6,8 @@ import type { PorticoTokens } from "../tokens";
 import { PorticoLogo } from "./Logo";
 
 // Cross-page links to homepage anchors use "/#anchor" so they work from
-// /rooms, /book, /checkout etc. (and degrade to scrolling on / itself).
+// /book, /extras, /checkout etc. (and degrade to scrolling on / itself).
 const NAV_LINKS = [
-  { label: "Rooms", href: "/rooms" },
   { label: "Neighbourhood", href: "/#neighbourhood" },
   { label: "Contact", href: "/#contact" },
   { label: "Good to know", href: "/#good-to-know" },
@@ -79,12 +78,16 @@ export function Nav({ t, variant = "solid", current, inkOverride }: Props) {
         href="/book"
         style={{
           fontSize: 10,
-          letterSpacing: "0.22em",
+          letterSpacing: "0.28em",
           textTransform: "uppercase",
-          borderBottom: `1px solid ${t.accent}`,
-          paddingBottom: 2,
-          color: t.accent,
+          color: t.accentInk,
+          background: t.accent,
+          padding: "11px 22px",
           textDecoration: "none",
+          fontWeight: 500,
+          transition: "filter 150ms ease, transform 150ms ease",
+          border: "none",
+          fontFamily: "var(--portico-sans)",
         }}
         className="portico-nav-cta"
       >
@@ -114,6 +117,9 @@ export function Nav({ t, variant = "solid", current, inkOverride }: Props) {
       {menuOpen && <MobileMenu t={t} onClose={() => setMenuOpen(false)} />}
 
       <style>{`
+        .portico-nav-cta:hover {
+          filter: brightness(1.1);
+        }
         @media (max-width: 760px) {
           .portico-nav { padding: 18px 24px !important; }
           .portico-nav-links { display: none !important; }

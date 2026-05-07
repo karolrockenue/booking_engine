@@ -364,7 +364,7 @@ function NeighbourhoodCard({
         />
       </Field>
       <div className="grid grid-cols-2 gap-3">
-        <Field label="Map latitude">
+        <Field label="Map latitude" hint="auto-fills from Cloudbeds">
           <Input
             type="number"
             step="any"
@@ -374,7 +374,7 @@ function NeighbourhoodCard({
             }
           />
         </Field>
-        <Field label="Map longitude">
+        <Field label="Map longitude" hint="auto-fills from Cloudbeds">
           <Input
             type="number"
             step="any"
@@ -427,7 +427,7 @@ function GoodToKnowCard({
       </div>
       <Field
         label="Rows"
-        hint="One per line · format: Label · Value"
+        hint="One per line · format: Label · Value · Check-in/Check-out auto-fill from Cloudbeds"
       >
         <Textarea
           rows={8}
@@ -464,8 +464,14 @@ function ContactCard({
   onChange: (v: PropertyContent["contact"]) => void;
 }) {
   return (
-    <Card title="Contact" hint="footer · confirmation emails">
-      <Field label="Address" hint="One line per row">
+    <Card
+      title="Contact"
+      hint="footer · confirmation emails · auto-fills from Cloudbeds, edits override"
+    >
+      <Field
+        label="Address"
+        hint="One line per row · auto-fills from Cloudbeds"
+      >
         <Textarea
           rows={3}
           value={value.addressLines.join("\n")}
@@ -483,7 +489,7 @@ function ContactCard({
           onChange={(e) => onChange({ ...value, receptionLine: e.target.value })}
         />
       </Field>
-      <Field label="Reservations phone">
+      <Field label="Reservations phone" hint="auto-fills from Cloudbeds">
         <Input
           value={value.reservationsPhone}
           onChange={(e) =>
@@ -491,7 +497,7 @@ function ContactCard({
           }
         />
       </Field>
-      <Field label="Reservations email">
+      <Field label="Reservations email" hint="auto-fills from Cloudbeds">
         <Input
           type="email"
           value={value.reservationsEmail}
@@ -500,7 +506,7 @@ function ContactCard({
           }
         />
       </Field>
-      <Field label="General email">
+      <Field label="General email" hint="auto-fills from Cloudbeds">
         <Input
           type="email"
           value={value.generalEmail}

@@ -4,6 +4,7 @@ import { properties, roomTypes, ratePlans, inventory } from "@/db/schema";
 import { eq, sql } from "drizzle-orm";
 import { cloudbeds } from "./client";
 import { syncExtrasForProperty } from "./sync-extras";
+import { syncHotelDetailsForProperty } from "./sync-hotel-details";
 
 interface CloudbedsRoomType {
   roomTypeID: string;
@@ -69,6 +70,9 @@ export interface SyncResult {
   inventoryRowsUpserted: number;
   extrasUpserted: number;
   extrasDeleted: number;
+  hotelDetailsContactUpdated: boolean;
+  hotelDetailsNeighbourhoodUpdated: boolean;
+  hotelDetailsGoodToKnowUpdated: boolean;
   rangeStart: string;
   rangeEnd: string;
   durationMs: number;
@@ -277,6 +281,24 @@ export async function syncInventoryForProperty(
     );
   }
 
+  // 4. Property metadata (address, phone, email, lat/lon, check-in/out times).
+  // Same isolation as extras — failure here shouldn't kill the rate sync.
+  let hotelDetailsContactUpdated = false;
+  let hotelDetailsNeighbourhoodUpdated = false;
+  let hotelDetailsGoodToKnowUpdated = false;
+  try {
+    const detailsResult = await syncHotelDetailsForProperty(propertyId);
+    hotelDetailsContactUpdated = detailsResult.contactUpdated;
+    hotelDetailsNeighbourhoodUpdated = detailsResult.neighbourhoodUpdated;
+    hotelDetailsGoodToKnowUpdated = detailsResult.goodToKnowUpdated;
+  } catch (e) {
+    console.error(
+      `syncHotelDetailsForProperty(${propertyId}) failed: ${
+        e instanceof Error ? e.message : String(e)
+      }`
+    );
+  }
+
   // Flush the /api/availability cache for this property so the next request
   // recomputes against fresh inventory instead of waiting up to 30s for the
   // time-based revalidation. { expire: 0 } per the Next 16 webhook pattern —
@@ -292,6 +314,9 @@ export async function syncInventoryForProperty(
     inventoryRowsUpserted,
     extrasUpserted,
     extrasDeleted,
+    hotelDetailsContactUpdated,
+    hotelDetailsNeighbourhoodUpdated,
+    hotelDetailsGoodToKnowUpdated,
     rangeStart,
     rangeEnd,
     durationMs: Date.now() - start,

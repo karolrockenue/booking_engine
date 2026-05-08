@@ -73,6 +73,7 @@ export interface SyncResult {
   hotelDetailsContactUpdated: boolean;
   hotelDetailsNeighbourhoodUpdated: boolean;
   hotelDetailsGoodToKnowUpdated: boolean;
+  hotelDetailsPropertyFieldsUpdated: string[];
   rangeStart: string;
   rangeEnd: string;
   durationMs: number;
@@ -286,11 +287,13 @@ export async function syncInventoryForProperty(
   let hotelDetailsContactUpdated = false;
   let hotelDetailsNeighbourhoodUpdated = false;
   let hotelDetailsGoodToKnowUpdated = false;
+  let hotelDetailsPropertyFieldsUpdated: string[] = [];
   try {
     const detailsResult = await syncHotelDetailsForProperty(propertyId);
     hotelDetailsContactUpdated = detailsResult.contactUpdated;
     hotelDetailsNeighbourhoodUpdated = detailsResult.neighbourhoodUpdated;
     hotelDetailsGoodToKnowUpdated = detailsResult.goodToKnowUpdated;
+    hotelDetailsPropertyFieldsUpdated = detailsResult.propertyFieldsUpdated;
   } catch (e) {
     console.error(
       `syncHotelDetailsForProperty(${propertyId}) failed: ${
@@ -317,6 +320,7 @@ export async function syncInventoryForProperty(
     hotelDetailsContactUpdated,
     hotelDetailsNeighbourhoodUpdated,
     hotelDetailsGoodToKnowUpdated,
+    hotelDetailsPropertyFieldsUpdated,
     rangeStart,
     rangeEnd,
     durationMs: Date.now() - start,

@@ -16,6 +16,7 @@ Earlier steps are concrete because the work is well-scoped. Later steps are loos
 | 5. Flex auto-charge | 13, 14, 15 | ⛔ Not started |
 | 6. Cancellation + launch hardening | 16, 17 | 🟡 Quick wins shipped earlier; availability perf A+B shipped 2026-05-04; R2 image hosting shipped 2026-05-07 (Phase 6.5); domains / JSON-LD / `next/font` still TODO |
 | 6.5 Admin v3 + R2 + Content CMS | shipped 2026-05-07 | ✅ Done — Linear-style sidebar shell, all 9 hotel tabs (Overview, Bookings, Content, Photos, Rates, Cloudbeds, Stripe, Domain, Alerts), Cloudflare R2 + sharp variants, content blocks → Portico Home wired |
+| 6.6 Cloudbeds metadata auto-sync | shipped 2026-05-08 | ✅ Done — `/getHotelDetails` fields flow into content blocks (address, phones, email, lat/lon, check-in/out) and `properties` (name, currency, timezone); read-only Rooms section in content admin |
 | 7. Post-launch features | WhatsApp · Welcome Pickups · GEO/AI content · Corporate portal · Tiqets · Guest accounts | 🟡 Scoping — see Phase 7 section |
 
 ---
@@ -502,6 +503,52 @@ Shipped 2026-05-07 in one focused session. Replaces the old `/admin` shell entir
 - **Per-hotel onboarding wizard** — "+ New hotel" button on the dashboard is a placeholder. At hotel #21+ we'll want a wizard that guides through the full setup. Defer until needed.
 - **`sharp` on Railway** — if a future Railway redeploy errors on platform-mismatch, add `optionalDependencies: { "@img/sharp-linux-x64": "*" }` to `package.json`.
 - **Stale browser cache** — Portico content reads happen server-side per request, but browsers cache the rendered HTML. Hard refresh after content edits if you don't see changes.
+
+---
+
+## Phase 6.6 — Cloudbeds metadata auto-sync — DONE 🟢
+
+Shipped 2026-05-08. Closes the manual data-entry gap on per-property metadata that Cloudbeds already knows about.
+
+**What flows from Cloudbeds:**
+
+`/getHotelDetails` now runs on every 6-hour inventory cron (and cold-start) via `src/lib/cloudbeds/sync-hotel-details.ts`, called from `syncInventoryForProperty` in a try/catch (a CB outage there can't break inventory).
+
+Two write strategies:
+
+1. **`content_blocks` — non-destructive merge.** A field is only filled when its current value still matches the Portico default in `src/lib/content-defaults.ts`. The moment the admin edits a field, they own it forever; subsequent syncs leave it alone. Fields:
+    - `contact.addressLines` ← `propertyAddress` (street, city/state/zip, country)
+    - `contact.reservationsPhone` ← `propertyPhone`
+    - `contact.reservationsEmail`, `contact.generalEmail` ← `propertyEmail`
+    - `neighbourhood.mapLat / mapLon` ← `propertyAddress.propertyLatitude / propertyLongitude`
+    - `goodToKnow.rows[Check-in / Check-out]` ← `propertyPolicy.propertyCheckInTime / propertyCheckOutTime` (formatted as "From 14:00" / "By 12:00")
+2. **`properties` — always overwrite.** Cloudbeds is source of truth for these; admin edits to `properties.name` will be re-synced. Fields: `name`, `currency`, `timezone`. Sandbox returns `USD` for non-USD properties — accepted during testing, will be correct on real connections.
+
+**Deliberately NOT synced:**
+
+- **Photos** — Cloudbeds photo APIs are unreliable (per Karol). Photos come from R2.
+- **Amenities** — `propertyAmenities` returns empty in our test data; revisit if needed.
+- **Property descriptions** — `propertyDescription` returns empty.
+
+**Admin UI:**
+
+- Per-field hints "auto-fills from Cloudbeds" on the affected fields (Address, Reservations phone/email, General email, Map lat/lon, Good-to-know rows).
+- New **Rooms** card in the Content admin (left column) — read-only, hint reads "synced from Cloudbeds · read-only · edit in your PMS". Lists each `room_types` row with name, occupancy range, description, amenity chips. Empty-state: "No room types synced yet. Connect Cloudbeds and trigger a sync."
+
+**Cron observability:**
+
+`SyncResult` now carries `hotelDetailsContactUpdated`, `hotelDetailsNeighbourhoodUpdated`, `hotelDetailsGoodToKnowUpdated`, `hotelDetailsPropertyFieldsUpdated[]` — visible per-property in the cron response JSON.
+
+**Scripts:**
+
+- `src/scripts/cloudbeds-sync-hotel-details.ts [slug]` — smoke test; runs the sync and prints affected blocks.
+- `src/scripts/cloudbeds-debug-hotel-details.ts [slug]` — raw response dumper (the v1.3 docs aren't fully reliable; keep around for schema verification when CB changes things).
+
+**Carry-forward:**
+
+- **Country code → name mapping.** CB returns `"GB"`, we render `"GB"` in the address. Acceptable; a small lookup table would polish this.
+- **`propertyTimezone` field doesn't actually appear in the v1.3 response.** Our code handles this gracefully (skips the field). The existing `cloudbeds-update-name.ts` script's `--with-timezone` flag was based on stale docs. Remove or replace if/when CB exposes it.
+- **Rooms description editability.** Currently read-only because the inventory sync overwrites `room_types.description` on every run. If admin override becomes useful, add the same default-comparison strategy used for content blocks.
 
 ---
 

@@ -1,14 +1,15 @@
-// Pulls property metadata (address, phone, email, check-in/out times, lat/lon)
-// from Cloudbeds /getHotelDetails and merges it into the content_blocks table.
+// Pulls property metadata (address, phone, email, check-in/out times, lat/lon,
+// name, currency, timezone) from Cloudbeds /getHotelDetails and merges it into
+// our DB.
 //
-// Non-destructive: a field is only filled when the existing value matches the
-// Portico default (i.e. the admin hasn't edited it). Any admin override stays.
-// This mirrors the cloudbeds-update-name script's "don't silently overwrite"
-// stance.
-//
-// Skipped on purpose:
-//   - properties.name / currency / timezone — handled manually because the CB
-//     partner sandbox returns wrong values (USD for GBP properties etc).
+// Two write strategies:
+//   1. content_blocks (address/phone/email/lat/lon/check-in-out): non-destructive
+//      — a field is only filled when its current value matches the Portico
+//      default. Any admin override stays.
+//   2. properties (name/currency/timezone): always overwrite. CB is the source
+//      of truth. Note: the CB partner sandbox returns USD for non-USD
+//      properties — that's expected during testing, will be correct on real
+//      connections.
 
 import { db } from "@/db";
 import { contentBlocks, properties } from "@/db/schema";
@@ -24,6 +25,8 @@ import {
 interface CloudbedsHotelDetails {
   propertyID?: string;
   propertyName?: string;
+  propertyCurrency?: { currencyCode?: string };
+  propertyTimezone?: string;
   propertyAddress?: {
     propertyAddress1?: string;
     propertyAddress2?: string;
@@ -53,6 +56,7 @@ export interface HotelDetailsSyncResult {
   contactUpdated: boolean;
   neighbourhoodUpdated: boolean;
   goodToKnowUpdated: boolean;
+  propertyFieldsUpdated: string[];
 }
 
 function buildAddressLines(
@@ -156,6 +160,34 @@ export async function syncHotelDetailsForProperty(
   let contactUpdated = false;
   let neighbourhoodUpdated = false;
   let goodToKnowUpdated = false;
+  const propertyFieldsUpdated: string[] = [];
+
+  // --- properties row: name / currency / timezone ---
+  // Always overwrite — Cloudbeds is source of truth for these. Sandbox can
+  // return USD for non-USD properties; that's accepted during testing.
+  const cbName = cb.propertyName?.trim() || null;
+  const cbCurrency = cb.propertyCurrency?.currencyCode?.trim() || null;
+  const cbTimezone = cb.propertyTimezone?.trim() || null;
+
+  const propertyUpdate: Partial<typeof properties.$inferInsert> = {};
+  if (cbName && property.name !== cbName) {
+    propertyUpdate.name = cbName;
+    propertyFieldsUpdated.push("name");
+  }
+  if (cbCurrency && property.currency !== cbCurrency) {
+    propertyUpdate.currency = cbCurrency;
+    propertyFieldsUpdated.push("currency");
+  }
+  if (cbTimezone && property.timezone !== cbTimezone) {
+    propertyUpdate.timezone = cbTimezone;
+    propertyFieldsUpdated.push("timezone");
+  }
+  if (Object.keys(propertyUpdate).length > 0) {
+    await db
+      .update(properties)
+      .set(propertyUpdate)
+      .where(eq(properties.id, propertyId));
+  }
 
   // --- contact block ---
   const cbAddress = buildAddressLines(cb.propertyAddress);
@@ -278,5 +310,6 @@ export async function syncHotelDetailsForProperty(
     contactUpdated,
     neighbourhoodUpdated,
     goodToKnowUpdated,
+    propertyFieldsUpdated,
   };
 }

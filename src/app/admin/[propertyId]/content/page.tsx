@@ -16,12 +16,23 @@ interface ContentBlock {
   content: unknown;
 }
 
+interface RoomTypeRow {
+  id: string;
+  name: string;
+  description: string | null;
+  maxOccupancy: number | null;
+  baseOccupancy: number | null;
+  amenities: unknown;
+  otaRoomId: string;
+}
+
 export default function ContentPage() {
   const { propertyId } = useParams<{ propertyId: string }>();
   const token = useAdminToken();
 
   const [draft, setDraft] = useState<PropertyContent>(defaultContent);
   const [original, setOriginal] = useState<PropertyContent>(defaultContent);
+  const [rooms, setRooms] = useState<RoomTypeRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -32,14 +43,21 @@ export default function ContentPage() {
     setLoading(true);
     setError(null);
     try {
-      const r = await fetch(`/api/admin/properties/${propertyId}/content`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      const blocks = (await r.json()) as ContentBlock[];
+      const [contentRes, roomsRes] = await Promise.all([
+        fetch(`/api/admin/properties/${propertyId}/content`, {
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+        fetch(`/api/admin/properties/${propertyId}/rooms`, {
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+      ]);
+      if (!contentRes.ok) throw new Error(`HTTP ${contentRes.status}`);
+      if (!roomsRes.ok) throw new Error(`HTTP ${roomsRes.status}`);
+      const blocks = (await contentRes.json()) as ContentBlock[];
       const merged = mergeBlocks(blocks);
       setDraft(merged);
       setOriginal(merged);
+      setRooms((await roomsRes.json()) as RoomTypeRow[]);
     } catch (e) {
       setError(e instanceof Error ? e.message : "failed to load");
     } finally {
@@ -155,6 +173,7 @@ export default function ContentPage() {
               value={draft.footer}
               onChange={(v) => patch("footer", v)}
             />
+            <RoomsCard rooms={rooms} />
           </div>
           <div className="flex flex-col gap-4">
             <ContactCard
@@ -567,6 +586,87 @@ function parseLabelHrefRows(
       const [label, ...rest] = line.split(/\s*·\s*/);
       return { label: label ?? "", href: rest.join(" · ") || "#" };
     });
+}
+
+// ─── Rooms (read-only, synced from Cloudbeds) ─────────────────────
+
+function RoomsCard({ rooms }: { rooms: RoomTypeRow[] }) {
+  return (
+    <Card
+      title="Rooms"
+      hint="synced from Cloudbeds · read-only · edit in your PMS"
+    >
+      {rooms.length === 0 ? (
+        <div className="text-[12.5px]" style={{ color: "var(--a-muted)" }}>
+          No room types synced yet. Connect Cloudbeds and trigger a sync.
+        </div>
+      ) : (
+        <div className="flex flex-col gap-3">
+          {rooms.map((r) => {
+            const occ =
+              r.maxOccupancy != null
+                ? `${r.baseOccupancy ?? 1}–${r.maxOccupancy} guests`
+                : null;
+            const amenities = Array.isArray(r.amenities)
+              ? (r.amenities as unknown[]).filter(
+                  (a) => typeof a === "string"
+                ) as string[]
+              : [];
+            return (
+              <div
+                key={r.id}
+                className="border rounded-md p-3"
+                style={{ borderColor: "var(--a-border-soft)" }}
+              >
+                <div className="flex items-baseline justify-between gap-2 mb-1">
+                  <div className="text-[13px] font-semibold">{r.name}</div>
+                  {occ && (
+                    <div
+                      className="text-[11px]"
+                      style={{ color: "var(--a-muted)" }}
+                    >
+                      {occ}
+                    </div>
+                  )}
+                </div>
+                {r.description && (
+                  <div
+                    className="text-[12px] mb-2"
+                    style={{ color: "var(--a-ink-2)" }}
+                  >
+                    {r.description}
+                  </div>
+                )}
+                {amenities.length > 0 ? (
+                  <div className="flex flex-wrap gap-1">
+                    {amenities.map((a, i) => (
+                      <span
+                        key={i}
+                        className="text-[11px] px-1.5 py-0.5 rounded border"
+                        style={{
+                          borderColor: "var(--a-border-soft)",
+                          color: "var(--a-ink-2)",
+                        }}
+                      >
+                        {a}
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <div
+                    className="text-[11px]"
+                    style={{ color: "var(--a-muted)" }}
+                  >
+                    No amenities listed in Cloudbeds.
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </Card>
+  );
 }
 
 // ─── Preview ──────────────────────────────────────────────────────

@@ -39,6 +39,13 @@ async function main() {
   console.log(`  contact updated:        ${result.contactUpdated}`);
   console.log(`  neighbourhood updated:  ${result.neighbourhoodUpdated}`);
   console.log(`  goodToKnow updated:     ${result.goodToKnowUpdated}`);
+  console.log(
+    `  properties fields:      ${
+      result.propertyFieldsUpdated.length > 0
+        ? result.propertyFieldsUpdated.join(", ")
+        : "(none)"
+    }`
+  );
 
   const blocks = await db
     .select({ key: contentBlocks.key, content: contentBlocks.content })

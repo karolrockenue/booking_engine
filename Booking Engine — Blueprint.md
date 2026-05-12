@@ -1,6 +1,6 @@
 # **Booking Engine — Blueprint**
 
-**Last updated:** 2026-05-12 **Status:** Phases 1–4 \+ 6.5 \+ 6.6 shipped. Stripe Connect live on UAE sandbox (Polish entity migration scheduled post-19 May). Flex auto-charge (Phase 5\) not started. Welcome Pickups partnership in motion.
+**Last updated:** 2026-05-12 **Status:** Phases 1–5 \+ 6.5 \+ 6.6 \+ 7.1 shipped. Stripe Connect live on UAE sandbox (Polish entity migration scheduled post-19 May). Flex auto-charge \+ PMS retry recovery live on production. **Guest comms (Phase 7.1) shipped — but next AI must swap Maily editor for Unlayer (no font-family control in Maily). See §13.** Welcome Pickups partnership in motion.
 
 Multi-tenant hotel website \+ booking engine platform. Each hotel runs on its own custom domain with a bespoke website and an integrated booking flow connected to Cloudbeds. Built and managed by Rockenue as the webmaster across all properties (≈40 independent hotels, luxury → near-hostel spectrum).
 
@@ -245,7 +245,7 @@ Live on Neon. Push schema changes via `npx drizzle-kit push` (no migrations dir)
 **`images`** — photo library
 
 * Identity: `propertyId`, `key` (R2 path), unique on `(propertyId, key)`  
-* Categorization: `slot` (`hero` | `gallery` | `room` | `neighbourhood`, default `gallery`), `roomTypeId` (FK when `slot=room`), `sortOrder`  
+* Categorization: `slot` (`hero` | `gallery` | `room` | `neighbourhood` | `marketing`, default `gallery`), `roomTypeId` (FK when `slot=room`), `sortOrder`. `marketing` is admin-only — never auto-displayed on the public site (see `getPropertyPhotos` which ignores it); used for logos and brand assets surfaced in the email composer.  
 * File meta: `mimeType`, `sizeBytes`, `altText`  
 * Variants: `variants` JSONB (`{ hero: {key,url,w,h,sizeBytes}, gallery: {...}, thumb: {...} }`)  
 * R2 keys follow `properties/<propertyId>/<uuid>-{hero|gallery|thumb}.jpg`
@@ -315,7 +315,7 @@ Both share one OAuth flow \+ one set of tokens. Just request the union of scopes
 * **Reservation writes** — `postReservation`, `postCustomItem`, `postPayment` in `src/lib/cloudbeds/reservations.ts`. Form-encoded POST (not JSON), `propertyID` in query string, **returns flat fields at top level** (not wrapped in `{ data }` like most v1.3 endpoints — surprised us on first run).  
 * **Cancellation** — `putReservationStatus` (v1.3, `status=canceled` with single-l spelling) \+ optional `reason`. Cloudbeds is idempotent on already-cancelled reservations.  
 * **Cold-start sync** — `/api/availability` triggers a background sync if a connected property has no inventory rows in the requested window. Uses `revalidateTag` to flush the per-property cache when sync completes.  
-* **Cron** — Railway service `inspiring-trust` runs `0 */6 * * *` UTC against `/api/cron/inventory-sync` (Bearer-protected with `CRON_SECRET`).  
+* **Cron** — Railway service `cron-inventory-sync` runs `0 */6 * * *` UTC against `/api/cron/inventory-sync` (Bearer-protected with `CRON_SECRET`).  
 * **Hotel details sync** (Phase 6.6, 2026-05-08) — `/getHotelDetails` runs on every 6h cron via `sync-hotel-details.ts`. Non-destructive merge into `content_blocks` (only fills fields still matching Portico defaults — admin edits are owned forever); always-overwrite into `properties` for `name`, `currency`, `timezone`. Fields synced: `contact.addressLines`, `contact.reservationsPhone`, `contact.reservationsEmail`, `contact.generalEmail`, `neighbourhood.mapLat/mapLon`, `goodToKnow.rows[Check-in/Check-out]`.
 
 ### **Webhook security model**
@@ -332,7 +332,7 @@ Cloudbeds **does not sign webhooks**. Security comes from:
 * **Stale-row cleanup on rate-plan deletion.** If a hotel deletes a rate plan or room type in Cloudbeds, our DB still holds it — sync only upserts, doesn't delete missing rows. Mostly invisible (availability filters on positive `unitsAvailable`, CB's `getRatePlans` only returns active rates). `syncExtrasForProperty` already does this for addons — use as pattern.  
 * **`roomblock/created` / `roomblock/removed` webhooks abandoned.** `postWebhook` returned "Scope required for this call was not granted by property." even after re-OAuth with `read:roomBlock`. Likely a property-feature gate. Room blocks are OOO/maintenance only; `getRatePlans` already reflects what's saleable.  
 * **Cancellation policy admin UI** — `isRefundable` \+ `{deadlineHours, penaltyType, penaltyPercent}` editable per rate plan. The REST API does not expose cancellation policy fields (probed `/getRatePlanDetails`, `/getCancellationPolicies`, `/getCancellationPolicy`, `/getPolicies` — all 404), so we can't auto-sync; admin maintains. **Granularity may be reduced** — see [open design questions](https://claude.ai/chat/f7c44679-0eaf-433e-b582-dff9dfcccb3e#22-open-design-questions).  
-* **Postpartum reservation failure.** Stripe succeeded but `postReservation` fails → money taken, no PMS reservation. Currently returns 502; booking row left in DB. Pre-launch: design retry queue \+ admin alert \+ auto-refund fallback.  
+* **Postpartum reservation failure — handled by Phase 5 PMS retry cron.** When `postReservation` fails inline, `/api/bookings` still returns 502 (so the guest sees an error), but `cron-pms-retry` (every 5 min) picks the stuck booking up and retries for ~1h. After giveup: NR is auto-refunded, Flex has its saved PM detached, booking flips to `failed`. See section 19 Phase 5 for the full flow. **Open carry-forward:** the original extras list is lost on inline failure (bookingExtras rows aren't inserted until `postCustomItem` succeeds), so the retry restores the reservation but not the folio line items.  
 * **Per-extra failure handling is silent.** A failed `postCustomItem` is logged but not surfaced to admin.
 
 ### **Cloudbeds operational scripts**
@@ -503,7 +503,8 @@ Shipped 2026-05-07. Full UX signed off as `public/mockups/admin-mockup-v3.html`.
 | `/admin/[id]` (Overview) | `GET /api/admin/properties/[id]/overview` | ✅ |
 | `/admin/[id]/bookings` | `GET /api/admin/properties/[id]/bookings` (200-row cap, hydrates extras) | ✅ |
 | `/admin/[id]/content` | `GET POST /api/admin/properties/[id]/content` | ✅ |
-| `/admin/[id]/photos` | `GET POST /api/admin/properties/[id]/photos` \+ `PATCH DELETE /[photoId]` | ✅ |
+| `/admin/[id]/media` | `GET POST /api/admin/properties/[id]/photos` \+ `PATCH DELETE /[photoId]` | ✅ (renamed from `/photos` 2026-05-12; API path keeps `photos` for now) |
+| `/admin/[id]/emails`, `/template/[key]`, `/schedule`, `/log` | `/api/admin/properties/[id]/email-templates`, `/email-schedules`, `/email-sends` | ✅ (Phase 7.1, see §13 — editor swap blocker) |
 | `/admin/[id]/rates` | `GET /api/admin/properties/[id]/rate-plans` \+ `PATCH /[ratePlanId]` | ✅ |
 | `/admin/[id]/cloudbeds` | `GET /api/admin/properties/[id]/cloudbeds` \+ `POST /sync` | ✅ |
 | `/admin/[id]/stripe` | `GET /api/admin/properties/[id]/stripe` (Promise.allSettled across account/fees/payouts/balance/refunds) | ✅ |
@@ -563,19 +564,64 @@ Shipped 2026-05-07.
 
 ---
 
-## **13\. Email (SendGrid)**
+## **13\. Email (SendGrid + Maily composer)**
 
-* `@sendgrid/mail` installed.  
-* `src/lib/email/sendgrid.ts` — thin wrapper. **Hardcoded From: `noreply@em4689.market-pulse.io`** (uses Karol's existing market-pulse SendGrid domain authentication). Per-hotel sender domain is carry-forward.  
-* `src/lib/email/booking-confirmation.ts` — HTML \+ text templates. Subject: `Booking confirmed at {hotel} — {reservationId}`. Branches body copy on `rateType`. Always references `cloudbedsReservationId` as canonical booking ref (orderId shown as secondary). Optional `cancelUrl` arg — renders "Manage or cancel booking" outline button below the payment-status pill. Only populated for Flex.  
-* `src/lib/email/booking-cancellation.ts` — cancellation email template. Body branches on `refunded` (green "refund issued in 5–10 days" panel vs grey "no charge taken").  
-* Wired in `/api/bookings` — fires after `status = 'pms_synced'`, fail-soft.
+Phase 7 wave 1 shipped 2026-05-12: per-property editable templates, scheduled automated flows, send log. Composer landed using **Maily.to** but has a hard limitation flagged below — **next AI must switch the editor**.
+
+### **🚨 URGENT — replace Maily.to editor**
+
+**Status:** blocker for v1 polish. **Action:** next session, swap `@maily-to/core` (editor) + `@maily-to/render` (renderer) for **Unlayer (`react-email-editor`)** or equivalent drag-and-drop builder.
+
+**Why:**
+
+* Maily.to has **no font-family control** anywhere in the UI — the editor doesn't ship a font dropdown, and the renderer hardcodes `'Inter', sans-serif` into output HTML. Verified by inspecting `node_modules/@maily-to/core/dist/index.cjs` and running `src/scripts/render-with-font.ts`: only 2 `font-family` occurrences in rendered HTML, both `Inter`. Any `textStyle.fontFamily` mark we set per-block is stripped.
+* For Portico (Cormorant Garamond headings + Inter body) this means **headings render in Inter in every inbox**, not the brand serif. Body matches by accident.
+* Other limits noticed: logo node forces sm/md/lg fixed sizes that squash non-square logos (worked around by inserting marketing assets as regular `image` blocks); no per-block padding controls; no cropping.
+
+**Migration shortlist:**
+
+| Tool | Strengths | Trade-off |
+| ----- | ----- | ----- |
+| **Unlayer (`react-email-editor`)** | Mature, free unlimited, real font controls, columns/rows, image library hooks, exports HTML + JSON design | Iframe hosted on Unlayer's CDN (not self-hosted); cropping is paid-tier |
+| **GrapesJS Newsletter / Email** | Self-hosted, open-source, font/style controls | Heavier integration; less polished out-of-box |
+| **Build on Tiptap directly** | Full control | 2–3 weeks of work; reinventing what Unlayer ships |
+
+**Preserve when migrating:**
+
+* `src/db/schema.ts` `emailTemplates.body` JSONB — refactor to Unlayer's design JSON (string-keyed object). Don't drop the column; add a migration column `bodyFormat` `'maily' | 'unlayer'` if you want to support both during rollover.
+* All API endpoints under `src/app/api/admin/properties/[id]/email-templates/*` keep their signatures; only the renderer + composer page change.
+* `src/lib/email/variables.ts` and `src/lib/email/send-template.ts` are renderer-agnostic — keep.
+* The seeded defaults (`src/lib/email/template-defaults.ts`) are the only thing tightly coupled to Maily JSON. Re-seed in Unlayer format.
+
+### **What's wired today**
+
+* **Storage:** `email_templates`, `email_schedules`, `email_sends` tables. `properties.emailFromAddress` / `emailFromName` / `emailReplyTo` columns (NULL → falls back to platform default `noreply@em4689.market-pulse.io`).  
+* **Templates:** 5 default keys seeded idempotently per property on first visit — `confirmation`, `cancellation`, `pre_arrival` (T-3 09:00), `welcome` (T+0 08:00), `post_stay` (T+1 10:00 draft). Seed in `src/lib/email/seed-templates.ts`.  
+* **Renderer:** `src/lib/email/maily-renderer.ts` wraps `@maily-to/render`. Substitution via `setVariableValues` plus our `substitute()` helper for subject lines. Var namespace in `src/lib/email/variables.ts`.  
+* **Send orchestrator:** `src/lib/email/send-template.ts` — loads template, renders HTML + plain text, dispatches via SendGrid with `customArgs.send_id` for webhook correlation, writes `email_sends` row.  
+* **Transactional path:** `src/lib/email/booking-confirmation.ts` and `booking-cancellation.ts` are thin wrappers that delegate to `sendTemplate`. Auto-charge cancel + PMS retry confirmation both call them with `propertyId` + `bookingId`.  
+* **Scheduler:** `src/lib/email/scheduler.ts` walks every enabled schedule, matches bookings whose trigger window falls in the current hour in property TZ, dispatches via `sendTemplate`. Idempotent on `(bookingId, templateKey)`. Audience filters: `all` | `flex` | `nr` | `min_nights_2`.  
+* **Cron:** `/api/cron/emails` POST, Bearer-protected with `CRON_SECRET`. **Not yet scheduled on Railway** — add hourly service (or extend `inspiring-trust`) before turning on real automated flows.  
+* **SendGrid Event Webhook:** `/api/sendgrid/webhooks/[token]` updates `email_sends.status / deliveredAt / openedAt / bouncedAt`. Token from `SENDGRID_WEBHOOK_TOKEN` env. **Not yet registered in SendGrid dashboard**.  
+* **Per-property sender:** `properties.emailFromAddress` plumbed through `sendEmail`; falls back to platform default when NULL.  
+* **Theme fonts:** seed time honours `process.env.THEME === 'portico-ivory'` and bakes Cormorant Garamond + Inter stacks into seeded JSON. **Currently ignored at render time** (see urgent block above).
+
+### **Admin UI**
+
+* `/admin/[id]/emails` — template list, per-row stats from `email_sends`, on/off toggle per schedule.  
+* `/admin/[id]/emails/template/[key]` — split-pane composer (Maily editor + live preview). "Insert photo" / "Insert logo" pull from the property's R2 library (logos inserted as regular image blocks, *not* Maily's logo node, to dodge the size squash). "Send test" delivers a one-off to any address with sample vars.  
+* `/admin/[id]/emails/schedule` — inline rule rows. Trigger / offset / time / audience / on-off per scheduled template.  
+* `/admin/[id]/emails/log` — last 200 sends with status pills and basic stats.
 
 ### **Carry-forward (email)**
 
-* **Per-hotel sender.** Currently every email comes from `noreply@em4689.market-pulse.io` regardless of which hotel. When real hotels onboard, replace with the hotel's own authenticated domain — needs `properties.emailFromAddress` field \+ per-hotel SendGrid sender authentication. Defer until hotel \#1 lands.  
-* **Per-hotel reply-to.** Same shape.  
-* **Guest comms platform** — fully designed in [Phase 7](https://claude.ai/chat/f7c44679-0eaf-433e-b582-dff9dfcccb3e#21-phase-7--post-launch-features) (Maily.to composer \+ per-hotel branding \+ scheduler). Build pending.
+* **🚨 Replace Maily** — see urgent block at top.  
+* **Per-hotel sender authentication.** `emailFromAddress` column exists but is NULL for every property. Before a real hotel ships, configure their authenticated domain on SendGrid (or move to dedicated subuser) and populate the column. Default sender keeps working for Portico's marketing-pulse domain.  
+* **Per-hotel reply-to.** Same shape — `emailReplyTo` column exists.  
+* **Register SendGrid Event Webhook.** Currently the receiver exists but SendGrid isn't told where to post. Production env needs `SENDGRID_WEBHOOK_TOKEN` set and the endpoint configured in SendGrid dashboard.  
+* **Add hourly cron service for `/api/cron/emails`** on Railway. Mirror the `inspiring-trust` service pattern; until then scheduled emails won't fire in prod.  
+* **Marketing asset slot.** Admin → Media now has a `marketing` slot for logos / brand assets that the public site never auto-displays. Portico's logos are pre-uploaded for the demo property (`portico-logo.png`, `portico-logo-white.png`, both PNG with transparency).  
+* **Render-side theme fonts.** Once the editor is swapped, the rendered HTML should pick up `headingStack` / `bodyStack` from the property theme. Today it doesn't — Maily forces Inter.
 
 ---
 
@@ -750,7 +796,11 @@ npx drizzle-kit push
 ### **Railway services**
 
 * `booking-engine` — main Next.js app  
-* `inspiring-trust` — cron service running `0 */6 * * *` UTC against `/api/cron/inventory-sync`. Image `alpine:latest`, start command: `apk add --no-cache curl && curl -fS -X POST -H "Authorization: Bearer $CRON_SECRET" <url>`. Logs visible in Railway → service → Deployments.
+* `cron-inventory-sync` — runs `0 */6 * * *` UTC against `/api/cron/inventory-sync`. (Originally named `inspiring-trust` — renamed for consistency 2026-05-12.)
+* `cron-auto-charge` — runs `0 * * * *` UTC (hourly) against `/api/cron/auto-charge`. Phase 5 off-session PaymentIntent for Flex bookings hitting `chargeAt`.
+* `cron-pms-retry` — runs `*/5 * * * *` UTC (every 5 min) against `/api/cron/pms-retry`. Recovers stuck bookings where Stripe charged / saved card but `postReservation` failed inline.
+
+All three cron services share the same recipe: image `alpine:latest`, start command `apk add --no-cache curl && curl -fS -X POST -H "Authorization: Bearer $CRON_SECRET" <url>`. Bearer-protected with `CRON_SECRET`. Logs visible in Railway → service → Cron Runs / Deployments. Heartbeat lines have shape `{"event":"cron_heartbeat","cron":"<name>","at":"…","ok":true,"summary":{…}}` so a future alerts engine can grep them uniformly.
 
 ---
 
@@ -800,33 +850,62 @@ These are the outcomes of the design overhaul. Follow them unless explicitly red
 | 2.5 Per-hotel front-end architecture | Headless hooks, sessionStorage drafts | ✅ Hooks done; `src/hotels/<slug>/` scaffold pending |
 | 3\. Stripe Connect | Platform setup, onboarding, Elements | ✅ Done — UAE sandbox, Standard accounts, end-to-end working |
 | 4\. Booking flow rewrite | postReservation / Items / Payment, confirmation page, email | ✅ Done |
-| 5\. Flex auto-charge | Hourly cron, off-session PI, failure handling, monitoring | ⛔ Not started |
+| 5\. Flex auto-charge \+ PMS recovery | Hourly cron, off-session PI, re-auth page, 24h grace, PMS retry, monitoring | ✅ Done — shipped 2026-05-12 |
 | 6\. Cancellation \+ launch hardening | Step 16 Flex self-cancel | 🟡 Flex within-window shipped; NR \+ past-deadline punt to "contact hotel" |
 | 6.5 Admin v3 \+ R2 \+ Content CMS | shipped 2026-05-07 | ✅ Done |
 | 6.6 Cloudbeds metadata auto-sync | shipped 2026-05-08 | ✅ Done |
+| 7.1 Guest comms — composer + scheduler + log | shipped 2026-05-12 | 🟡 Backend + admin UI live · **editor swap blocker** (Maily has no font control — see §13 urgent) |
 | 7\. Post-launch features | Welcome Pickups · GEO/AI · WhatsApp · etc. | 🟡 Welcome Pickups in motion; GEO/AI flagged as must |
 
-### **Phase 5 — Flex auto-charge (not started)**
+### **Phase 5 — Flex auto-charge \+ PMS recovery (shipped 2026-05-12)**
 
-**Step 13: Hourly cron job**
+Shipped end-to-end. Two new Railway cron services \+ a guest re-auth flow \+ a postReservation retry path. Four new columns on `bookings`: `autoChargeAttempts`, `firstAutoChargeFailureAt`, `pmsRetryAttempts`, `firstPmsFailureAt`.
 
-* Find Flex bookings where `now > chargeAt`, `status = 'pms_synced'`, no successful `auto_charge_succeeded` event yet.  
-* For each: create off-session `PaymentIntent` with the saved `stripePaymentMethodId`, `stripeCustomerId`, `off_session: true`, `confirm: true`, application fee \+ transfer\_data as Step 10\. Idempotency key includes `bookingId` \+ attempt number.  
-* On success: `postPayment` to Cloudbeds, update booking to `status = 'paid'`, log `paymentEvents`.  
-* On failure: log `paymentEvents` with error code, kick off Step 14\.
+**Auto-charge cron** (`/api/cron/auto-charge`, hourly):
 
-**Step 14: Failure handling \+ guest re-auth page**
+* `chargeAt` set on Flex bookings at creation \= `checkIn (00:00 UTC) − cancellationPolicy.deadlineHours` (24h fallback when no deadline configured). NR stays null.  
+* Eligibility: `rateType='flex'` AND `status='pms_synced'` AND `chargeAt <= NOW()`.  
+* Off-session PaymentIntent on the connected account: `customer` \+ `payment_method` (saved at checkout) \+ `application_fee_amount` \+ `transfer_data.destination` \+ `on_behalf_of`. Idempotency key `ac_<orderId>_<attempt>` — new key per attempt so retries get fresh PIs; same key within an attempt collapses overlapping cron runs.  
+* On success: `postPayment` to Cloudbeds folio (best-effort), update booking to `status='paid'`, log `auto_charge_succeeded`.  
+* On failure: anchor `firstAutoChargeFailureAt` (sticky), log `auto_charge_failed` with `errorCode` \+ `errorMessage`. If `errorCode === 'authentication_required'` AND this is the first failure, send re-auth email (once).
 
-* Email guest with a secure link (signed token) to `/payment-update?token=…`.  
-* That page lets them enter / update card → new SetupIntent → new payment method. Once saved, reset `chargeAt = now + 5 minutes`.  
-* 24h grace timer (start at first failure). If still unresolved: cancel the Cloudbeds reservation, release inventory, set booking `status = 'cancelled'`, send cancellation email.
+**Re-auth flow** (`/payment-update/[token]`):
 
-**Step 15: Monitoring \+ alerting**
+* Token \= HMAC over `pu.<bookingId>.<timestamp>` using `CLOUDBEDS_TOKEN_KEY`. `pu.` prefix prevents leaked cancel-tokens being reused here and vice versa.  
+* Page mints a fresh SetupIntent attached to the same `stripeCustomerId`. Three states: eligible / already paid / cancelled.  
+* On confirm: `POST /api/bookings/payment-update` verifies the SI succeeded \+ customer matches, swaps `stripePaymentMethodId`, detaches the old PM, resets `autoChargeAttempts=0` \+ `firstAutoChargeFailureAt=null` \+ `chargeAt=NOW()+5min` so the next cron run retries.
 
-* Heartbeat: cron logs an event each run. Alert if no heartbeat in 90 minutes.  
-* Per-run summary: count attempts, succeeded, failed, no-eligible-bookings.  
-* Alert on patterns: ≥5 failures in a single run, or any single property with all failures, or any auto-cancel.  
-* Surface digest in admin dashboard \+ daily email summary.
+**24h grace \+ auto-cancel**:
+
+* When `firstAutoChargeFailureAt < NOW() - 24h` on the next cron pass: cancel the Cloudbeds reservation, detach the saved PM, set `status='cancelled'`, send cancellation email (`refunded: false` — no charge ever succeeded).
+
+**PMS retry cron** (`/api/cron/pms-retry`, every 5 min):
+
+* Eligibility: `status IN ('paid','payment_authorized')` AND `cloudbedsReservationId IS NULL` AND `createdAt < NOW() - 1 min` (skip rows still mid-flight).  
+* Retries `postReservation`. On success: write `cloudbedsReservationId`, flip to `pms_synced`, send confirmation email that the inline path never got to send. NR also re-runs `postPayment` to the folio.  
+* After `MAX_ATTEMPTS = 12` (~1h at 5-min cadence): NR booking gets a full Stripe refund (`refund_application_fee: true, reverse_transfer: true`), Flex booking gets the saved PM detached, status flips to `failed`.  
+* **Limitation:** original `body.extras` list is lost when `postReservation` fails inline (bookingExtras rows are only inserted after `postCustomItem` succeeds). Retry recovers the reservation but not the line items. Hotel adds extras manually if needed. Future fix: pre-insert bookingExtras with `cloudbedsItemId=NULL` before `postReservation` so the retry can complete them.
+
+**Monitoring**:
+
+* Both crons emit `{"event":"cron_heartbeat","cron":"<name>","at":"…","ok":true,"summary":{…}}` on each run. Per-run summary counts: charged / failed / skipped / graceExpired (auto-charge) or synced / retryFailed / gaveUp (pms-retry).  
+* The alerts UI itself is Phase 6 work (admin Alerts tab) — the data is in `payment_events` rows \+ the structured logs.
+
+**Smoke probes:** `src/scripts/test-auto-charge.ts` and `src/scripts/test-pms-retry.ts`. Both dry-run by default (just list eligible bookings); `--run` POSTs to the local dev cron route.
+
+### **Phase 5 — verification still pending in the wild (shipped 2026-05-12)**
+
+Code and infrastructure are deployed; these paths haven't been exercised by a real booking yet:
+
+* **First scheduled `cron-pms-retry` run** — confirm exit code 0 in Railway → service → Cron Runs tab (within ≤5 min of deploy).  
+* **First scheduled `cron-auto-charge` run** — same, at the next top-of-hour UTC.  
+* **A real off-session PaymentIntent firing** — needs a real Flex booking maturing into its `chargeAt`. Will exercise itself when live bookings flow.  
+* **Re-auth email actually sending** — needs Stripe to return `authentication_required` on an off-session attempt. Card-issuer dependent.  
+* **A guest hitting `/payment-update/[token]`** — same trigger as above.  
+* **24h grace auto-cancel branch** — needs 24h of failed retries; exercise via a test booking with a deliberately-broken card if you want to force it.  
+* **PMS retry recovering a real stuck booking** — needs `postReservation` to actually fail. Test by temporarily breaking the CB OAuth token on a staging property if you want to force it.
+
+None of these are blockers — Phase 5 is in production and the smoke probes \+ endpoint pings confirm the wiring. Just unverified end-to-end until live traffic.
 
 ### **Phase 6 — Launch hardening (remaining)**
 
@@ -835,9 +914,22 @@ These are the outcomes of the design overhaul. Follow them unless explicitly red
 * **JSON-LD Hotel schema** on each homepage (also feeds GEO work in Phase 7).  
 * **`next/font` swap** for the Google Fonts `<link>` in `layout.tsx`.  
 * **Domain & deploy tab** — DNS / SSL / Railway probe display.  
-* **Alerts tab \+ engine** — compute operational signals.  
-* **Resend confirmation \+ Cancel/refund actions** — replace placeholders on booking detail panel.  
-* **Smoke test for Flex cancellation** — `src/scripts/cloudbeds-cancel.ts` driving `putReservationStatus` before pointing real guests at the link.
+* **Alerts tab \+ engine** — compute operational signals from the `payment_events` table \+ structured cron heartbeat logs (shape `{event:"cron_heartbeat",...}`). Alert patterns to support: no-heartbeat-in-90-min, ≥5 auto_charge_failed in a single run, any auto-cancel after grace, single property with all failures.  
+* **Resend confirmation \+ Cancel/refund actions** — replace placeholders on admin booking detail panel.  
+* **Smoke test for Flex cancellation** — `src/scripts/cloudbeds-cancel.ts` driving `putReservationStatus` before pointing real guests at the link.  
+* **Pre-insert bookingExtras before `postReservation`** — current PMS retry restores the reservation but not the folio extras (rows are only written after each `postCustomItem` succeeds, so on inline failure the original list is lost). Pre-inserting with `cloudbedsItemId=NULL` lets the retry complete them.  
+* **Orphan admin pages to delete** — `src/app/admin/properties/[id]/page.tsx`, `src/app/admin/bookings/page.tsx`.  
+* **Stripe OAuth callbacks** — still redirect to old `/admin/properties/[id]?...` URLs. Migrate to v3 paths (`/admin/[propertyId]/stripe?...`).
+
+### **Phase 5 follow-ups — bounded improvements** *(not blockers, can ship anytime)*
+
+* **Widen re-auth email trigger** — currently only sends on `authentication_required`. Other "guest must act" codes (`card_declined`, `expired_card`, `insufficient_funds`, `incorrect_cvc`) silently retry until grace expires, then auto-cancel without warning. Widen the trigger to send re-auth email after N attempts on any non-network error.  
+* **NR self-cancel branch** — `/api/bookings/cancel` currently punts NR to "contact hotel". Could refund via Stripe + cancel CB if the booking is far enough out.  
+* **Penalty-charge for past-deadline Flex** — currently punts to "contact hotel". Future iteration could auto-charge penalty via the saved PM.  
+* **Transfer Reversal for partial refunds** — full-refund path handles `refund_application_fee: true, reverse_transfer: true`. Partial refunds (e.g. one cancelled night out of three) need proportional fee reversal logic.  
+* **Per-property `statement_descriptor_short`** — admin field, 22-char max, default derived from `property.name` truncated. Wire into PaymentIntent creation.  
+* **Stale-row cleanup on rate-plan deletion** — sync only upserts, doesn't delete rows missing from CB response. Use `syncExtrasForProperty` as pattern.  
+* **Per-extra failure surfacing** — failed `postCustomItem` is currently logged only; add admin visibility on booking detail panel.
 
 ### **Polish entity migration (post 19 May 2026\)**
 
@@ -965,38 +1057,28 @@ Loose direction for post-launch. Each item gets its own focused step when its ti
   * **MCP endpoint** at `/mcp/server` — exposes availability \+ property details via Model Context Protocol so AI agents can query rooms directly. Wraps `/api/availability` \+ property meta. Future-positioning for AI-agent-driven booking.  
   * **Per-property local-guide content** — owner-written ongoing copy. Adds depth \+ originality, not boilerplate. Lives in content blocks as `localGuide` (or split into multiple).
 
-### **Guest comms platform — designed, build pending**
+### **Guest comms platform — Phase 7.1 shipped 2026-05-12 · editor swap pending**
 
-Goal: per-hotel designable email templates \+ smart scheduling \+ ops view. Replaces today's hardcoded confirmation/cancellation templates with admin-editable ones.
+Goal: per-hotel designable email templates \+ smart scheduling \+ ops view. Replaces hardcoded confirmation/cancellation templates with admin-editable ones.
 
-**Stack:**
+**Decisions locked when scaffolding started:**
 
-* **Composer:** Maily.to (open-source MIT, Notion-style block editor built on Tiptap, made by the Resend team). JSON-on-disk, renders to HTML at send. Embedded in `/admin/[propertyId]/emails`. Free.  
-* **Delivery:** SendGrid (already paying). Essentials tier ($20/mo) covers up to 50k emails/mo ≈ 30–40 hotels at moderate volume. Pro ($90/mo) at higher volume.  
-* **Per-hotel branding:** three new columns on `properties` (`emailFromAddress`, `emailLogoUrl`, `emailAccentColor`). Injected at render time.  
-* **Per-hotel reputation isolation:** SendGrid authenticated domains per hotel (`mail.<hotel-domain>` DNS at onboarding) \+ Subusers tier at hotel \#10+.  
-* **Scheduler:** our existing Railway cron, extended. Hourly tick, finds bookings hitting trigger window, queues sends.
+1. ✅ All-in for v1 (composer + scheduler + automated flows together)  
+2. ✅ Event-relative scheduler only (no one-off broadcasts)  
+3. ✅ Karol-only editor (no per-hotel logins)
 
-**DB tables to add:**
+**Shipped in this wave** — see §13 for the full breakdown. Stack landed as: Maily.to composer + SendGrid delivery + own Railway cron + 5 default templates + 4 admin pages + SendGrid Event Webhook + per-property sender column. Auto-charge cancellation and PMS retry confirmation paths re-wired through the template engine.
 
-* `email_templates` — `(id, propertyId, key, name, mailyJson, htmlCached, status, updatedAt)`  
-* `email_schedules` — booking-trigger metadata  
-* `email_sends` — audit trail from SendGrid Event Webhook
+**🚨 Blocker before declaring done:** Maily.to provides no font-family control. See §13 urgent block — **next AI session must swap the editor (Unlayer is the lean)**. Backend, scheduler, send log, API contracts, variable engine, seeded defaults, and SendGrid wiring all stay; only the composer page and the Maily-shaped template JSON change. Estimate: 2–3 days for Unlayer migration including re-seeding default templates in Unlayer's design format.
 
-**Phased rollout:**
+**Remaining for Phase 7.x after editor swap:**
 
-1. Phase 1 — Composer \+ transactional templates (\~5–7 days). Maily.to embedded; move existing confirmation \+ cancellation into editable templates with Portico-faithful defaults; per-property `emailFromAddress` \+ authenticated domain at onboarding; SendGrid Event Webhook → `email_sends`.  
-2. Phase 2 — Scheduler \+ non-transactional flows (\~3–5 days). 3 standard automated flows (pre-arrival 3 days out, welcome at check-in, post-stay review request 1 day after checkout).  
-3. Phase 3 — Hardening at scale (hotel \#10+). SendGrid Subusers, per-hotel API key, unsubscribe groups per hotel.  
-4. Phase 4 — Multi-channel (when WhatsApp lands). Revisit Knock ($300/mo) for routing.
+* **Per-hotel sender authentication.** SendGrid authenticated domains per hotel (`mail.<hotel-domain>` DNS at onboarding) \+ Subusers tier at hotel \#10+. Schema already supports it.  
+* **Hourly Railway cron service for `/api/cron/emails`.** Pattern is the `inspiring-trust` cron. Until added, scheduled flows don't fire in prod.  
+* **SendGrid Event Webhook registration.** Endpoint exists at `/api/sendgrid/webhooks/[token]`; needs `SENDGRID_WEBHOOK_TOKEN` env + dashboard config.  
+* **Phase 4 — Multi-channel** (when WhatsApp lands). Revisit Knock ($300/mo) for routing.
 
 **Target budget: $60/mo at 40 hotels.** Knock ($300/mo) and Postmark ($245/mo) were evaluated and rejected — replaced by \~1 day of internal engineering each.
-
-**Three open decisions before scaffolding starts:**
-
-1. Phased or all-in for v1? Lean: phased.  
-2. Scheduler scope — event-relative only, or also one-off broadcasts? Lean: event-relative only.  
-3. Who edits templates — Karol-only or per-hotel logins? Lean: Karol-only.
 
 ### **Under consideration**
 
@@ -1022,8 +1104,8 @@ Goal: per-hotel designable email templates \+ smart scheduling \+ ops view. Repl
 
 ## **22\. Open design questions**
 
-* **Reservation creation failure** (Stripe succeeds, `postReservation` fails). Happy path landed Step 11; design the retry / pending-state / auto-refund flow before launch.  
-* **Error state UX** — payment fails, room sold out between selection and payment, 3DS fails, Cloudbeds down. Decide during Phase 5\.  
+* **~~Reservation creation failure~~** — Resolved by Phase 5 PMS retry cron (shipped 2026-05-12). Stuck bookings now self-heal within ~1h; giveup auto-refunds NR / detaches Flex PM. See section 19.  
+* **Error state UX** — payment fails, room sold out between selection and payment, 3DS fails, Cloudbeds down. Phase 5 covers the auto-charge \+ PMS-failure paths. Remaining: room-sold-out mid-flow (race after selection), 3DS-fails at checkout, Cloudbeds-down at checkout.  
 * **Address field in checkout** — TBD design.  
 * **Cancellation policy ergonomics** — granular per-rate editor shipped in Step 11, but at 40 hotels maintaining policy in *both* Cloudbeds *and* our admin, the duplication is friction. Options:  
   * **A. Keep granular** — current shape. Maximum flexibility, maximum hotel-side maintenance burden.  

@@ -166,9 +166,11 @@ export async function retryPmsForBooking(
         : undefined;
     void (async () => {
       try {
+        // Empty nightlyRates/extras: PMS failed before bookingExtras rows
+        // were inserted, so we have no record of what to render. The cron
+        // recovers the reservation, not the line-item detail — hotel can
+        // fix the folio if extras were lost.
         await sendBookingConfirmationEmail({
-          propertyId: property.id,
-          bookingId: booking.id,
           to: booking.guestEmail,
           guestFirstName: booking.guestFirst,
           guestLastName: booking.guestLast,
@@ -186,6 +188,8 @@ export async function retryPmsForBooking(
           roomTotal: Number(booking.roomTotal),
           extrasTotal: Number(booking.extrasTotal),
           grandTotal: Number(booking.grandTotal),
+          nightlyRates: [],
+          extras: [],
           cancelUrl,
         });
       } catch (e) {

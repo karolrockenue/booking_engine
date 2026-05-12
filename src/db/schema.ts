@@ -273,6 +273,22 @@ export const bookings = pgTable("bookings", {
   stripeCustomerId: text("stripe_customer_id"),
   chargeAt: timestamp("charge_at", { withTimezone: true }),
 
+  // Auto-charge cron state (Phase 5). attempts counter is the simple loop
+  // throttle; firstAutoChargeFailureAt anchors the 24h grace window. Both
+  // null until the cron first touches the booking.
+  autoChargeAttempts: integer("auto_charge_attempts").notNull().default(0),
+  firstAutoChargeFailureAt: timestamp("first_auto_charge_failure_at", {
+    withTimezone: true,
+  }),
+
+  // PMS retry state. Mirrors the auto-charge fields but for the
+  // postReservation recovery path (money taken / card saved but no CB
+  // reservation yet).
+  pmsRetryAttempts: integer("pms_retry_attempts").notNull().default(0),
+  firstPmsFailureAt: timestamp("first_pms_failure_at", {
+    withTimezone: true,
+  }),
+
   cancellationPolicySnapshot: jsonb("cancellation_policy_snapshot"),
   status: text("status").notNull().default("pending"),
 

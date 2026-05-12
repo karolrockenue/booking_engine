@@ -232,6 +232,19 @@ export async function POST(req: NextRequest) {
     note: "no policy configured at booking time",
   };
 
+  // Flex bookings auto-charge when the cancellation window closes — that's
+  // the moment the booking becomes non-refundable, so the platform takes
+  // payment then. Fallback to 24h before check-in when no deadline is
+  // configured. NR is paid at checkout, so chargeAt stays null.
+  let chargeAt: Date | null = null;
+  if (rateType === "flex") {
+    const policy = cancellationPolicySnapshot as { deadlineHours?: number };
+    const deadlineHours =
+      typeof policy.deadlineHours === "number" ? policy.deadlineHours : 24;
+    const checkInUtc = new Date(`${body.checkIn}T00:00:00Z`);
+    chargeAt = new Date(checkInUtc.getTime() - deadlineHours * 60 * 60 * 1000);
+  }
+
   const [booking] = await db
     .insert(bookings)
     .values({
@@ -259,6 +272,7 @@ export async function POST(req: NextRequest) {
       stripeSetupIntentId: body.setupIntentId ?? null,
       stripePaymentMethodId: body.paymentMethodId ?? null,
       stripeCustomerId: body.customerId ?? null,
+      chargeAt,
       cancellationPolicySnapshot,
       status: initialStatus,
     })

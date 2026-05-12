@@ -117,3 +117,35 @@ export function verifyCancelToken(token: string): { bookingId: string } | null {
     return null;
   }
 }
+
+// Payment-update token. Embedded in re-auth emails so guests can replace a
+// declined card without a lookup form. Same shape and security model as
+// signCancelToken — booking status guards replay (once status leaves
+// 'pms_synced' the page refuses to act). Tag the payload as "pu" so a leaked
+// cancel token can't be reused as a payment-update token and vice versa.
+export function signPaymentUpdateToken(bookingId: string): string {
+  const timestamp = Date.now().toString();
+  const payload = `pu.${bookingId}.${timestamp}`;
+  const hmac = createHmac("sha256", getKey()).update(payload).digest("hex");
+  return Buffer.from(`${payload}.${hmac}`).toString("base64url");
+}
+
+export function verifyPaymentUpdateToken(
+  token: string
+): { bookingId: string } | null {
+  try {
+    const decoded = Buffer.from(token, "base64url").toString("utf8");
+    const parts = decoded.split(".");
+    if (parts.length !== 4 || parts[0] !== "pu") return null;
+    const [, bookingId, timestamp, hmac] = parts;
+    const expected = createHmac("sha256", getKey())
+      .update(`pu.${bookingId}.${timestamp}`)
+      .digest("hex");
+    const a = Buffer.from(hmac, "hex");
+    const b = Buffer.from(expected, "hex");
+    if (a.length !== b.length || !timingSafeEqual(a, b)) return null;
+    return { bookingId };
+  } catch {
+    return null;
+  }
+}

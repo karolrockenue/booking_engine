@@ -87,3 +87,33 @@ export function verifyOauthState(
     return null;
   }
 }
+
+// Cancel link token. Embedded in confirmation emails so guests can self-cancel
+// without a lookup form. Token has no expiry — its lifetime is bounded by the
+// booking's status: once status = 'cancelled' the cancel route refuses to act
+// again, so a leaked link is harmless after first use. Timestamp is included
+// so we can rotate keys later by checking issue date if needed.
+export function signCancelToken(bookingId: string): string {
+  const timestamp = Date.now().toString();
+  const payload = `${bookingId}.${timestamp}`;
+  const hmac = createHmac("sha256", getKey()).update(payload).digest("hex");
+  return Buffer.from(`${payload}.${hmac}`).toString("base64url");
+}
+
+export function verifyCancelToken(token: string): { bookingId: string } | null {
+  try {
+    const decoded = Buffer.from(token, "base64url").toString("utf8");
+    const parts = decoded.split(".");
+    if (parts.length !== 3) return null;
+    const [bookingId, timestamp, hmac] = parts;
+    const expected = createHmac("sha256", getKey())
+      .update(`${bookingId}.${timestamp}`)
+      .digest("hex");
+    const a = Buffer.from(hmac, "hex");
+    const b = Buffer.from(expected, "hex");
+    if (a.length !== b.length || !timingSafeEqual(a, b)) return null;
+    return { bookingId };
+  } catch {
+    return null;
+  }
+}

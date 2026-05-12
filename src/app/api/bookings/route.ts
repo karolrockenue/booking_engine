@@ -17,6 +17,8 @@ import {
   postPayment,
 } from "@/lib/cloudbeds/reservations";
 import { sendBookingConfirmationEmail } from "@/lib/email/booking-confirmation";
+import { signCancelToken } from "@/lib/crypto";
+import { publicOrigin } from "@/lib/stripe/client";
 
 interface ExtraInput {
   id: string;
@@ -357,6 +359,13 @@ export async function POST(req: NextRequest) {
       })
       .where(eq(bookings.id, booking.id));
 
+    // Self-cancel link only for Flex bookings — NR has no self-cancel path
+    // (the cancel route returns "non_refundable" / "contact hotel" for those).
+    const cancelUrl =
+      rateType === "flex"
+        ? `${publicOrigin()}/cancel/${signCancelToken(booking.id)}`
+        : undefined;
+
     // Fire-and-forget confirmation email. Booking is already done; a failed
     // send is a customer-service problem, not a booking-failure problem.
     void (async () => {
@@ -387,6 +396,7 @@ export async function POST(req: NextRequest) {
             name: e.name,
             priceMinorUnits: e.priceMinorUnits,
           })),
+          cancelUrl,
         });
       } catch (emailErr) {
         console.error(

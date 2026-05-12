@@ -228,3 +228,73 @@ export async function postPayment(
   return { paymentID: body.paymentID ?? body.transactionID ?? "" };
 }
 
+interface PutReservationStatusParams {
+  cloudbedsPropertyId: string;
+  reservationID: string;
+  // Cloudbeds spells it "canceled" (single l). Other accepted values include
+  // "confirmed", "checked_in", "checked_out", "no_show". We only need cancel.
+  status: "canceled";
+  reason?: string;
+}
+
+interface PutReservationStatusResponse {
+  success: boolean;
+  reservationID?: string;
+  status?: string;
+  message?: string;
+}
+
+/**
+ * Cancel an existing Cloudbeds reservation. Idempotent on Cloudbeds' side:
+ * calling this on an already-canceled reservation returns success.
+ *
+ * Releases the held inventory back to the property's availability — the
+ * `reservation/status_changed` webhook will fire and trigger our inventory
+ * sync, so the freed room becomes bookable again automatically.
+ */
+export async function putReservationStatus(
+  ourPropertyId: string,
+  params: PutReservationStatusParams
+): Promise<{ reservationID: string; status: string }> {
+  const token = await getValidAccessToken(ourPropertyId);
+
+  const url = new URL(`${API_BASE}/putReservationStatus`);
+  url.searchParams.set("propertyID", params.cloudbedsPropertyId);
+
+  const form = new URLSearchParams();
+  form.set("reservationID", params.reservationID);
+  form.set("status", params.status);
+  if (params.reason) form.set("reason", params.reason);
+
+  const res = await fetch(url, {
+    method: "PUT",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/x-www-form-urlencoded",
+      Accept: "application/json",
+    },
+    body: form.toString(),
+  });
+
+  const text = await res.text();
+  let body: PutReservationStatusResponse;
+  try {
+    body = JSON.parse(text) as PutReservationStatusResponse;
+  } catch {
+    throw new Error(
+      `Cloudbeds putReservationStatus: non-JSON response (${res.status}): ${text.slice(0, 300)}`
+    );
+  }
+
+  if (!res.ok || !body.success) {
+    throw new Error(
+      `Cloudbeds putReservationStatus failed: ${body.message ?? `HTTP ${res.status}`} — ${text.slice(0, 300)}`
+    );
+  }
+
+  return {
+    reservationID: body.reservationID ?? params.reservationID,
+    status: body.status ?? params.status,
+  };
+}
+

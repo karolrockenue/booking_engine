@@ -20,6 +20,10 @@ export interface BookingConfirmationEmailArgs {
   grandTotal: number;
   nightlyRates: Array<{ date: string; rate: number }>;
   extras: Array<{ name: string; priceMinorUnits: number }>;
+  // Optional self-cancel link. Only meaningful for Flex bookings — NR
+  // doesn't have a self-cancel path. When omitted the email renders without
+  // the cancel section.
+  cancelUrl?: string;
 }
 
 function symbolFor(currency: string): string {
@@ -95,6 +99,13 @@ export async function sendBookingConfirmationEmail(
     ``,
     paymentLine,
     ``,
+    ...(args.cancelUrl
+      ? [
+          `Need to cancel?`,
+          `${args.cancelUrl}`,
+          ``,
+        ]
+      : []),
     `If you need to make changes, reply to this email and we'll help.`,
     ``,
     `Thank you,`,
@@ -208,6 +219,16 @@ export async function sendBookingConfirmationEmail(
               <td style="padding:14px 16px;background:#fafafa;text-align:right;font-size:18px;font-weight:700;">${fmt(args.grandTotal)}</td>
             </tr>
           </table>
+
+          ${
+            args.cancelUrl
+              ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:8px 0 16px;">
+            <tr><td align="center" style="padding:8px 0 0;">
+              <a href="${escapeHtml(args.cancelUrl)}" style="display:inline-block;padding:12px 22px;background:#fff;color:#1a1a1a;border:1px solid #1a1a1a;border-radius:4px;font-size:13px;font-weight:600;text-decoration:none;letter-spacing:0.3px;">Manage or cancel booking</a>
+            </td></tr>
+          </table>`
+              : ""
+          }
 
           <p style="margin:24px 0 0;font-size:13px;color:#666;line-height:1.5;">
             Need to make a change? Just reply to this email and we&rsquo;ll help.

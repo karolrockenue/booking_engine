@@ -28,8 +28,11 @@ export default function AdminLayout({ children }: { children: ReactNode }) {
   }, []);
 
   function handleLogin() {
-    localStorage.setItem("admin_token", input);
-    setToken(input);
+    // Strip ALL whitespace — pasted tokens can pick up line breaks or spaces
+    // from terminal wrapping, and the token is hex so spaces are never valid.
+    const cleaned = input.replace(/\s+/g, "");
+    localStorage.setItem("admin_token", cleaned);
+    setToken(cleaned);
   }
 
   function logout() {

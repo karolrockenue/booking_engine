@@ -17,8 +17,9 @@ interface PropertyMeta {
 const TAB_FROM_PATH: Record<string, Parameters<typeof Sidebar>[0]["activeTab"]> = {
   bookings: "bookings",
   content: "content",
-  photos: "photos",
+  media: "media",
   rates: "rates",
+  emails: "emails",
   alerts: "alerts",
   cloudbeds: "cloudbeds",
   stripe: "stripe",
@@ -89,11 +90,13 @@ export default function PropertyLayout({ children }: { children: ReactNode }) {
       <Sidebar
         propertyId={propertyId}
         propertyName={property?.name ?? "Loading…"}
+        propertySlug={property?.slug ?? null}
+        propertyCurrency={property?.currency ?? null}
         activeTab={activeTab}
         userEmail="karol@rockenue.com"
         onLogout={logout}
       />
-      <main className="flex-1 px-8 py-6 max-w-[1180px]">
+      <main className="flex-1 px-8 py-6 max-w-[1560px]">
         <PropertyBar
           name={property?.name ?? null}
           domain={property?.domain ?? null}

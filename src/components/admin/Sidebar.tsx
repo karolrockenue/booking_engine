@@ -6,12 +6,15 @@ import { useRouter } from "next/navigation";
 interface SidebarProps {
   propertyId: string;
   propertyName: string;
+  propertySlug?: string | null;
+  propertyCurrency?: string | null;
   activeTab:
     | "overview"
     | "bookings"
     | "content"
-    | "photos"
+    | "media"
     | "rates"
+    | "emails"
     | "alerts"
     | "cloudbeds"
     | "stripe"
@@ -19,24 +22,26 @@ interface SidebarProps {
   bookingsCount?: number;
   photosCount?: number;
   ratesCount?: number;
+  emailsCount?: number;
   alertsCount?: number;
   userEmail?: string;
   onLogout?: () => void;
 }
 
-type PropertyItemId = "overview" | "bookings" | "content" | "photos" | "rates" | "alerts";
+type PropertyItemId = "overview" | "bookings" | "content" | "media" | "rates" | "emails" | "alerts";
 
 const PROPERTY_ITEMS: Array<{
   id: PropertyItemId;
   icon: string;
   label: string;
-  countKey?: "bookingsCount" | "photosCount" | "ratesCount" | "alertsCount";
+  countKey?: "bookingsCount" | "photosCount" | "ratesCount" | "emailsCount" | "alertsCount";
 }> = [
   { id: "overview", icon: "◉", label: "Overview" },
   { id: "bookings", icon: "▤", label: "Bookings", countKey: "bookingsCount" },
   { id: "content", icon: "¶", label: "Content" },
-  { id: "photos", icon: "▣", label: "Photos", countKey: "photosCount" },
+  { id: "media", icon: "▣", label: "Media", countKey: "photosCount" },
   { id: "rates", icon: "≡", label: "Rate plans", countKey: "ratesCount" },
+  { id: "emails", icon: "✉", label: "Emails", countKey: "emailsCount" },
   { id: "alerts", icon: "⇄", label: "Alerts", countKey: "alertsCount" },
 ];
 
@@ -49,10 +54,13 @@ const INTEGRATION_ITEMS = [
 export function Sidebar({
   propertyId,
   propertyName,
+  propertySlug,
+  propertyCurrency,
   activeTab,
   bookingsCount,
   photosCount,
   ratesCount,
+  emailsCount,
   alertsCount,
   userEmail,
   onLogout,
@@ -62,9 +70,10 @@ export function Sidebar({
     bookingsCount,
     photosCount,
     ratesCount,
+    emailsCount,
     alertsCount,
   };
-  const initial = (propertyName?.[0] ?? "?").toUpperCase();
+  const meta = [propertySlug, propertyCurrency].filter(Boolean).join(" · ");
 
   return (
     <aside className="border-r flex flex-col sticky top-0 h-screen overflow-y-auto p-3"
@@ -72,17 +81,27 @@ export function Sidebar({
     >
       <button
         onClick={() => router.push("/admin")}
-        className="flex items-center gap-2 px-2.5 py-2 rounded-md border bg-white hover:bg-[#fafafa] mb-4 text-left"
+        title="Switch hotel — back to dashboard"
+        className="block w-full text-left px-2.5 py-2 rounded-md border bg-white hover:bg-[#fafafa] mb-4"
         style={{ borderColor: "var(--a-border)" }}
       >
-        <span
-          className="w-6 h-6 rounded flex items-center justify-center text-white text-[11px] font-semibold flex-shrink-0"
-          style={{ background: "linear-gradient(135deg, #C7B9FF 0%, #5B5BD6 100%)" }}
-        >
-          {initial}
-        </span>
-        <span className="text-[13px] font-medium flex-1 truncate">{propertyName}</span>
-        <span className="text-[11px]" style={{ color: "var(--a-muted)" }}>⇅</span>
+        <div className="flex items-center mb-0.5">
+          <span
+            className="text-[9.5px] uppercase tracking-wider font-medium font-jbm"
+            style={{ color: "var(--a-muted)" }}
+          >
+            Hotel
+          </span>
+          <span className="ml-auto text-[11px]" style={{ color: "var(--a-muted)" }}>⇅</span>
+        </div>
+        <div className="text-[13.5px] font-semibold truncate" style={{ color: "var(--a-ink)" }}>
+          {propertyName}
+        </div>
+        {meta && (
+          <div className="text-[10.5px] font-jbm truncate" style={{ color: "var(--a-muted)" }}>
+            {meta}
+          </div>
+        )}
       </button>
 
       <NavGroup label="Property">

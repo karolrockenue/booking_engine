@@ -1,3 +1,4 @@
+import Link from "next/link";
 import type { ReactNode } from "react";
 
 interface TopStripProps {
@@ -5,6 +6,32 @@ interface TopStripProps {
   subtitle?: ReactNode;
   badge?: { text: string; tone?: "green" | "amber" | "red" | "blue" };
   actions?: ReactNode;
+}
+
+// Breadcrumb prefix used in TopStrip titles for sub-pages.
+// Usage:
+//   <TopStrip title={<><Crumb to={`/admin/${id}/emails`}>Emails</Crumb> Booking confirmation</>} />
+// Renders as: "Emails / Booking confirmation" — muted grey, weight 400, clickable
+// parent + slash, then the current page name in the parent's bold/large style.
+export function Crumb({
+  to,
+  children,
+}: {
+  to: string;
+  children: ReactNode;
+}) {
+  return (
+    <Link
+      href={to}
+      className="font-normal hover:underline mr-2"
+      style={{
+        color: "var(--a-muted)",
+        textDecoration: "none",
+      }}
+    >
+      {children} <span style={{ opacity: 0.6 }}>/</span>
+    </Link>
+  );
 }
 
 const BADGE_TONES = {

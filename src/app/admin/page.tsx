@@ -26,17 +26,28 @@ export default function AdminDashboardPage() {
   const { token, logout } = useAdminAuth();
   const [properties, setProperties] = useState<Property[]>([]);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState<string | null>(null);
   const [filter, setFilter] = useState<Filter>("all");
   const [search, setSearch] = useState("");
 
   useEffect(() => {
     if (!token) return;
     setLoading(true);
+    setFetchError(null);
     fetch("/api/admin/properties", {
       headers: { Authorization: `Bearer ${token}` },
     })
-      .then((r) => (r.ok ? r.json() : []))
+      .then(async (r) => {
+        if (r.status === 401) {
+          throw new Error("Admin token rejected — log out and back in.");
+        }
+        if (!r.ok) {
+          throw new Error(`API ${r.status}: ${await r.text()}`);
+        }
+        return r.json();
+      })
       .then(setProperties)
+      .catch((e: Error) => setFetchError(e.message))
       .finally(() => setLoading(false));
   }, [token]);
 
@@ -65,7 +76,7 @@ export default function AdminDashboardPage() {
   }, [properties, filter, search]);
 
   return (
-    <div className="max-w-[1380px] mx-auto px-8 py-8">
+    <div className="max-w-[1560px] mx-auto px-8 py-8">
       <div className="flex items-start gap-4 mb-6">
         <div>
           <div
@@ -124,6 +135,26 @@ export default function AdminDashboardPage() {
       {loading ? (
         <div className="text-[13px]" style={{ color: "var(--a-muted)" }}>
           Loading…
+        </div>
+      ) : fetchError ? (
+        <div
+          className="bg-white border rounded-md p-6 text-[13px]"
+          style={{
+            borderColor: "rgba(198,40,40,0.25)",
+            background: "var(--a-red-soft)",
+            color: "var(--a-red)",
+          }}
+        >
+          <strong>Couldn&apos;t load properties.</strong> {fetchError}
+          <div className="mt-2">
+            <button
+              onClick={logout}
+              className="underline"
+              style={{ color: "var(--a-red)" }}
+            >
+              Log out and log in again
+            </button>
+          </div>
         </div>
       ) : visible.length === 0 ? (
         <div

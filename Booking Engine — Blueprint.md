@@ -1,6 +1,6 @@
 # **Booking Engine — Blueprint**
 
-**Last updated:** 2026-05-12 **Status:** Phases 1–5 \+ 6.5 \+ 6.6 \+ 7.1 shipped. Stripe Connect live on UAE sandbox (Polish entity migration scheduled post-19 May). Flex auto-charge \+ PMS retry recovery live on production. **Guest comms (Phase 7.1) shipped — but next AI must swap Maily editor for Unlayer (no font-family control in Maily). See §13.** Welcome Pickups partnership in motion.
+**Last updated:** 2026-05-12 **Status:** Phases 1–5 \+ 6.5 \+ 6.6 \+ 7.1 shipped. Stripe Connect live on UAE sandbox (Polish entity migration scheduled post-19 May). Flex auto-charge \+ PMS retry recovery live on production. **Guest comms (Phase 7.1) shipped end-to-end — Unlayer composer + R2 image pipeline + scheduler + send log. Maily.to replaced 2026-05-12 (no font control); Unlayer integrates uploads into the Media library and supports brand fonts. See §13.** Welcome Pickups partnership in motion.
 
 Multi-tenant hotel website \+ booking engine platform. Each hotel runs on its own custom domain with a bespoke website and an integrated booking flow connected to Cloudbeds. Built and managed by Rockenue as the webmaster across all properties (≈40 independent hotels, luxury → near-hostel spectrum).
 
@@ -22,7 +22,7 @@ This document is the single source of truth. It replaces `README.md`, `hotel-pla
 10. [Admin v3](https://claude.ai/chat/f7c44679-0eaf-433e-b582-dff9dfcccb3e#10-admin-v3)  
 11. [Photos \+ Cloudflare R2](https://claude.ai/chat/f7c44679-0eaf-433e-b582-dff9dfcccb3e#11-photos--cloudflare-r2)  
 12. [Content CMS](https://claude.ai/chat/f7c44679-0eaf-433e-b582-dff9dfcccb3e#12-content-cms)  
-13. [Email (SendGrid)](https://claude.ai/chat/f7c44679-0eaf-433e-b582-dff9dfcccb3e#13-email-sendgrid)  
+13. [Email (SendGrid + Unlayer composer)](https://claude.ai/chat/f7c44679-0eaf-433e-b582-dff9dfcccb3e#13-email-sendgrid--unlayer-composer)  
 14. [Guest self-cancel](https://claude.ai/chat/f7c44679-0eaf-433e-b582-dff9dfcccb3e#14-guest-self-cancel)  
 15. [File structure](https://claude.ai/chat/f7c44679-0eaf-433e-b582-dff9dfcccb3e#15-file-structure)  
 16. [Local dev \+ scripts](https://claude.ai/chat/f7c44679-0eaf-433e-b582-dff9dfcccb3e#16-local-dev--scripts)  
@@ -124,7 +124,7 @@ Not yet fully scaffolded — `src/lib/booking` exists and is canonical; the `src
 | **PMS** | Cloudbeds REST API (OAuth2 per property) | 🟢 Inventory, rates, extras, webhooks, write paths live |
 | **Payments** | Stripe Connect (Standard accounts, direct charges \+ `on_behalf_of`) | 🟢 Live on UAE sandbox; Polish entity migration scheduled |
 | **Image storage** | Cloudflare R2 \+ `@aws-sdk/client-s3` \+ `sharp` | 🟢 Bucket `rockenue-hotel-photos`, 3 variants per upload (hero 1600w / gallery 800w / thumb 400w) |
-| **Email** | SendGrid (`@sendgrid/mail`) | 🟢 Booking confirmation \+ cancellation emails (NR \+ Flex) |
+| **Email** | SendGrid (`@sendgrid/mail`) · Unlayer composer (`react-email-editor`) | 🟢 Transactional + scheduled flows; admin composer with R2 media library |
 | **DNS** | Cloudflare | 🟡 Custom domains pending; R2.dev URL covers photos for now |
 
 **Next.js 16 has breaking changes from prior versions.** Per `AGENTS.md`: check `node_modules/next/dist/docs/` before writing route handlers, middleware, or server actions. Middleware was renamed to `proxy.ts`; `revalidateTag` now requires a two-arg signature with `{ expire: 0 }` for immediate expiration.
@@ -217,6 +217,7 @@ Standalone decision tools rendered at `/mockups/<file>` on any deployment. Not p
 | File | Purpose |
 | ----- | ----- |
 | `admin-mockup-v3.html` | Signed-off Admin v3 sidebar shell |
+| `admin-map.html` | Annotated tour of the live admin (dashboard · shell with 3 navigation levels · breadcrumb pattern · per-page wireframes · email composer zoom). Useful for orientation when adding pages. |
 | `admin-mockup.html` · `admin-overview-concepts.html` · `admin-overview-modern-ai.html` | Earlier admin design iterations |
 | `portico-extras-concepts.html` | 5 extras display concepts |
 | `portico-map-concepts.html` | 5 map style concepts |
@@ -491,8 +492,9 @@ Shipped 2026-05-07. Full UX signed off as `public/mockups/admin-mockup-v3.html`.
 
 * `src/app/admin/layout.tsx` — auth gate only (token via localStorage, `useAdminAuth()` exposes `{ token, setToken, logout }`).  
 * `src/app/admin/[propertyId]/layout.tsx` — fetches property meta, renders the sidebar shell. Active nav item inferred from pathname. `<PropertyBar>` at top of main area shows hotel name \+ status pill \+ domain \+ currency \+ always-new-tab "Open site ↗".  
-* `src/components/admin/Sidebar.tsx` — 240px persistent sidebar. Hotel switcher card → Property nav (Overview, Bookings, Content, Photos, Rates, Alerts) → Integrations nav (Cloudbeds, Stripe, Domain) → user/logout chip.  
-* `src/components/admin/TopStrip.tsx` — page header \+ button primitive (`<Btn>`) with variants `primary | secondary | danger | ghost`, sizes `sm | md`, `newTab` prop.  
+* `src/components/admin/Sidebar.tsx` — 240px persistent sidebar. Hotel switcher card (HOTEL label + hotel name + slug · currency meta + ⇅ icon — clearly reads as a switcher; clicking returns to the cross-hotel dashboard) → Property nav (Overview, Bookings, Content, Media, Rate plans, Emails, Alerts) → Integrations nav (Cloudbeds, Stripe, Domain) → user/logout chip.  
+* `src/components/admin/TopStrip.tsx` — page header \+ button primitive (`<Btn>`) with variants `primary | secondary | danger | ghost`, sizes `sm | md`, `newTab` prop. Also exports `<Crumb to={parentHref}>Section</Crumb>` — muted grey clickable parent + slash, used in titles of every sub-page (e.g. `Emails / Booking confirmation`). Sidebar active state stays on the parent section even when deep in a sub-page so admin always knows where they are.  
+* **Content width:** `max-w-[1560px]` on both `/admin` dashboard and per-property `<main>` (raised from 1180px on 2026-05-12). Pages center on wide screens; on 13–15" laptops the cap is never hit.  
 * v3 design tokens scoped under `.admin-root` in `src/app/globals.css` — `--a-bg`, `--a-side`, `--a-ink`, `--a-accent` (`#5B5BD6`), tinted soft variants for green/amber/red/blue, `.font-jbm` utility for JetBrains Mono.
 
 ### **Pages**
@@ -504,7 +506,7 @@ Shipped 2026-05-07. Full UX signed off as `public/mockups/admin-mockup-v3.html`.
 | `/admin/[id]/bookings` | `GET /api/admin/properties/[id]/bookings` (200-row cap, hydrates extras) | ✅ |
 | `/admin/[id]/content` | `GET POST /api/admin/properties/[id]/content` | ✅ |
 | `/admin/[id]/media` | `GET POST /api/admin/properties/[id]/photos` \+ `PATCH DELETE /[photoId]` | ✅ (renamed from `/photos` 2026-05-12; API path keeps `photos` for now) |
-| `/admin/[id]/emails`, `/template/[key]`, `/schedule`, `/log` | `/api/admin/properties/[id]/email-templates`, `/email-schedules`, `/email-sends` | ✅ (Phase 7.1, see §13 — editor swap blocker) |
+| `/admin/[id]/emails`, `/template/[key]`, `/schedule`, `/log` | `/api/admin/properties/[id]/email-templates`, `/email-schedules`, `/email-sends` | ✅ (Phase 7.1 — Unlayer composer; see §13) |
 | `/admin/[id]/rates` | `GET /api/admin/properties/[id]/rate-plans` \+ `PATCH /[ratePlanId]` | ✅ |
 | `/admin/[id]/cloudbeds` | `GET /api/admin/properties/[id]/cloudbeds` \+ `POST /sync` | ✅ |
 | `/admin/[id]/stripe` | `GET /api/admin/properties/[id]/stripe` (Promise.allSettled across account/fees/payouts/balance/refunds) | ✅ |
@@ -564,64 +566,64 @@ Shipped 2026-05-07.
 
 ---
 
-## **13\. Email (SendGrid + Maily composer)**
+## **13\. Email (SendGrid + Unlayer composer)**
 
-Phase 7 wave 1 shipped 2026-05-12: per-property editable templates, scheduled automated flows, send log. Composer landed using **Maily.to** but has a hard limitation flagged below — **next AI must switch the editor**.
+Phase 7 wave 1 shipped 2026-05-12: per-property editable templates, scheduled automated flows, send log, R2 media library integrated into the composer. Editor swapped from Maily.to to **Unlayer (`react-email-editor`)** the same day after Maily proved to have no font-family control (renderer hardcoded `'Inter', sans-serif`).
 
-### **🚨 URGENT — replace Maily.to editor**
+### **How rendering works (split client / server)**
 
-**Status:** blocker for v1 polish. **Action:** next session, swap `@maily-to/core` (editor) + `@maily-to/render` (renderer) for **Unlayer (`react-email-editor`)** or equivalent drag-and-drop builder.
+* **Client-side** (composer page): Unlayer's editor runs in an iframe and exports both a **design JSON** (Unlayer's `JSONTemplate`) and a **rendered HTML** string via `editor.exportHtml()`. Brand fonts live as inline `font-family` on every element in the exported HTML.
+* **Server-side** (sending): we never run Unlayer on the server. The composer ships the rendered HTML to the DB on save; the send-time renderer just substitutes `{{var}}` tokens into the cached HTML. Pure string replace, fast, deterministic.
 
-**Why:**
-
-* Maily.to has **no font-family control** anywhere in the UI — the editor doesn't ship a font dropdown, and the renderer hardcodes `'Inter', sans-serif` into output HTML. Verified by inspecting `node_modules/@maily-to/core/dist/index.cjs` and running `src/scripts/render-with-font.ts`: only 2 `font-family` occurrences in rendered HTML, both `Inter`. Any `textStyle.fontFamily` mark we set per-block is stripped.
-* For Portico (Cormorant Garamond headings + Inter body) this means **headings render in Inter in every inbox**, not the brand serif. Body matches by accident.
-* Other limits noticed: logo node forces sm/md/lg fixed sizes that squash non-square logos (worked around by inserting marketing assets as regular `image` blocks); no per-block padding controls; no cropping.
-
-**Migration shortlist:**
-
-| Tool | Strengths | Trade-off |
-| ----- | ----- | ----- |
-| **Unlayer (`react-email-editor`)** | Mature, free unlimited, real font controls, columns/rows, image library hooks, exports HTML + JSON design | Iframe hosted on Unlayer's CDN (not self-hosted); cropping is paid-tier |
-| **GrapesJS Newsletter / Email** | Self-hosted, open-source, font/style controls | Heavier integration; less polished out-of-box |
-| **Build on Tiptap directly** | Full control | 2–3 weeks of work; reinventing what Unlayer ships |
-
-**Preserve when migrating:**
-
-* `src/db/schema.ts` `emailTemplates.body` JSONB — refactor to Unlayer's design JSON (string-keyed object). Don't drop the column; add a migration column `bodyFormat` `'maily' | 'unlayer'` if you want to support both during rollover.
-* All API endpoints under `src/app/api/admin/properties/[id]/email-templates/*` keep their signatures; only the renderer + composer page change.
-* `src/lib/email/variables.ts` and `src/lib/email/send-template.ts` are renderer-agnostic — keep.
-* The seeded defaults (`src/lib/email/template-defaults.ts`) are the only thing tightly coupled to Maily JSON. Re-seed in Unlayer format.
+This split means the only thing that touches the cached HTML at send time is `substitute()` in `src/lib/email/variables.ts`. Adding/removing variables only needs a code change there; no template re-renders.
 
 ### **What's wired today**
 
-* **Storage:** `email_templates`, `email_schedules`, `email_sends` tables. `properties.emailFromAddress` / `emailFromName` / `emailReplyTo` columns (NULL → falls back to platform default `noreply@em4689.market-pulse.io`).  
-* **Templates:** 5 default keys seeded idempotently per property on first visit — `confirmation`, `cancellation`, `pre_arrival` (T-3 09:00), `welcome` (T+0 08:00), `post_stay` (T+1 10:00 draft). Seed in `src/lib/email/seed-templates.ts`.  
-* **Renderer:** `src/lib/email/maily-renderer.ts` wraps `@maily-to/render`. Substitution via `setVariableValues` plus our `substitute()` helper for subject lines. Var namespace in `src/lib/email/variables.ts`.  
-* **Send orchestrator:** `src/lib/email/send-template.ts` — loads template, renders HTML + plain text, dispatches via SendGrid with `customArgs.send_id` for webhook correlation, writes `email_sends` row.  
-* **Transactional path:** `src/lib/email/booking-confirmation.ts` and `booking-cancellation.ts` are thin wrappers that delegate to `sendTemplate`. Auto-charge cancel + PMS retry confirmation both call them with `propertyId` + `bookingId`.  
-* **Scheduler:** `src/lib/email/scheduler.ts` walks every enabled schedule, matches bookings whose trigger window falls in the current hour in property TZ, dispatches via `sendTemplate`. Idempotent on `(bookingId, templateKey)`. Audience filters: `all` | `flex` | `nr` | `min_nights_2`.  
-* **Cron:** `/api/cron/emails` POST, Bearer-protected with `CRON_SECRET`. **Not yet scheduled on Railway** — add hourly service (or extend `inspiring-trust`) before turning on real automated flows.  
-* **SendGrid Event Webhook:** `/api/sendgrid/webhooks/[token]` updates `email_sends.status / deliveredAt / openedAt / bouncedAt`. Token from `SENDGRID_WEBHOOK_TOKEN` env. **Not yet registered in SendGrid dashboard**.  
-* **Per-property sender:** `properties.emailFromAddress` plumbed through `sendEmail`; falls back to platform default when NULL.  
-* **Theme fonts:** seed time honours `process.env.THEME === 'portico-ivory'` and bakes Cormorant Garamond + Inter stacks into seeded JSON. **Currently ignored at render time** (see urgent block above).
+* **Storage:** `email_templates`, `email_schedules`, `email_sends` tables. New column `email_templates.body_format` (`text NOT NULL default 'unlayer'`) flags which composer produced the row — only `'unlayer'` is written now; the column exists so a future migration can detect legacy rows. `properties.emailFromAddress` / `emailFromName` / `emailReplyTo` columns (NULL → falls back to platform default `noreply@em4689.market-pulse.io`).
+* **Schema split:** `email_templates.body` (jsonb) = Unlayer design JSON for re-edit. `email_templates.html_cached` (text) = pre-rendered HTML with `{{var}}` tokens still in place. Render at send time = `substitute(htmlCached, vars)`.
+* **Templates:** 5 default keys seeded idempotently per property on first visit — `confirmation`, `cancellation`, `pre_arrival` (T-3 09:00), `welcome` (T+0 08:00), `post_stay` (T+1 10:00 draft). Defaults at `src/lib/email/template-defaults.ts` ship **both** an Unlayer design (heading / text / divider / button content blocks with `fontFamily` set) AND a hand-rolled email HTML wrapper (brand fonts baked inline on every element). Seed in `src/lib/email/seed-templates.ts` writes both into `body` and `html_cached`.
+* **Renderer:** `src/lib/email/unlayer-renderer.ts` — `renderUnlayerTemplate({ html, vars })` substitutes `{{var}}` tokens; `renderUnlayerPlainText` does the same + tag strip for the text/plain alternative.
+* **Send orchestrator:** `src/lib/email/send-template.ts` — loads template, reads `htmlCached`, substitutes vars, dispatches via SendGrid with `customArgs.send_id` for webhook correlation, writes `email_sends` row.
+* **Transactional path:** `src/lib/email/booking-confirmation.ts` and `booking-cancellation.ts` are thin wrappers that delegate to `sendTemplate`. Auto-charge cancel + PMS retry confirmation both call them with `propertyId` + `bookingId`.
+* **Scheduler:** `src/lib/email/scheduler.ts` walks every enabled schedule, matches bookings whose trigger window falls in the current hour in property TZ, dispatches via `sendTemplate`. Idempotent on `(bookingId, templateKey)`. Audience filters: `all` | `flex` | `nr` | `min_nights_2`.
+* **Cron:** `/api/cron/emails` POST, Bearer-protected with `CRON_SECRET`. **Not yet scheduled on Railway** — add hourly service before turning on real automated flows.
+* **SendGrid Event Webhook:** `/api/sendgrid/webhooks/[token]` updates `email_sends.status / deliveredAt / openedAt / bouncedAt`. Token from `SENDGRID_WEBHOOK_TOKEN` env. **Not yet registered in SendGrid dashboard**.
+* **Per-property sender:** `properties.emailFromAddress` plumbed through `sendEmail`; falls back to platform default when NULL.
+* **Theme fonts (verified in output):** seed honours `process.env.THEME === 'portico-ivory'` and bakes Cormorant Garamond + Inter into seeded HTML. Smoke probe (`src/scripts/render-templates-smoke.ts`) confirms 2 × `Cormorant Garamond` + 4 × `Inter` references survive in every rendered template. Maily would strip them; Unlayer doesn't.
 
-### **Admin UI**
+### **Composer (`/admin/[id]/emails/template/[key]`)**
 
-* `/admin/[id]/emails` — template list, per-row stats from `email_sends`, on/off toggle per schedule.  
-* `/admin/[id]/emails/template/[key]` — split-pane composer (Maily editor + live preview). "Insert photo" / "Insert logo" pull from the property's R2 library (logos inserted as regular image blocks, *not* Maily's logo node, to dodge the size squash). "Send test" delivers a one-off to any address with sample vars.  
-* `/admin/[id]/emails/schedule` — inline rule rows. Trigger / offset / time / audience / on-off per scheduled template.  
-* `/admin/[id]/emails/log` — last 200 sends with status pills and basic stats.
+Split pane: Unlayer editor on the left, live preview iframe on the right. Editor canvas defaults to ~720px tall and stretches with the page (admin shell widened to 1560px max — see §10).
+
+* **Image upload pipeline:** Unlayer's `image` callback intercepts disk uploads. Each file POSTs to `/api/admin/properties/[id]/photos` with `slot=marketing` → R2 (3 variants per upload) → row in the `images` table. The gallery variant URL flows back to Unlayer and lands in the email block. So **every email upload also shows up in Admin → Media** for later reuse, and never auto-displays on the public site (marketing slot is admin-only).
+* **Library picker (auto-open):** `selectImage` is registered, but Unlayer 1.x doesn't reliably surface its "Select" button in the current hosted build. Working path is the `content:added` event listener: dropping a fresh Image block → our R2 library modal opens automatically → admin clicks a photo → we walk the design tree (`patchImageSrc`), set the new block's `src.url`, and call `editor.loadDesign(patched)` so the change is visible immediately.
+* **Library picker (manual):** toolbar "▣ Media library" button opens the same modal for browsing. When opened manually (not from Unlayer) it copies the URL to clipboard as a fallback so admin can paste it into an already-configured Image block.
+* **Variables via `{{...}}`:** built from `VAR_GROUPS` in `src/lib/email/variables.ts`, exposed to Unlayer as merge tags with autocomplete on `{`. Subject line uses the same `substitute()` helper.
+* **Fonts:** hardcoded set of email-safe system fonts (Arial · Helvetica · Tahoma · Trebuchet MS · Verdana · Georgia · Times New Roman · Courier New) registered as Unlayer `customFonts`, plus whitelisted Google Fonts (Cormorant Garamond, Inter, etc.) when they're in the property's brand stack. We carry our own list because Unlayer's hosted default-font fetch wasn't surfacing in the iframe in our deployment. System fonts use a no-op `data:text/css;base64,` URL (Unlayer's `CustomFont` type requires `url`).
+* **Save:** `exportHtml()` → POST `{ design, html }` to PUT `/email-templates/[key]` → writes both columns. Live preview uses the same export, POSTs `{ html }` to the route's POST handler which substitutes sample vars.
+* **Send test:** same `exportHtml` → POST to `send-test/`, dispatched via SendGrid with `[TEST · <key>]` prefix.
+
+### **Other admin pages**
+
+* `/admin/[id]/emails` — template list, per-row stats from `email_sends`, on/off toggle per schedule.
+* `/admin/[id]/emails/schedule` — inline rule rows. Trigger / offset / time / audience / on-off per scheduled template. Title uses the breadcrumb pattern (see §10): `Emails / Schedule`.
+* `/admin/[id]/emails/log` — last 200 sends with status pills and basic stats. Title: `Emails / Send log`.
+
+### **Engineering gotchas**
+
+* **`next.config.ts` has `reactStrictMode: false`.** Required because `react-email-editor` 1.x appends a new Unlayer iframe on every mount and doesn't tear the first one down. React Strict Mode's double-mount produces two stacked editors. Dev-only behaviour; production never double-renders.
+* **`bodyFormat` column on `email_templates`.** Default `'unlayer'`. Kept as a flag so future migrations can identify legacy rows if we ever need to re-render.
+* **One-off reset:** `src/scripts/reset-email-templates.ts` — drops rows where `body_format != 'unlayer'` OR `html_cached IS NULL`, then re-seeds. Run for the demo property on 2026-05-12 during the Maily → Unlayer migration. Re-run only when seeded defaults change.
+* **Visual diagnostic:** `src/scripts/inspect-email-templates.ts <slug>` prints per-template `body_format` + cached HTML size.
 
 ### **Carry-forward (email)**
 
-* **🚨 Replace Maily** — see urgent block at top.  
-* **Per-hotel sender authentication.** `emailFromAddress` column exists but is NULL for every property. Before a real hotel ships, configure their authenticated domain on SendGrid (or move to dedicated subuser) and populate the column. Default sender keeps working for Portico's marketing-pulse domain.  
-* **Per-hotel reply-to.** Same shape — `emailReplyTo` column exists.  
-* **Register SendGrid Event Webhook.** Currently the receiver exists but SendGrid isn't told where to post. Production env needs `SENDGRID_WEBHOOK_TOKEN` set and the endpoint configured in SendGrid dashboard.  
-* **Add hourly cron service for `/api/cron/emails`** on Railway. Mirror the `inspiring-trust` service pattern; until then scheduled emails won't fire in prod.  
-* **Marketing asset slot.** Admin → Media now has a `marketing` slot for logos / brand assets that the public site never auto-displays. Portico's logos are pre-uploaded for the demo property (`portico-logo.png`, `portico-logo-white.png`, both PNG with transparency).  
-* **Render-side theme fonts.** Once the editor is swapped, the rendered HTML should pick up `headingStack` / `bodyStack` from the property theme. Today it doesn't — Maily forces Inter.
+* **Per-hotel sender authentication.** `emailFromAddress` column exists but is NULL for every property. Before a real hotel ships, configure their authenticated domain on SendGrid (or move to dedicated subuser) and populate the column. Default sender keeps working for Portico's marketing-pulse domain.
+* **Per-hotel reply-to.** Same shape — `emailReplyTo` column exists.
+* **Register SendGrid Event Webhook.** Currently the receiver exists but SendGrid isn't told where to post. Production env needs `SENDGRID_WEBHOOK_TOKEN` set and the endpoint configured in SendGrid dashboard.
+* **Add hourly cron service for `/api/cron/emails`** on Railway. Mirror the existing cron services' recipe (alpine + curl + Bearer); until then scheduled emails won't fire in prod.
+* **Marketing asset slot.** Admin → Media has a `marketing` slot for logos / brand assets that the public site never auto-displays. Composer uploads default to this slot. Portico's logos are pre-uploaded for the demo property (`portico-logo.png`, `portico-logo-white.png`).
+* **Plain-text alternative quality.** `renderUnlayerPlainText` is a regex tag-strip — works but can produce odd whitespace from heavily formatted HTML. If a hotel reports text/plain rendering oddly, swap to `editor.exportPlainText()` on save and cache alongside `html_cached`.
 
 ---
 
@@ -707,7 +709,7 @@ src/
 │   ├── booking/                           # Headless booking hooks
 │   ├── cloudbeds/                         # client, scopes, sync-inventory, sync-extras, sync-hotel-details, reservations, webhook-*
 │   ├── stripe/                            # client (platform), browser, status, amounts, detach
-│   ├── email/                             # sendgrid, booking-confirmation, booking-cancellation
+│   ├── email/                             # sendgrid, booking-confirmation, booking-cancellation, unlayer-renderer, template-defaults, send-template, scheduler, seed-templates, variables, fonts
 │   └── r2/                                # client, resize
 ├── themes/portico/                        # Portico Ivory theme
 │   ├── PorticoShell.tsx, tokens.ts, fonts.ts, stripe-appearance.ts, index.ts
@@ -854,7 +856,7 @@ These are the outcomes of the design overhaul. Follow them unless explicitly red
 | 6\. Cancellation \+ launch hardening | Step 16 Flex self-cancel | 🟡 Flex within-window shipped; NR \+ past-deadline punt to "contact hotel" |
 | 6.5 Admin v3 \+ R2 \+ Content CMS | shipped 2026-05-07 | ✅ Done |
 | 6.6 Cloudbeds metadata auto-sync | shipped 2026-05-08 | ✅ Done |
-| 7.1 Guest comms — composer + scheduler + log | shipped 2026-05-12 | 🟡 Backend + admin UI live · **editor swap blocker** (Maily has no font control — see §13 urgent) |
+| 7.1 Guest comms — composer + scheduler + log + R2 image flow | shipped 2026-05-12 (Unlayer swap same day) | ✅ Done — backend + Unlayer composer + Media library integration |
 | 7\. Post-launch features | Welcome Pickups · GEO/AI · WhatsApp · etc. | 🟡 Welcome Pickups in motion; GEO/AI flagged as must |
 
 ### **Phase 5 — Flex auto-charge \+ PMS recovery (shipped 2026-05-12)**
@@ -1057,7 +1059,7 @@ Loose direction for post-launch. Each item gets its own focused step when its ti
   * **MCP endpoint** at `/mcp/server` — exposes availability \+ property details via Model Context Protocol so AI agents can query rooms directly. Wraps `/api/availability` \+ property meta. Future-positioning for AI-agent-driven booking.  
   * **Per-property local-guide content** — owner-written ongoing copy. Adds depth \+ originality, not boilerplate. Lives in content blocks as `localGuide` (or split into multiple).
 
-### **Guest comms platform — Phase 7.1 shipped 2026-05-12 · editor swap pending**
+### **Guest comms platform — Phase 7.1 shipped 2026-05-12**
 
 Goal: per-hotel designable email templates \+ smart scheduling \+ ops view. Replaces hardcoded confirmation/cancellation templates with admin-editable ones.
 
@@ -1067,14 +1069,14 @@ Goal: per-hotel designable email templates \+ smart scheduling \+ ops view. Repl
 2. ✅ Event-relative scheduler only (no one-off broadcasts)  
 3. ✅ Karol-only editor (no per-hotel logins)
 
-**Shipped in this wave** — see §13 for the full breakdown. Stack landed as: Maily.to composer + SendGrid delivery + own Railway cron + 5 default templates + 4 admin pages + SendGrid Event Webhook + per-property sender column. Auto-charge cancellation and PMS retry confirmation paths re-wired through the template engine.
+**Shipped end-to-end** — see §13 for the full breakdown. Stack landed as: **Unlayer composer** (`react-email-editor`) + SendGrid delivery + own Railway cron + 5 default templates + 4 admin pages + SendGrid Event Webhook + per-property sender column + R2 image upload pipeline integrated into the editor (drops land in Media library, slot=marketing). Auto-charge cancellation and PMS retry confirmation paths re-wired through the template engine.
 
-**🚨 Blocker before declaring done:** Maily.to provides no font-family control. See §13 urgent block — **next AI session must swap the editor (Unlayer is the lean)**. Backend, scheduler, send log, API contracts, variable engine, seeded defaults, and SendGrid wiring all stay; only the composer page and the Maily-shaped template JSON change. Estimate: 2–3 days for Unlayer migration including re-seeding default templates in Unlayer's design format.
+**Editor migration note (2026-05-12):** the composer was originally built on Maily.to but Maily strips all `font-family` marks at render — verified by inspecting `node_modules/@maily-to/core/dist/index.cjs`. Same-day swap to Unlayer kept the entire backend (DB schema, send-template, scheduler, webhooks) intact; only the composer page + template-defaults format changed. Migration helper at `src/scripts/reset-email-templates.ts` blew away legacy rows and re-seeded.
 
-**Remaining for Phase 7.x after editor swap:**
+**Remaining for Phase 7.x:**
 
 * **Per-hotel sender authentication.** SendGrid authenticated domains per hotel (`mail.<hotel-domain>` DNS at onboarding) \+ Subusers tier at hotel \#10+. Schema already supports it.  
-* **Hourly Railway cron service for `/api/cron/emails`.** Pattern is the `inspiring-trust` cron. Until added, scheduled flows don't fire in prod.  
+* **Hourly Railway cron service for `/api/cron/emails`.** Pattern is the existing cron services' recipe. Until added, scheduled flows don't fire in prod.  
 * **SendGrid Event Webhook registration.** Endpoint exists at `/api/sendgrid/webhooks/[token]`; needs `SENDGRID_WEBHOOK_TOKEN` env + dashboard config.  
 * **Phase 4 — Multi-channel** (when WhatsApp lands). Revisit Knock ($300/mo) for routing.
 
@@ -1140,6 +1142,8 @@ Goal: per-hotel designable email templates \+ smart scheduling \+ ops view. Repl
 * **Cloudbeds spelling: `propertyID` vs `propertyId`** — both appear across CB events. Our handler accepts either.  
 * **R2 URLs need `unoptimized` prop** on `<Image>` to bypass Next.js image optimisation without configuring `next.config` `images.remotePatterns`.  
 * **Next.js 16 `revalidateTag`** requires two-arg signature: `revalidateTag(tag, { expire: 0 })` for immediate. Single-arg form is deprecated.  
+* **`reactStrictMode: false` in `next.config.ts`** — required because `react-email-editor` 1.x doesn't tear down its Unlayer iframe on unmount. With Strict Mode's dev double-mount the email composer renders two stacked editors. Dev-only behaviour; production never double-renders. Re-enable if/when react-email-editor 2.x supports clean tear-down.  
+* **Email composer fonts are hardcoded.** Unlayer's hosted default-font list doesn't load reliably in our iframe; we ship our own list of 8 email-safe system fonts + whitelisted Google Fonts (`src/app/admin/[propertyId]/emails/template/[key]/page.tsx`). System fonts use a no-op `data:` URL since Unlayer's `CustomFont` type requires `url`.  
 * **Polish bank account must be on Biała lista** before linking to Stripe. mBank/ING/Santander safe; Wise/Revolut may not be.  
 * **CRBR filing** within 14 days of KRS registration. Confirm notary includes this, or arrange via accountant.
 

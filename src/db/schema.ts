@@ -43,6 +43,11 @@ export const properties = pgTable("properties", {
   }).default("3.00"),
   payoutSchedule: text("payout_schedule").default("weekly"),
 
+  // Email sender (NULL → falls back to platform default em4689.market-pulse.io)
+  emailFromAddress: text("email_from_address"),
+  emailFromName: text("email_from_name"),
+  emailReplyTo: text("email_reply_to"),
+
   createdAt: timestamp("created_at", { withTimezone: true }).default(
     sql`NOW()`
   ),
@@ -367,3 +372,100 @@ export const paymentEvents = pgTable("payment_events", {
     sql`NOW()`
   ),
 });
+
+// --- Email templates (per-property, editable) ---
+//
+// One row per (propertyId, key). The 5 canonical keys are:
+//   confirmation | cancellation | pre_arrival | welcome | post_stay
+// `body` is Unlayer design JSON (for re-edit). `htmlCached` is the last-rendered
+// HTML with {{var}} tokens still in place; the send-time renderer just substitutes
+// vars into this. `bodyFormat` flags which composer produced the row — kept so a
+// future legacy 'maily' row could be detected, but only 'unlayer' is written now.
+
+export const emailTemplates = pgTable(
+  "email_templates",
+  {
+    id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+    propertyId: uuid("property_id")
+      .references(() => properties.id)
+      .notNull(),
+    key: text("key").notNull(),
+    name: text("name").notNull(),
+    subject: text("subject").notNull(),
+    body: jsonb("body").notNull(),
+    bodyFormat: text("body_format").notNull().default("unlayer"),
+    htmlCached: text("html_cached"),
+    status: text("status").notNull().default("active"),
+    isTransactional: boolean("is_transactional").notNull().default(false),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).default(
+      sql`NOW()`
+    ),
+    updatedBy: text("updated_by"),
+  },
+  (table) => [
+    uniqueIndex("email_templates_property_key_idx").on(
+      table.propertyId,
+      table.key
+    ),
+  ]
+);
+
+// --- Email schedules (event-relative triggers, one row per scheduled template) ---
+
+export const emailSchedules = pgTable(
+  "email_schedules",
+  {
+    id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+    propertyId: uuid("property_id")
+      .references(() => properties.id)
+      .notNull(),
+    templateKey: text("template_key").notNull(),
+    enabled: boolean("enabled").notNull().default(false),
+    trigger: text("trigger").notNull(),
+    offsetDays: integer("offset_days").notNull().default(0),
+    timeOfDay: text("time_of_day").notNull().default("09:00"),
+    audience: text("audience").notNull().default("all"),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).default(
+      sql`NOW()`
+    ),
+  },
+  (table) => [
+    uniqueIndex("email_schedules_property_template_idx").on(
+      table.propertyId,
+      table.templateKey
+    ),
+  ]
+);
+
+// --- Email sends (audit trail; SendGrid Event Webhook updates status) ---
+
+export const emailSends = pgTable(
+  "email_sends",
+  {
+    id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+    propertyId: uuid("property_id")
+      .references(() => properties.id)
+      .notNull(),
+    bookingId: uuid("booking_id").references(() => bookings.id),
+    templateKey: text("template_key").notNull(),
+    toEmail: text("to_email").notNull(),
+    fromEmail: text("from_email").notNull(),
+    subject: text("subject").notNull(),
+    sendgridMessageId: text("sendgrid_message_id"),
+    status: text("status").notNull().default("queued"),
+    errorMessage: text("error_message"),
+    sentAt: timestamp("sent_at", { withTimezone: true }),
+    deliveredAt: timestamp("delivered_at", { withTimezone: true }),
+    openedAt: timestamp("opened_at", { withTimezone: true }),
+    bouncedAt: timestamp("bounced_at", { withTimezone: true }),
+    payload: jsonb("payload"),
+    createdAt: timestamp("created_at", { withTimezone: true }).default(
+      sql`NOW()`
+    ),
+  },
+  (table) => [
+    index("email_sends_property_idx").on(table.propertyId, table.createdAt),
+    index("email_sends_booking_idx").on(table.bookingId),
+    index("email_sends_sendgrid_msg_idx").on(table.sendgridMessageId),
+  ]
+);

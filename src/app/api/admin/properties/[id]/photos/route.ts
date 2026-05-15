@@ -20,7 +20,10 @@ const ALLOWED_MIME = new Set([
 // typically 10-25MB. Variants are sub-MB regardless.
 const MAX_BYTES = 30 * 1024 * 1024;
 
-const VALID_SLOTS = new Set(["hero", "gallery", "room", "neighbourhood"]);
+// `marketing` is admin-only — never surfaced on the public site (see
+// getPropertyPhotos in lib/get-property.ts which silently ignores it). Use it
+// for logos, brand assets, anything embedded in emails but not the website.
+const VALID_SLOTS = new Set(["hero", "gallery", "room", "neighbourhood", "marketing"]);
 
 export async function GET(
   req: NextRequest,

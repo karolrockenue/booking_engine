@@ -227,6 +227,8 @@ export async function POST(req: NextRequest) {
       : [undefined];
     try {
       await sendBookingCancellationEmail({
+        propertyId: property.id,
+        bookingId: booking.id,
         to: booking.guestEmail,
         guestFirstName: booking.guestFirst,
         guestLastName: booking.guestLast,

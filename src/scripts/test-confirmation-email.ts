@@ -2,21 +2,41 @@
  * Smoke test for the booking confirmation email.
  *
  * Run with:
- *   set -a && source .env.local && set +a && npx tsx src/scripts/test-confirmation-email.ts <to-address>
+ *   set -a && source .env.local && set +a && npx tsx src/scripts/test-confirmation-email.ts <to-address> [property-slug]
  *
- * Sends a single fake confirmation to the address you pass. Verifies:
- *   - SENDGRID_API_KEY is valid
- *   - the From address (noreply@em4689.market-pulse.io) is authenticated
- *   - HTML + text templates render correctly in your inbox
+ * Sends a Flex + NR confirmation to the address you pass. Renders via the
+ * Unlayer template engine (so this verifies the template was seeded and the
+ * variable substitution works end-to-end). Defaults to property slug "demo".
  */
 
 import { sendBookingConfirmationEmail } from "../lib/email/booking-confirmation";
+import { db } from "../db";
+import { properties } from "../db/schema";
+import { eq } from "drizzle-orm";
+import { seedEmailTemplatesForProperty } from "../lib/email/seed-templates";
 
 async function main() {
   const to = process.argv[2];
+  const slug = process.argv[3] ?? "demo";
   if (!to) {
-    console.error("Usage: npx tsx src/scripts/test-confirmation-email.ts <to-address>");
+    console.error("Usage: npx tsx src/scripts/test-confirmation-email.ts <to-address> [property-slug]");
     process.exit(1);
+  }
+
+  const [property] = await db
+    .select()
+    .from(properties)
+    .where(eq(properties.slug, slug))
+    .limit(1);
+  if (!property) {
+    console.error(`No property with slug "${slug}".`);
+    process.exit(1);
+  }
+
+  // Seed templates if first run for this property.
+  const seeded = await seedEmailTemplatesForProperty(property.id);
+  if (seeded.templatesInserted > 0) {
+    console.log(`Seeded ${seeded.templatesInserted} default templates.`);
   }
 
   const today = new Date();
@@ -26,10 +46,11 @@ async function main() {
 
   console.log(`Sending Flex confirmation to ${to}...`);
   await sendBookingConfirmationEmail({
+    propertyId: property.id,
     to,
     guestFirstName: "Test",
     guestLastName: "Guest",
-    hotelName: "Demo Hotel",
+    hotelName: property.name,
     cloudbedsReservationId: "9876543",
     orderId: "test-order-flex-0001",
     rateType: "flex",
@@ -39,25 +60,20 @@ async function main() {
     checkOut: iso(checkOut),
     nights: 3,
     adults: 2,
-    currency: "GBP",
+    currency: property.currency ?? "GBP",
     roomTotal: 360.0,
     extrasTotal: 30.0,
     grandTotal: 390.0,
-    nightlyRates: [
-      { date: iso(checkIn), rate: 120.0 },
-      { date: iso(new Date(checkIn.getTime() + 86400000)), rate: 120.0 },
-      { date: iso(new Date(checkIn.getTime() + 2 * 86400000)), rate: 120.0 },
-    ],
-    extras: [{ name: "Continental Breakfast", priceMinorUnits: 3000 }],
   });
   console.log("  ✓ Flex sent");
 
   console.log(`Sending NR confirmation to ${to}...`);
   await sendBookingConfirmationEmail({
+    propertyId: property.id,
     to,
     guestFirstName: "Test",
     guestLastName: "Guest",
-    hotelName: "Demo Hotel",
+    hotelName: property.name,
     cloudbedsReservationId: "9876544",
     orderId: "test-order-nr-0001",
     rateType: "nr",
@@ -67,16 +83,10 @@ async function main() {
     checkOut: iso(checkOut),
     nights: 3,
     adults: 2,
-    currency: "GBP",
+    currency: property.currency ?? "GBP",
     roomTotal: 540.0,
     extrasTotal: 0,
     grandTotal: 540.0,
-    nightlyRates: [
-      { date: iso(checkIn), rate: 180.0 },
-      { date: iso(new Date(checkIn.getTime() + 86400000)), rate: 180.0 },
-      { date: iso(new Date(checkIn.getTime() + 2 * 86400000)), rate: 180.0 },
-    ],
-    extras: [],
   });
   console.log("  ✓ NR sent");
 

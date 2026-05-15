@@ -385,6 +385,8 @@ export async function POST(req: NextRequest) {
     void (async () => {
       try {
         await sendBookingConfirmationEmail({
+          propertyId: property.id,
+          bookingId: booking.id,
           to: body.guestEmail,
           guestFirstName: body.guestFirst,
           guestLastName: body.guestLast,
@@ -402,14 +404,6 @@ export async function POST(req: NextRequest) {
           roomTotal: roomTotalNum,
           extrasTotal: extrasTotalNum,
           grandTotal: grandTotalNum,
-          nightlyRates: (body.nightlyRates ?? []).map((nr) => ({
-            date: nr.date,
-            rate: nr.rate,
-          })),
-          extras: extrasItems.map((e) => ({
-            name: e.name,
-            priceMinorUnits: e.priceMinorUnits,
-          })),
           cancelUrl,
         });
       } catch (emailErr) {

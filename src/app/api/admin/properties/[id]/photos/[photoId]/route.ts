@@ -5,7 +5,7 @@ import { images } from "@/db/schema";
 import { and, eq } from "drizzle-orm";
 import { deleteFromR2 } from "@/lib/r2/client";
 
-const VALID_SLOTS = new Set(["hero", "gallery", "room", "neighbourhood"]);
+const VALID_SLOTS = new Set(["hero", "gallery", "room", "neighbourhood", "marketing"]);
 
 export async function PATCH(
   req: NextRequest,

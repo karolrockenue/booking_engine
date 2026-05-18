@@ -101,7 +101,7 @@ export default function CloudbedsPage() {
   async function handleDisconnect() {
     if (!token || !propertyId) return;
     const ok = window.confirm(
-      "Disconnect Cloudbeds for this property?\n\nThis unsubscribes our webhooks and clears the stored access token on our side. Bookings, inventory, and rates will stop syncing until you reconnect.\n\nIMPORTANT: To fully revoke our app's access, you must also remove it from Cloudbeds Marketplace → Settings → Apps & Integrations. Cloudbeds doesn't expose an API for this — it's a one-click action in the hotel's own dashboard."
+      "Disconnect Cloudbeds for this property?\n\nThis revokes our OAuth grant at Cloudbeds (postAppState=disabled), unsubscribes our webhooks, and clears the stored tokens. The app will be removed from the hotel's Cloudbeds → Apps & Integrations list. Re-connecting requires a fresh consent."
     );
     if (!ok) return;
     setDisconnecting(true);
@@ -118,6 +118,8 @@ export default function CloudbedsPage() {
         ok?: boolean;
         error?: string;
         webhookError?: string | null;
+        appStateRevoked?: boolean;
+        appStateError?: string | null;
       };
       if (!r.ok || !body.ok) {
         setSyncMessage({
@@ -126,11 +128,18 @@ export default function CloudbedsPage() {
         });
         return;
       }
+      const parts: string[] = [];
+      if (body.appStateRevoked) {
+        parts.push("OAuth grant revoked at Cloudbeds.");
+      } else if (body.appStateError) {
+        parts.push(`Local tokens cleared; postAppState warning: ${body.appStateError}.`);
+      }
+      if (body.webhookError) {
+        parts.push(`Webhook unsubscribe warning: ${body.webhookError}.`);
+      }
       setSyncMessage({
         kind: "ok",
-        text: body.webhookError
-          ? `Disconnected locally. Webhook unsubscribe warning: ${body.webhookError}. To fully revoke, also remove the app in Cloudbeds → Settings → Apps & Integrations.`
-          : "Disconnected on our side. To fully revoke the OAuth grant, also remove the app in Cloudbeds → Settings → Apps & Integrations (Cloudbeds doesn't expose a revoke API).",
+        text: parts.length > 0 ? parts.join(" ") : "Disconnected.",
       });
       await load();
     } catch (e) {

@@ -43,6 +43,7 @@ export default function CloudbedsPage() {
     text: string;
   } | null>(null);
   const [authorising, setAuthorising] = useState(false);
+  const [disconnecting, setDisconnecting] = useState(false);
   const [hideJustConnected, setHideJustConnected] = useState(false);
 
   async function load() {
@@ -97,6 +98,51 @@ export default function CloudbedsPage() {
     }
   }
 
+  async function handleDisconnect() {
+    if (!token || !propertyId) return;
+    const ok = window.confirm(
+      "Disconnect Cloudbeds for this property?\n\nThis unsubscribes our webhooks and clears the stored access token on our side. Bookings, inventory, and rates will stop syncing until you reconnect.\n\nIMPORTANT: To fully revoke our app's access, you must also remove it from Cloudbeds Marketplace → Settings → Apps & Integrations. Cloudbeds doesn't expose an API for this — it's a one-click action in the hotel's own dashboard."
+    );
+    if (!ok) return;
+    setDisconnecting(true);
+    setSyncMessage(null);
+    try {
+      const r = await fetch(
+        `/api/admin/properties/${propertyId}/cloudbeds/disconnect`,
+        {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      );
+      const body = (await r.json().catch(() => ({}))) as {
+        ok?: boolean;
+        error?: string;
+        webhookError?: string | null;
+      };
+      if (!r.ok || !body.ok) {
+        setSyncMessage({
+          kind: "error",
+          text: body.error ?? `Disconnect failed (HTTP ${r.status})`,
+        });
+        return;
+      }
+      setSyncMessage({
+        kind: "ok",
+        text: body.webhookError
+          ? `Disconnected locally. Webhook unsubscribe warning: ${body.webhookError}. To fully revoke, also remove the app in Cloudbeds → Settings → Apps & Integrations.`
+          : "Disconnected on our side. To fully revoke the OAuth grant, also remove the app in Cloudbeds → Settings → Apps & Integrations (Cloudbeds doesn't expose a revoke API).",
+      });
+      await load();
+    } catch (e) {
+      setSyncMessage({
+        kind: "error",
+        text: e instanceof Error ? e.message : "request failed",
+      });
+    } finally {
+      setDisconnecting(false);
+    }
+  }
+
   async function handleReauth() {
     if (!token || !propertyId) return;
     setAuthorising(true);
@@ -148,6 +194,11 @@ export default function CloudbedsPage() {
         }
         actions={
           <>
+            {data?.connected && (
+              <Btn onClick={handleDisconnect}>
+                {disconnecting ? "Disconnecting…" : "Disconnect"}
+              </Btn>
+            )}
             <Btn onClick={handleReauth}>
               {authorising ? "Redirecting…" : data?.connected ? "Re-authorise" : "Connect"}
             </Btn>
@@ -362,6 +413,11 @@ export default function CloudbedsPage() {
                 <Btn size="sm" onClick={handleReauth}>
                   {authorising ? "Redirecting…" : "Re-authorise"}
                 </Btn>
+                {data.connected && (
+                  <Btn size="sm" onClick={handleDisconnect}>
+                    {disconnecting ? "Disconnecting…" : "Disconnect"}
+                  </Btn>
+                )}
               </div>
             </Card>
           </div>

@@ -258,7 +258,12 @@ export async function putReservationStatus(
 ): Promise<{ reservationID: string; status: string }> {
   const token = await getValidAccessToken(ourPropertyId);
 
-  const url = new URL(`${API_BASE}/putReservationStatus`);
+  // Cloudbeds doesn't expose a dedicated /putReservationStatus endpoint —
+  // status changes go through /putReservation with `status=canceled` in
+  // the form body. /putReservationStatus 404s with the marketing HTML
+  // page; /putReservation is the real path. Verified against the demo
+  // property during cert prep (smoke test 2026-05-18).
+  const url = new URL(`${API_BASE}/putReservation`);
   url.searchParams.set("propertyID", params.cloudbedsPropertyId);
 
   const form = new URLSearchParams();
@@ -282,13 +287,13 @@ export async function putReservationStatus(
     body = JSON.parse(text) as PutReservationStatusResponse;
   } catch {
     throw new Error(
-      `Cloudbeds putReservationStatus: non-JSON response (${res.status}): ${text.slice(0, 300)}`
+      `Cloudbeds putReservation (cancel): non-JSON response (${res.status}): ${text.slice(0, 300)}`
     );
   }
 
   if (!res.ok || !body.success) {
     throw new Error(
-      `Cloudbeds putReservationStatus failed: ${body.message ?? `HTTP ${res.status}`} — ${text.slice(0, 300)}`
+      `Cloudbeds putReservation (cancel) failed: ${body.message ?? `HTTP ${res.status}`} — ${text.slice(0, 300)}`
     );
   }
 

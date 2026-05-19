@@ -313,12 +313,27 @@ export async function POST(req: NextRequest) {
     cloudbedsReservationId = result.reservationID;
 
     // Attach each extra as a folio line item. One Cloudbeds call per extra
-    // (no batch endpoint). On partial failure we log + continue — the
-    // reservation exists and most of the booking is good; missing extras
-    // can be added manually by the hotel rather than failing the whole
-    // booking and leaving a charge orphaned.
+    // (no batch endpoint). Insert the row locally before the Cloudbeds call
+    // so the line item survives a postCustomItem failure — the common case
+    // today is the write:item scope not yet being granted by Cloudbeds.
+    // Failed rows keep cloudbedsItemId = null; the
+    // /api/admin/properties/[id]/cloudbeds/sync-pending-extras endpoint
+    // sweeps them and retries once the scope is enabled.
     for (const extra of extrasItems) {
       const unitMajor = extra.priceMinorUnits / 100;
+      const [extraRow] = await db
+        .insert(bookingExtras)
+        .values({
+          bookingId: booking.id,
+          cloudbedsItemId: null,
+          name: extra.name,
+          qty: 1,
+          unitPrice: unitMajor.toFixed(2),
+          totalPrice: unitMajor.toFixed(2),
+          currency: extra.currency,
+        })
+        .returning({ id: bookingExtras.id });
+
       try {
         const { itemID } = await postCustomItem(body.propertyId, {
           cloudbedsPropertyId: property.cloudbedsPropertyId,
@@ -327,20 +342,18 @@ export async function POST(req: NextRequest) {
           amount: unitMajor,
           quantity: 1,
         });
-        await db.insert(bookingExtras).values({
-          bookingId: booking.id,
-          cloudbedsItemId: itemID || null,
-          name: extra.name,
-          qty: 1,
-          unitPrice: unitMajor.toFixed(2),
-          totalPrice: unitMajor.toFixed(2),
-          currency: extra.currency,
-        });
+        if (itemID) {
+          await db
+            .update(bookingExtras)
+            .set({ cloudbedsItemId: itemID })
+            .where(eq(bookingExtras.id, extraRow.id));
+        }
       } catch (extraErr) {
         console.error(
           `postCustomItem failed for ${extra.name} on reservation ${cloudbedsReservationId}:`,
           extraErr
         );
+        // Row stays with cloudbedsItemId = null. Retry sweep picks it up.
       }
     }
 

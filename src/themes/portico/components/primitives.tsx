@@ -186,6 +186,77 @@ export function Input({
   );
 }
 
+export function Select({
+  t,
+  label,
+  value,
+  onChange,
+  options,
+  placeholder,
+  required,
+  autoComplete,
+}: {
+  t: PorticoTokens;
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  options: ReadonlyArray<{ value: string; label: string }>;
+  placeholder?: string;
+  required?: boolean;
+  autoComplete?: string;
+}) {
+  return (
+    <label
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: 6,
+        borderBottom: `1px solid ${t.rule}`,
+        paddingBottom: 8,
+      }}
+    >
+      <span
+        style={{
+          fontSize: 9,
+          letterSpacing: "0.24em",
+          textTransform: "uppercase",
+          color: t.inkSoft,
+          fontFamily: "var(--portico-sans)",
+        }}
+      >
+        {label}
+        {required ? " *" : ""}
+      </span>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        required={required}
+        autoComplete={autoComplete}
+        style={{
+          background: "transparent",
+          border: "none",
+          outline: "none",
+          color: value ? t.ink : t.inkSoft,
+          fontFamily: "var(--portico-serif)",
+          fontSize: 18,
+          padding: 0,
+          appearance: "none",
+          cursor: "pointer",
+        }}
+      >
+        <option value="" disabled>
+          {placeholder ?? "Select…"}
+        </option>
+        {options.map((opt) => (
+          <option key={opt.value} value={opt.value}>
+            {opt.label}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
 export function Eyebrow({
   t,
   children,

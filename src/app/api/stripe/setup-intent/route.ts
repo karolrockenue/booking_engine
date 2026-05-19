@@ -68,9 +68,8 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const stripe = getStripe();
-
   try {
+    const stripe = getStripe();
     // Customer lives on the platform (not the connected account). The Phase 5
     // auto-charge cron creates a PaymentIntent referencing this customer +
     // saved payment method, with transfer_data routing funds to the connected

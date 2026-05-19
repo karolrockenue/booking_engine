@@ -23,7 +23,8 @@ import type { PorticoTokens } from "../tokens";
 import { porticoImg } from "../tokens";
 import { PorticoShell } from "../PorticoShell";
 import { BookingNav } from "../components/Nav";
-import { Btn, Input } from "../components/primitives";
+import { Btn, Input, Select } from "../components/primitives";
+import { COUNTRIES } from "@/lib/countries";
 import { porticoStripeAppearance } from "../stripe-appearance";
 
 interface CreatedIntent {
@@ -291,7 +292,16 @@ export function PorticoCheckout({ t, property }: { t: PorticoTokens; property: R
               <Input t={t} label="Phone" value={phone} onChange={setPhone} type="tel" autoComplete="tel" />
             </Row>
             <Row>
-              <Input t={t} label="Country" value={country} onChange={setCountry} required autoComplete="country-name" />
+              <Select
+                t={t}
+                label="Country"
+                value={country}
+                onChange={setCountry}
+                options={COUNTRIES.map((c) => ({ value: c.code, label: c.name }))}
+                placeholder="Select country"
+                required
+                autoComplete="country"
+              />
               <span />
             </Row>
           </Section>

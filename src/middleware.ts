@@ -11,7 +11,7 @@ const DEV_MOCKUP_ROUTES = [
   "/rooms-mockup",
 ];
 
-export function proxy(req: NextRequest) {
+export function middleware(req: NextRequest) {
   const { pathname, searchParams } = req.nextUrl;
   const host = req.headers.get("host") ?? "";
 

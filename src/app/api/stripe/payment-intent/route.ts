@@ -69,9 +69,8 @@ export async function POST(req: NextRequest) {
   const feePercent = Number(property.platformFeePercent ?? "3.00");
   const applicationFeeAmount = Math.round((totalMinor * feePercent) / 100);
 
-  const stripe = getStripe();
-
   try {
+    const stripe = getStripe();
     const paymentIntent = await stripe.paymentIntents.create(
       {
         amount: totalMinor,

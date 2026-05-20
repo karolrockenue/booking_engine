@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { getValidAccessToken } from "./client";
 
 const API_BASE = "https://hotels.cloudbeds.com/api/v1.3";
@@ -107,17 +108,24 @@ interface PostCustomItemParams {
 
 interface PostCustomItemResponse {
   success: boolean;
-  // v1.3 returns flat fields. Item ID name varies by Cloudbeds version —
-  // probe both common forms.
-  customItemID?: string;
-  itemID?: string;
+  // Real shape (verified against the demo property 2026-05-20): wrapped in
+  // `data`, NOT flat. soldProductID is the prefixed line handle ("p_64862080");
+  // externalRelationID is its numeric form.
+  data?: {
+    soldProductID?: string;
+    externalRelationID?: string;
+  };
   message?: string;
 }
 
 /**
- * Attach a folio line item (extra) to an existing reservation. Each call
- * adds one line. Cloudbeds doesn't support a batch endpoint — loop in the
- * caller for multiple extras.
+ * Attach a folio line item (extra) to an existing reservation.
+ *
+ * v1.3 postCustomItem takes a PHP-style indexed `items[]` array — each entry
+ * requires `appItemID` (an app-supplied unique ID — we mint a UUID per line),
+ * `itemName`, `itemQuantity`, and a price (`itemPrice` = unit price, or
+ * `itemAmount` = line total). The array *can* hold multiple items, but we send
+ * one per call so a single bad extra doesn't fail the rest of the folio.
  */
 export async function postCustomItem(
   ourPropertyId: string,
@@ -130,9 +138,10 @@ export async function postCustomItem(
 
   const form = new URLSearchParams();
   form.set("reservationID", params.reservationID);
-  form.set("name", params.name);
-  form.set("amount", params.amount.toFixed(2));
-  form.set("quantity", String(params.quantity));
+  form.set("items[0][appItemID]", randomUUID());
+  form.set("items[0][itemName]", params.name);
+  form.set("items[0][itemQuantity]", String(params.quantity));
+  form.set("items[0][itemPrice]", params.amount.toFixed(2));
 
   const res = await fetch(url, {
     method: "POST",
@@ -160,7 +169,9 @@ export async function postCustomItem(
     );
   }
 
-  return { itemID: body.customItemID ?? body.itemID ?? "" };
+  return {
+    itemID: body.data?.soldProductID ?? body.data?.externalRelationID ?? "",
+  };
 }
 
 interface PostPaymentParams {

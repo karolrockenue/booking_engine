@@ -23,6 +23,7 @@ export interface BookingConfirmationEmailArgs {
   roomTotal: number;
   extrasTotal: number;
   grandTotal: number;
+  extras?: Array<{ name: string; quantity: number; lineTotal: number }>;
   cancelUrl?: string;
 }
 
@@ -62,6 +63,7 @@ export async function sendBookingConfirmationEmail(
         grandTotal: args.grandTotal,
         roomTotal: args.roomTotal,
         extrasTotal: args.extrasTotal,
+        extras: args.extras,
       },
       property: {
         name: args.hotelName,

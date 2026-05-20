@@ -229,13 +229,15 @@ export function PorticoConfirmation({ t, property }: { t: PorticoTokens; propert
                   label="Guests"
                   value={`${details.adults} ${details.adults === 1 ? "adult" : "adults"}`}
                 />
-                {details.extras && details.extras.length > 0 && (
+                <SumLine t={t} label="Accommodation" value={fmt.format(details.roomTotal)} />
+                {details.extras?.map((e, i) => (
                   <SumLine
+                    key={`${e.name}-${i}`}
                     t={t}
-                    label="Extras"
-                    value={details.extras.map((e) => e.name).join(" · ")}
+                    label={e.quantity > 1 ? `${e.name} × ${e.quantity}` : e.name}
+                    value={fmt.format(e.lineTotal)}
                   />
-                )}
+                ))}
                 <SumLine t={t} label="Total" value={fmt.format(details.totalPrice)} emphasis />
               </div>
             </div>

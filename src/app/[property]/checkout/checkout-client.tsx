@@ -15,6 +15,8 @@ import { CreditCard, Lock, ShieldCheck, User, ArrowLeft } from "lucide-react";
 import type { ResolvedProperty } from "@/lib/get-property";
 import {
   clearPersistedDraft,
+  extraQuantity,
+  extrasSubtotal,
   loadPersistedDraft,
   savePersistedConfirmation,
   submitBooking,
@@ -90,15 +92,13 @@ export function CheckoutClient({ property }: { property: ResolvedProperty }) {
 
   const totals = useMemo(() => {
     if (!draft?.result) return { extrasTotal: 0, total: 0, nights: 0 };
-    const selectedExtras = extras.filter((e) => draft.extras.includes(e.id));
-    const extrasTotal = selectedExtras.reduce(
-      (sum, e) => sum + e.priceMinorUnits / 100,
-      0
-    );
+    const nights = draft.result.nights;
+    const guests = draft.adults + draft.children;
+    const extrasTotal = extrasSubtotal(extras, draft.extras, nights, guests, draft.extrasConfig);
     return {
       extrasTotal,
       total: draft.result.totalPrice + extrasTotal,
-      nights: draft.result.nights,
+      nights,
     };
   }, [draft, extras]);
 
@@ -248,11 +248,21 @@ export function CheckoutClient({ property }: { property: ResolvedProperty }) {
         extrasTotal: totals.extrasTotal,
         totalPrice: totals.total,
         nightlyRates: draft.result.nightlyRates,
-        extras: selectedExtras.map((e) => ({
-          name: e.name,
-          priceMinorUnits: e.priceMinorUnits,
-          currency: e.currency,
-        })),
+        extras: selectedExtras.map((e) => {
+          const quantity = extraQuantity(
+            e.pricingModel,
+            draft.result!.nights,
+            draft.adults + draft.children,
+            draft.extrasConfig?.[e.id]
+          );
+          return {
+            name: e.name,
+            priceMinorUnits: e.priceMinorUnits,
+            currency: e.currency,
+            quantity,
+            lineTotal: (e.priceMinorUnits / 100) * quantity,
+          };
+        }),
         currency,
       });
       clearPersistedDraft();

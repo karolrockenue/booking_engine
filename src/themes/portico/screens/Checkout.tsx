@@ -7,6 +7,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { format, parseISO } from "date-fns";
 import {
   clearPersistedDraft,
+  extraQuantity,
   extrasSubtotal,
   loadPersistedDraft,
   savePersistedConfirmation,
@@ -224,11 +225,21 @@ export function PorticoCheckout({ t, property }: { t: PorticoTokens; property: R
         extrasTotal: totals.extrasTotal,
         totalPrice: totals.total,
         nightlyRates: draft.result.nightlyRates,
-        extras: selectedExtras.map((e) => ({
-          name: e.name,
-          priceMinorUnits: e.priceMinorUnits,
-          currency: e.currency,
-        })),
+        extras: selectedExtras.map((e) => {
+          const quantity = extraQuantity(
+            e.pricingModel,
+            draft.result!.nights,
+            draft.adults + draft.children,
+            draft.extrasConfig?.[e.id]
+          );
+          return {
+            name: e.name,
+            priceMinorUnits: e.priceMinorUnits,
+            currency: e.currency,
+            quantity,
+            lineTotal: (e.priceMinorUnits / 100) * quantity,
+          };
+        }),
         currency,
       });
       clearPersistedDraft();

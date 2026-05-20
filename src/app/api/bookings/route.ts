@@ -380,6 +380,7 @@ export async function POST(req: NextRequest) {
     //    bookingExtras keeps a single row (total qty) with the per-morning IDs
     //    comma-joined in cloudbedsItemId.
     const noteLines: string[] = [];
+    const emailExtras: { name: string; quantity: number; lineTotal: number }[] = [];
     for (const extra of extrasItems) {
       const unitMajor = extra.priceMinorUnits / 100;
 
@@ -433,6 +434,7 @@ export async function POST(req: NextRequest) {
             .map(fmtMorning)
             .join(", ")} (${totalQty} total)`
         );
+        emailExtras.push({ name: extra.name, quantity: totalQty, lineTotal: unitMajor * totalQty });
         continue;
       }
 
@@ -449,6 +451,7 @@ export async function POST(req: NextRequest) {
           currency: extra.currency,
         })
         .returning({ id: bookingExtras.id });
+      emailExtras.push({ name: extra.name, quantity: 1, lineTotal: unitMajor });
       try {
         const { itemID } = await postCustomItem(body.propertyId, {
           cloudbedsPropertyId: property.cloudbedsPropertyId,
@@ -548,6 +551,7 @@ export async function POST(req: NextRequest) {
           roomTotal: roomTotalNum,
           extrasTotal: extrasTotalNum,
           grandTotal: grandTotalNum,
+          extras: emailExtras,
           cancelUrl,
         });
       } catch (emailErr) {

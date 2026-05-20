@@ -14,8 +14,10 @@ const CONFIRMATION_TTL_MS = 2 * 60 * 60 * 1000; // 2h: covers refresh / forwardi
 
 export interface PersistedConfirmationExtra {
   name: string;
-  priceMinorUnits: number;
+  priceMinorUnits: number; // unit price
   currency: string;
+  quantity: number; // computed (breakfast = guests x mornings)
+  lineTotal: number; // major units, unit x quantity
 }
 
 export interface PersistedConfirmation {

@@ -24,6 +24,7 @@ export interface VariableContext {
     grandTotal: number;
     roomTotal: number;
     extrasTotal: number;
+    extras?: Array<{ name: string; quantity: number; lineTotal: number }>;
   };
   property: {
     name: string;
@@ -68,6 +69,25 @@ function cancelBlockHtml(url: string): string {
   );
 }
 
+// Itemised price breakdown (raw HTML), injected as one variable so the template
+// needs no loop: Accommodation row + one row per extra ("Breakfast × 6") + a
+// bold Total row.
+function breakdownBlockHtml(b: VariableContext["booking"]): string {
+  const sym = b.symbol || symbolFor(b.currency);
+  const money = (n: number) => `${sym}${n.toFixed(2)}`;
+  const cell = (s: string, bold: boolean, align: "left" | "right") =>
+    `<td align="${align}" style="padding:6px 0;font-size:14px;color:#2a2a2a;${bold ? "font-weight:600;border-top:1px solid #e6e1d8;padding-top:10px;" : ""}">${s}</td>`;
+  const line = (label: string, value: string, bold = false) =>
+    `<tr>${cell(label, bold, "left")}${cell(value, bold, "right")}</tr>`;
+
+  const rows = [line("Accommodation", money(b.roomTotal))];
+  for (const e of b.extras ?? []) {
+    rows.push(line(e.quantity > 1 ? `${e.name} × ${e.quantity}` : e.name, money(e.lineTotal)));
+  }
+  rows.push(line("Total", money(b.grandTotal), true));
+  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin:4px 0;">${rows.join("")}</table>`;
+}
+
 export function buildVarMap(ctx: VariableContext): EmailVarMap {
   const sym = ctx.booking.symbol || symbolFor(ctx.booking.currency);
   const fmt = (n: number) => `${sym}${n.toFixed(2)}`;
@@ -90,6 +110,7 @@ export function buildVarMap(ctx: VariableContext): EmailVarMap {
     "booking.grandTotal": fmt(ctx.booking.grandTotal),
     "booking.roomTotal": fmt(ctx.booking.roomTotal),
     "booking.extrasTotal": fmt(ctx.booking.extrasTotal),
+    "booking.breakdownBlock": breakdownBlockHtml(ctx.booking),
     "property.name": ctx.property.name,
     "property.address": ctx.property.address,
     "property.phone": ctx.property.phone,

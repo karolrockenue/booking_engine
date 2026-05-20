@@ -1,9 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
-import { bookings, paymentEvents, properties, roomTypes, ratePlans } from "@/db/schema";
+import {
+  bookings,
+  bookingExtras,
+  paymentEvents,
+  properties,
+  roomTypes,
+  ratePlans,
+} from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { verifyCancelToken } from "@/lib/crypto";
-import { putReservationStatus } from "@/lib/cloudbeds/reservations";
+import { putReservationStatus, postCustomItem } from "@/lib/cloudbeds/reservations";
 import { detachPaymentMethod } from "@/lib/stripe/detach";
 import { getStripe } from "@/lib/stripe/client";
 import { sendBookingCancellationEmail } from "@/lib/email/booking-cancellation";
@@ -145,6 +152,35 @@ export async function POST(req: NextRequest) {
       { error: "Could not cancel reservation. Please contact the hotel." },
       { status: 502 }
     );
+  }
+
+  // Reverse the extras. Cancelling a reservation zeroes the room in Cloudbeds
+  // but leaves posted custom items (breakfast, early check-in, …) as charges,
+  // so the folio still shows a balance due. v1.3 has no delete-item endpoint
+  // (404) and postAdjustment needs a scope we don't hold, so we offset each
+  // charged extra with a negative custom item — leaving the folio net zero
+  // using the write:item scope we already have. Non-fatal: a failed offset is a
+  // reconciliation issue, not a cancel failure.
+  const charged = await db
+    .select()
+    .from(bookingExtras)
+    .where(eq(bookingExtras.bookingId, booking.id));
+  for (const ex of charged) {
+    if (!ex.cloudbedsItemId) continue; // never reached the folio — nothing to reverse
+    try {
+      await postCustomItem(booking.propertyId!, {
+        cloudbedsPropertyId: property.cloudbedsPropertyId,
+        reservationID: booking.cloudbedsReservationId,
+        name: `${ex.name} (cancelled)`,
+        amount: -Number(ex.unitPrice),
+        quantity: ex.qty,
+      });
+    } catch (reverseErr) {
+      console.error(
+        `Failed to reverse extra "${ex.name}" on cancelled reservation ${booking.cloudbedsReservationId}:`,
+        reverseErr
+      );
+    }
   }
 
   // Refund branch: Flex bookings that already auto-charged (status = 'paid'

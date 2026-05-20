@@ -1,10 +1,49 @@
 # **Booking Engine — Blueprint**
 
-**Last updated:** 2026-05-20 **Status:** Phases 1–5 \+ 6.5 \+ 6.6 \+ 7.1 shipped. Stripe Connect live on UAE sandbox (Polish entity migration scheduled post-19 May). Flex auto-charge \+ PMS retry recovery live on production. **Guest comms (Phase 7.1) shipped end-to-end — Unlayer composer + R2 image pipeline + scheduler + send log. Maily.to replaced 2026-05-12 (no font control); Unlayer integrates uploads into the Media library and supports brand fonts. See §13.** Welcome Pickups partnership in motion. **Cloudbeds Marketplace certification: first attempt failed 2026-05-19; six blockers fixed + retry pending. The `write:item`/`write:payment` blocker is **resolved** — scopes granted + requested in `scopes.ts`, and `postCustomItem`/`postPayment` verified working against the demo property 2026-05-20 (demo re-OAuth'd; cert hotel still needs reconnect + prod deploy). Full chronicle in §7 → "Marketplace certification".**
+**Last updated:** 2026-05-20 **Status:** Phases 1–5 \+ 6.5 \+ 6.6 \+ 7.1 shipped. Stripe Connect live on UAE sandbox (Polish entity migration scheduled post-19 May). Flex auto-charge \+ PMS retry recovery live on production. **Guest comms (Phase 7.1) shipped end-to-end — Unlayer composer + R2 image pipeline + scheduler + send log. Maily.to replaced 2026-05-12 (no font control); Unlayer integrates uploads into the Media library and supports brand fonts. See §13.** Welcome Pickups partnership in motion. **Cloudbeds Marketplace cert: first attempt failed 2026-05-19; all of OUR blockers are now fixed + verified live (scopes, `postCustomItem` shape, rate pricing, path routing, auto-onboarding, Stripe auto-attach, breakfast pricing/picker, per-day folio + note, cancel + reversal, confirmation breakdown, admin extras). Retry pending — the only remaining dependency is Cloudbeds-side: the cert hotel must have non-virtual rooms + Manuel must re-authorise. **us2 is NOT a special case** — the "no access" seen post-call was a revoked grant, not a cluster/host issue (proven). See the **2026-05-20 session log** immediately below + §7 chronicle.**
 
 Multi-tenant hotel website \+ booking engine platform. Each hotel runs on its own custom domain with a bespoke website and an integrated booking flow connected to Cloudbeds. Built and managed by Rockenue as the webmaster across all properties (≈40 independent hotels, luxury → near-hostel spectrum).
 
 This document is the single source of truth. It replaces `README.md`, `hotel-platform-build-plan.md`, `THEMES.md`, and `TODO.md`. AI agent rules continue to live in `AGENTS.md` / `CLAUDE.md`.
+
+---
+
+## **2026-05-20 session log — cert-prep sprint**
+
+A large batch shipped + verified live against `demo` (Cloudbeds `302817`, us1). All deployed to `main`/Railway unless noted. Newest first; commit hashes in parentheses.
+
+### Path-based per-property routing (`a755baf`)
+- Customer site moved under a **`[property]` dynamic segment**: `/<slug>`, `/<slug>/rooms`, `/<slug>/book`, `/<slug>/extras`, `/<slug>/checkout`, `/<slug>/confirmation`. Resolved from the **path** (`resolvePropertyBySlug`), not the Host header. Bare `/` resolves by domain → redirects to `/<slug>`. See §4 (rewritten).
+- **Fixes the cert-day "`?property=` doesn't override" bug** — root cause was navigation dropping the query param + falling back to the domain-owner; the slug now lives in the path and never drops. `?property=` shim retired.
+- Tested: prod `/demo` + `/demo/rooms` resolve demo (not the domain owner); bare `/` 307→`/<slug>`; unknown slug 404; prod build passes.
+
+### Cloudbeds rate pricing — `rooms[][roomRateID]` (`ad10465`)
+- `postReservation` priced every room at the **master/base** rate: Cloudbeds selects the rate from `rooms[i][roomRateID]`, which we never sent (`ratesID` + `subtotal` are ignored for pricing). A derived rate ("Direct Rate −10%") was quoted 108 by us but charged 120 by the PMS. Fix: send `rooms[0][roomRateID]` = the rate we sold; `subtotal` corrected to room-only.
+- Tested live: derived rate now prices at **108** (was 120); master rates still 120.
+
+### Breakfast / extras pricing model (`fd46b2d`, `bbea31d`, `f7d8a20`)
+- New **`property_extras.pricing_model`** column (`per_stay` default | `per_guest_per_night`). Cloudbeds exposes no charge model (verified via `/addons/v1/addons` + `/getItems`), so it's our config; the sync never writes it (survives re-syncs).
+- Shared helper `src/lib/booking/extra-pricing.ts` (`extraQuantity` / `extraLineTotal` / `extrasSubtotal` / `stayMornings`) used by **both** client (display + Stripe amount) and server (booking row + folio qty) so charge = booking = PMS. Server re-derives the model from the DB — never trusts the client.
+- **Breakfast picker** (`src/themes/portico/components/BreakfastPicker.tsx`): smart default = all guests × all mornings (`guests × nights`; mornings = the morning after each night); "Customise" reveals a guest stepper + per-morning toggles. Stored in the draft as `ExtraConfig { guests, mornings }` (+ sessionStorage). Children count as guests.
+- **Per-day folio + staff note:** breakfast posts ONE dated folio line per morning (qty = guests that morning) via `postCustomItem`'s `serviceDate`, so Cloudbeds' "items by date" / Service-Date reports give the kitchen daily counts; plus a `postReservationNote` summary in the reservation's Notes tab.
+- Tested live: math (1n/2g = $20, 2n = $40); dated lines + note posted + read back; full picker → checkout → folio.
+
+### Confirmation breakdown + cancel (`f3a45a2`, `660cf1a`, `5b8358c`)
+- **Line-item breakdown** (Accommodation + each extra ×qty + Total) on the Portico confirmation **screen** and in the **email** (injected `{{booking.breakdownBlock}}` var — keeps the flat `{{var}}` template, no loop). Per-extra qty/lineTotal persisted.
+- **Cancel button** in the confirmation email (`{{links.cancelBlock}}` — styled button for Flex, empty string for NR so no dead link) and on the confirmation screen (Flex only). Demo's stored email template re-seeded to pick up the tokens.
+- **Cancel reversal:** cancelling zeroes the room in Cloudbeds but leaves posted custom items as charges → balance due. v1.3 has no delete-item endpoint (404) and `postAdjustment` needs a scope we don't hold, so the cancel route posts an **offsetting negative `postCustomItem`** per charged extra → folio nets to $0 (uses existing `write:item`). Guest self-cancel path only.
+- Tested live: email renders button for Flex / nothing for NR; cancel reversal balance 20 → 0; `postCustomItem` works on a cancelled reservation.
+
+### Admin extras config (`660cf1a`)
+- New **Admin → Extras** page (`/admin/[propertyId]/extras`) + `GET`/`PATCH /api/admin/properties/[id]/extras`: lists Cloudbeds extras, set the charge model per extra. Sidebar gains an "Extras" entry. Replaces setting `pricing_model` in SQL.
+
+### Scopes + postCustomItem shape (`36b2ed0`)
+- `read:item`/`write:item` + `read:payment`/`write:payment` added to `scopes.ts`; `postCustomItem` rewritten to the real v1.3 shape (PHP-style `items[i][appItemID|itemName|itemQuantity|itemPrice]`, response `{ data: { soldProductID, externalRelationID } }`). See §7. Verified end-to-end on demo.
+
+### Cert onboarding + Stripe (this session; partly DB-only, not in git)
+- Confirmed the OAuth callback already (post-`b4056ec`) **auto-creates** the hotel shell (name/slug/cbId from `getHotels`) + subscribes webhooks + fires inventory sync; `/api/install` is the Marketplace entry point. The cert-day "manual INSERT + click Sync" is obsolete.
+- **Cert Stripe shim — `cert_attach_test_stripe` DB trigger (prod, no deploy):** BEFORE-INSERT on `properties`, auto-copies demo's test Connect account onto any new property with no Stripe, so a freshly-installed cert hotel can take a test booking with `4242` — zero manual step. **MUST be dropped after cert** (see §7 → prod hacks). Verified by inserting + deleting a throwaway hotel.
+- **us2 resolved as a non-issue.** The cert hotel (`5886676873777241`, "[Demo] Manuel US2") is on Cloudbeds' us2 island. The "You don't have access to property ID" seen this session was a **revoked grant** (Manuel revoked after the failed call) — NOT a cluster/host problem. Proof: on the cert call we successfully called `getRatePlans`/`getRooms`/`getReservations` against that hotel on the standard host (that's how the rooms were found to be `isVirtual:true`); and a healthy token works identically on `hotels.cloudbeds.com` and `hotels.us2.cloudbeds.com`. **us2 onboarding is identical to normal — no host/region code change needed.**
 
 ---
 
@@ -133,19 +172,16 @@ Not yet fully scaffolded — `src/lib/booking` exists and is canonical; the `src
 
 ## **4\. Multi-tenant routing**
 
-`src/proxy.ts` (Next.js 16's renamed middleware) reads the `Host` header → resolves property from DB → serves correct theme \+ content. Also 404s the dev mockup routes (`/bars`, `/compare`, `/compare-live`, `/enhance`, `/fonts`, `/pickers`, `/rates`, `/rooms-mockup`) when `NODE_ENV === "production"`.
+**Path-based per-property routing (since 2026-05-20).** Customer-facing routes live under a **`[property]` dynamic segment** — each hotel is reached at `/<slug>`, `/<slug>/rooms`, `/<slug>/book`, `/<slug>/extras`, `/<slug>/checkout`, `/<slug>/confirmation`. The property is resolved from the **path** via `resolvePropertyBySlug(slug)`, so the slug is always visible and never drops mid-flow. (In future these slugs front real hotel domains.)
+
+`src/proxy.ts` (Next.js 16's renamed middleware) still runs: it 404s the dev mockup routes (`/bars`, `/compare`, `/compare-live`, `/enhance`, `/fonts`, `/pickers`, `/rates`, `/rooms-mockup`) when `NODE_ENV === "production"`, and sets `x-property-host` for the bare-`/` domain resolution. Static routes (`/admin`, `/api`, dev mockups, `/cancel/[token]`, `/payment-update/[token]`) take precedence over `[property]` (Next.js static-over-dynamic), so they're never mistaken for slugs; an unknown slug 404s.
 
 ### **Property resolution (`src/lib/get-property.ts`)**
 
-Order:
+- **Customer pages** (under `[property]`) call `resolvePropertyBySlug(slug)` with the route param → `notFound()` on an unknown slug. This is the primary path.
+- **Bare `/`** and the token routes (`/cancel/[token]`, `/payment-update/[token]`) call `resolveProperty()` — resolves by `properties.domain` exact match, else the first property with `cloudbedsPropertyId` set (dev/staging fallback), else any property. Bare `/` then redirects to `/<slug>`.
 
-1. `?property=<slug>` query param (set by proxy via `x-property-slug` header) — useful for forcing a property in dev or testing.  
-2. `properties.domain` exact match against the request `Host`.  
-3. `properties.slug` match against the host's domain part.  
-4. **Fallback**: first property with `cloudbedsPropertyId` set (preferred — bookings actually work).  
-5. **Final fallback**: any property at all (covers fresh DBs).
-
-So in a multi-property setup, set `domain` per environment to control which property each Railway service serves. Localhost dev typically falls through to step 4 — picks the Cloudbeds-connected property automatically.
+The old `?property=<slug>` shim is **retired** — the path replaces it. (It was the source of the cert-day "wrong property after navigation" bug: internal navigation dropped the query param and fell back to the domain owner. See the 2026-05-20 session log.) For a single deployment that should serve one hotel from its bare domain, set `properties.domain`.
 
 ---
 
@@ -382,29 +418,36 @@ These were done by hand against the prod Neon DB to get through the live call an
 * `INSERT`ed the `demo-manuel-us2` property row (id `9d4f0e45-4825-4f12-afaf-c2eb37730473`).
 * Swapped `properties.domain` from `demo` → `demo-manuel-us2` (so the Railway URL resolves to the cert hotel). **`demo` no longer owns its domain.**
 * Copied the demo's **test** Stripe Connect account (`acct_1TSCLV1ZjN2BG9vB`, `stripe_account_status='active'`) onto `demo-manuel-us2` so checkout could complete — the cert hotel has no Stripe of its own. Stripe is in **test mode** (`sk_test_`), so no real money moved; test card `4242 4242 4242 4242`.
+* **`cert_attach_test_stripe` DB trigger (added 2026-05-20).** BEFORE-INSERT on `properties` — auto-copies demo's test Connect account onto ANY new property that has no Stripe, so a freshly-installed cert hotel can take a test booking with zero manual step + no deploy. It's a TEST account and only fires when Stripe is empty (won't clobber a real one), but **must be dropped after cert** (revert SQL below) before real multi-tenant onboarding.
+* `demo-manuel-us2` name/cbId were briefly overwritten during us2-OAuth probing on 2026-05-20 (the consents landed as the Karol/us1 account, not the reviewer's) and **restored** to `[Demo] Manuel US2` / `5886676873777241`. Manuel's re-auth at the retry overwrites them correctly anyway.
 
 Revert SQL when done testing:
 ```sql
 UPDATE properties SET domain = 'booking-engine-production-b11b.up.railway.app' WHERE slug = 'demo';
 UPDATE properties SET domain = NULL, stripe_account_id = NULL, stripe_account_status = 'pending', stripe_account_currency = NULL WHERE slug = 'demo-manuel-us2';
 -- or DELETE the demo-manuel-us2 row entirely once cert is done with it
+DROP TRIGGER IF EXISTS cert_attach_test_stripe_trg ON properties;  -- cert Stripe shim
+DROP FUNCTION IF EXISTS cert_attach_test_stripe();
 ```
 
-#### Where we are now (2026-05-20)
+#### Where we are now (2026-05-20, end of cert-prep sprint)
 
-* **Install → connect → sync → book works end-to-end** against a property with real (non-virtual) rooms, via `/api/install`, test card `4242…`, ISO country from the dropdown.
-* **RESOLVED 2026-05-20 — `write:item` + `write:payment` granted.** Added to `scopes.ts`; `postCustomItem` request/response shape also corrected (see §7 → OAuth scopes). Verified working against `demo`. Remaining: re-OAuth the cert hotel + deploy + run `sync-pending-extras` for any stuck rows.
-* **Cert: failed 2026-05-19, retry pending.**
+* **All of OUR cert blockers are fixed + verified** — full list in the 2026-05-20 session log at the top. Onboarding is hands-off: `/api/install` → OAuth **auto-creates** the hotel shell + syncs inventory → the `cert_attach_test_stripe` trigger attaches test Stripe → book with `4242`.
+* **us2 is a non-issue** — the post-call "no access" was a **revoked grant**, not a cluster/host problem (proof in the session log). us2 onboarding == normal.
+* **Cert: failed 2026-05-19, retry pending.** The remaining dependencies are Cloudbeds-side, not ours.
 
 #### Outstanding before/around the retry
 
-* ~~Get **`write:item`** enabled; confirm whether `postPayment` needs a write scope.~~ **DONE 2026-05-20** — both granted (`write:item` + `write:payment`), in `scopes.ts`, `postCustomItem` shape fixed, verified against `demo`. Still pending: re-OAuth `demo-manuel-us2` and deploy before the cert retry.
-* **Confirm why `?property=<slug>` doesn't override in prod.** `src/proxy.ts` runs and sets `x-property-slug`, but the bare URL still resolved to the domain-matched property. Suspect `/` HTML is cached and doesn't vary on the query string. Until fixed, use `properties.domain` to control which property a deployment serves.
-* **Client-side same-day guard:** block check-in = today once `propertyCheckInTime` (from `getHotelDetails`) has passed in property-local time, so the UI never offers an unbookable slot.
-* **Real Stripe Connect onboarding** for cert/real hotels (currently borrowing the demo's test account). The "Start onboarding" flow errored during the call — needs its own debugging pass.
-* **Per-property theming** — drop the single-tenant `THEME` env var (see §5) so a connected hotel renders its own brand, not Portico, for true multi-tenant Marketplace use.
-* **Admin "create property" UI** — `/api/install` is currently the only way in.
-* **Clean up the prod hacks above.**
+* **Cloudbeds-side (ask Manuel):** the cert hotel must have **non-virtual, bookable rooms** (last time they were `isVirtual:true`, which Cloudbeds refuses to book — proven not our bug), and Manuel must **re-authorise** the app (he revoked it after the failed call).
+* ~~`?property=` override in prod~~ — **FIXED** by path-based routing (§4).
+* ~~`write:item`/`write:payment` + `postCustomItem` shape~~ — **DONE** (session log).
+* **Drop the cert Stripe trigger after the cert** (revert SQL above) + clean up the other prod hacks (domain swap still in place).
+* **Real per-hotel Stripe Connect onboarding** — the test-account trigger is an interim shim; the real "Start onboarding" flow errored on the call and needs its own pass before real hotels go live.
+* **Client-side same-day guard:** block check-in = today once `propertyCheckInTime` (from `getHotelDetails`) has passed in property-local time.
+* **Per-property theming** — drop the single-tenant `THEME` env var (§5) so each hotel renders its own brand, not Portico.
+* **Admin "+ New hotel" / create-property UI** — still a stub; `/api/install` (Cloudbeds-initiated) is the working path.
+* **Email composer caveat:** the injected `{{links.cancelBlock}}` / `{{booking.breakdownBlock}}` tokens live in the seeded `htmlCached`, not the Unlayer design JSON — a composer re-edit + save would drop them. Fine for seed/cert; wire into the design before multi-tenant launch.
+* **`modify` link in confirmation email** — parked (cancel is done; modify TBD).
 
 ### **Cloudbeds operational scripts**
 

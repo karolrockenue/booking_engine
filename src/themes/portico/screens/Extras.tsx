@@ -478,6 +478,7 @@ export function PorticoExtras({ t, property }: { t: PorticoTokens; property: Res
         result={result}
         extras={extras}
         selectedExtras={selectedExtras}
+        guests={persisted.adults + persisted.children}
         onRemoveExtra={toggleExtra}
         onContinue={handleContinue}
         onClear={handleEditRoom}

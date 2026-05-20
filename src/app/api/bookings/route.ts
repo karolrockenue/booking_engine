@@ -7,9 +7,16 @@ import {
   inventory,
   ratePlans,
   properties,
+  propertyExtras,
   roomTypes,
 } from "@/db/schema";
 import { eq, and, gte, lt } from "drizzle-orm";
+import {
+  extraQuantity,
+  extraLineTotal,
+  isPricingModel,
+} from "@/lib/booking/extra-pricing";
+import type { PricingModel } from "@/lib/booking/types";
 import { getStripe } from "@/lib/stripe/client";
 import {
   postReservation,
@@ -208,11 +215,34 @@ export async function POST(req: NextRequest) {
     initialStatus = "payment_authorized";
   }
 
-  // body.totalPrice is room + extras (client computed). Split it back out so
-  // the booking row records each line correctly.
+  // body.totalPrice is room + extras (client computed, via the same pricing
+  // helper used below). Split it back out so the booking row records each line.
   const extrasItems = body.extras ?? [];
+  const guests = (body.adults ?? 1) + (body.children ?? 0);
+
+  // Pricing model per selected extra — looked up server-side (Cloudbeds doesn't
+  // carry it, and we don't trust the client) so quantities can't be tampered.
+  const extraModels = new Map<string, PricingModel>();
+  if (extrasItems.length > 0) {
+    const modelRows = await db
+      .select({
+        id: propertyExtras.id,
+        pricingModel: propertyExtras.pricingModel,
+      })
+      .from(propertyExtras)
+      .where(eq(propertyExtras.propertyId, body.propertyId));
+    for (const r of modelRows) {
+      extraModels.set(
+        r.id,
+        isPricingModel(r.pricingModel) ? r.pricingModel : "per_stay"
+      );
+    }
+  }
+  const modelFor = (id: string): PricingModel => extraModels.get(id) ?? "per_stay";
+
   const extrasTotalNum = extrasItems.reduce(
-    (sum, e) => sum + e.priceMinorUnits / 100,
+    (sum, e) =>
+      sum + extraLineTotal(e.priceMinorUnits / 100, modelFor(e.id), nights, guests),
     0
   );
   const roomTotalNum = body.totalPrice - extrasTotalNum;
@@ -324,15 +354,17 @@ export async function POST(req: NextRequest) {
     // sweeps them and retries once the scope is enabled.
     for (const extra of extrasItems) {
       const unitMajor = extra.priceMinorUnits / 100;
+      const qty = extraQuantity(modelFor(extra.id), nights, guests);
+      const lineTotalMajor = unitMajor * qty;
       const [extraRow] = await db
         .insert(bookingExtras)
         .values({
           bookingId: booking.id,
           cloudbedsItemId: null,
           name: extra.name,
-          qty: 1,
+          qty,
           unitPrice: unitMajor.toFixed(2),
-          totalPrice: unitMajor.toFixed(2),
+          totalPrice: lineTotalMajor.toFixed(2),
           currency: extra.currency,
         })
         .returning({ id: bookingExtras.id });
@@ -343,7 +375,7 @@ export async function POST(req: NextRequest) {
           reservationID: cloudbedsReservationId,
           name: extra.name,
           amount: unitMajor,
-          quantity: 1,
+          quantity: qty,
         });
         if (itemID) {
           await db

@@ -23,4 +23,12 @@ export type {
   GuestDetails,
   NightlyRate,
   PersistedBookingDraft,
+  PricingModel,
 } from "./types";
+export {
+  PRICING_MODELS,
+  isPricingModel,
+  extraQuantity,
+  extraLineTotal,
+  extrasSubtotal,
+} from "./extra-pricing";

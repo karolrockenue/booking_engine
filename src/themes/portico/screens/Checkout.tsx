@@ -7,6 +7,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { format, parseISO } from "date-fns";
 import {
   clearPersistedDraft,
+  extrasSubtotal,
   loadPersistedDraft,
   savePersistedConfirmation,
   submitBooking,
@@ -78,12 +79,13 @@ export function PorticoCheckout({ t, property }: { t: PorticoTokens; property: R
 
   const totals = useMemo(() => {
     if (!draft?.result) return { extrasTotal: 0, total: 0, nights: 0 };
-    const selected = extras.filter((e) => draft.extras.includes(e.id));
-    const extrasTotal = selected.reduce((sum, e) => sum + e.priceMinorUnits / 100, 0);
+    const nights = draft.result.nights;
+    const guests = draft.adults + draft.children;
+    const extrasTotal = extrasSubtotal(extras, draft.extras, nights, guests);
     return {
       extrasTotal,
       total: draft.result.totalPrice + extrasTotal,
-      nights: draft.result.nights,
+      nights,
     };
   }, [draft, extras]);
 

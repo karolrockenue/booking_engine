@@ -26,12 +26,16 @@ export interface AvailabilityResult {
   nights: number;
 }
 
+// How an extra is charged. See lib/booking/extra-pricing.ts.
+export type PricingModel = "per_stay" | "per_guest_per_night";
+
 export interface Extra {
   id: string;
   name: string;
   description: string | null;
   priceMinorUnits: number;
   currency: string;
+  pricingModel: PricingModel;
 }
 
 export interface BookingDraft {

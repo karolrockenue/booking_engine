@@ -1,3 +1,4 @@
+import { extrasSubtotal } from "./extra-pricing";
 import type { AvailabilityResult, Extra, GuestDetails } from "./types";
 
 export interface SubmitBookingArgs {
@@ -35,9 +36,11 @@ export class SubmitBookingError extends Error {
 export async function submitBooking(
   args: SubmitBookingArgs
 ): Promise<SubmitBookingResult> {
-  const extrasTotal = args.extras.reduce(
-    (sum, e) => sum + e.priceMinorUnits / 100,
-    0
+  const extrasTotal = extrasSubtotal(
+    args.extras,
+    args.extras.map((e) => e.id),
+    args.result.nights,
+    args.adults + args.children
   );
   const totalPrice = args.result.totalPrice + extrasTotal;
 

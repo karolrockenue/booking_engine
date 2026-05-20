@@ -1,5 +1,6 @@
 "use client";
 
+import { extraLineTotal } from "@/lib/booking";
 import type { Extra, AvailabilityResult } from "@/lib/booking";
 import type { PorticoTokens } from "../tokens";
 
@@ -8,6 +9,7 @@ interface Props {
   result: AvailabilityResult;
   extras: Extra[];
   selectedExtras: Set<string>;
+  guests: number;
   onRemoveExtra: (extraId: string) => void;
   onContinue: () => void;
   onClear: () => void;
@@ -21,6 +23,7 @@ export function PorticoStickyBar({
   result,
   extras,
   selectedExtras,
+  guests,
   onRemoveExtra,
   onContinue,
   onClear,
@@ -29,8 +32,12 @@ export function PorticoStickyBar({
   clearLabel = "Clear",
 }: Props) {
   const fmt = makeFormatter(currency);
+  const nights = result.nights;
   const items = extras.filter((e) => selectedExtras.has(e.id));
-  const extrasTotal = items.reduce((sum, e) => sum + e.priceMinorUnits / 100, 0);
+  const extrasTotal = items.reduce(
+    (sum, e) => sum + extraLineTotal(e.priceMinorUnits / 100, e.pricingModel, nights, guests),
+    0
+  );
   const total = result.totalPrice + extrasTotal;
 
   // The sticky bar is always cinematic-dark for both palettes — it punctuates
@@ -91,7 +98,7 @@ export function PorticoStickyBar({
           {items.length > 0 && (
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 4 }}>
               {items.map((extra) => {
-                const price = extra.priceMinorUnits / 100;
+                const price = extraLineTotal(extra.priceMinorUnits / 100, extra.pricingModel, nights, guests);
                 return (
                   <span
                     key={extra.id}

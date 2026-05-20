@@ -216,6 +216,10 @@ export const propertyExtras = pgTable(
     description: text("description"),
     priceMinorUnits: integer("price_minor_units").notNull(),
     currency: text("currency").notNull(),
+    // How this extra is charged — our own config (Cloudbeds doesn't expose it).
+    // per_stay | per_guest_per_night. Admin-set; never written by the sync, so
+    // catalog re-syncs preserve it.
+    pricingModel: text("pricing_model").notNull().default("per_stay"),
     lastSyncedAt: timestamp("last_synced_at", { withTimezone: true }).default(
       sql`NOW()`
     ),

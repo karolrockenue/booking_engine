@@ -14,6 +14,7 @@ const fetchExtrasForProperty = unstable_cache(
         description: propertyExtras.description,
         priceMinorUnits: propertyExtras.priceMinorUnits,
         currency: propertyExtras.currency,
+        pricingModel: propertyExtras.pricingModel,
       })
       .from(propertyExtras)
       .where(eq(propertyExtras.propertyId, propertyId));

@@ -1,6 +1,6 @@
 # **Booking Engine — Blueprint**
 
-**Last updated:** 2026-05-12 **Status:** Phases 1–5 \+ 6.5 \+ 6.6 \+ 7.1 shipped. Stripe Connect live on UAE sandbox (Polish entity migration scheduled post-19 May). Flex auto-charge \+ PMS retry recovery live on production. **Guest comms (Phase 7.1) shipped end-to-end — Unlayer composer + R2 image pipeline + scheduler + send log. Maily.to replaced 2026-05-12 (no font control); Unlayer integrates uploads into the Media library and supports brand fonts. See §13.** Welcome Pickups partnership in motion.
+**Last updated:** 2026-05-20 **Status:** Phases 1–5 \+ 6.5 \+ 6.6 \+ 7.1 shipped. Stripe Connect live on UAE sandbox (Polish entity migration scheduled post-19 May). Flex auto-charge \+ PMS retry recovery live on production. **Guest comms (Phase 7.1) shipped end-to-end — Unlayer composer + R2 image pipeline + scheduler + send log. Maily.to replaced 2026-05-12 (no font control); Unlayer integrates uploads into the Media library and supports brand fonts. See §13.** Welcome Pickups partnership in motion. **Cloudbeds Marketplace certification: first attempt failed 2026-05-19; six blockers fixed + retry pending. One open blocker: `write:item` scope (extras → folio) not yet granted. Full chronicle in §7 → "Marketplace certification".**
 
 Multi-tenant hotel website \+ booking engine platform. Each hotel runs on its own custom domain with a bespoke website and an integrated booking flow connected to Cloudbeds. Built and managed by Rockenue as the webmaster across all properties (≈40 independent hotels, luxury → near-hostel spectrum).
 
@@ -302,9 +302,11 @@ Both share one OAuth flow \+ one set of tokens. Just request the union of scopes
 
 ### **OAuth scopes (`src/lib/cloudbeds/scopes.ts`)**
 
-`read:addon, read:currency, read:dataInsightsGuests, read:dataInsightsOccupancy, read:dataInsightsReservations, read:guest, write:guest, read:hotel, read:rate, write:rate, read:reservation, write:reservation, read:room, read:taxesAndFees, read:user`.
+**Actual current list (11 scopes):** `read:addon, read:currency, read:guest, write:guest, read:hotel, read:rate, read:reservation, write:reservation, read:room, read:taxesAndFees, read:user`.
 
 **Adding any new scope requires re-OAuth on every connected property** — old tokens don't carry it.
+
+**Known missing — `write:item` (blocks extras → folio).** `postCustomItem` (attaching a paid extra to a reservation's folio) requires `write:item`. We hold `read:addon` but never requested the write side, so the call fails with `"Scope required for this call was not granted by property."` In the Cloudbeds developer console the scope appears as **"Item" → Write** (the console groups scopes as Adjustment / App Property Settings / Door Lock Key / Item / … each with Read/Write/Delete). As of 2026-05-20 the partner couldn't tick new scope boxes in the console (Cloudbeds gates scope additions behind their review), so `write:item` is **not yet in `scopes.ts`** — adding an unapproved scope string risks Cloudbeds rejecting the whole authorize request and breaking install. When it's enabled: add `"write:item"` to the array, re-deploy, disconnect+reconnect each property, then run the pending-extras sweep (see §7 → Marketplace certification). **Likely also needed later:** a write scope for `postPayment` (NR-rate folio payment record) — not yet confirmed against the console list.
 
 ### **What's shipped**
 
@@ -333,8 +335,76 @@ Cloudbeds **does not sign webhooks**. Security comes from:
 * **Stale-row cleanup on rate-plan deletion.** If a hotel deletes a rate plan or room type in Cloudbeds, our DB still holds it — sync only upserts, doesn't delete missing rows. Mostly invisible (availability filters on positive `unitsAvailable`, CB's `getRatePlans` only returns active rates). `syncExtrasForProperty` already does this for addons — use as pattern.  
 * **`roomblock/created` / `roomblock/removed` webhooks abandoned.** `postWebhook` returned "Scope required for this call was not granted by property." even after re-OAuth with `read:roomBlock`. Likely a property-feature gate. Room blocks are OOO/maintenance only; `getRatePlans` already reflects what's saleable.  
 * **Cancellation policy admin UI** — `isRefundable` \+ `{deadlineHours, penaltyType, penaltyPercent}` editable per rate plan. The REST API does not expose cancellation policy fields (probed `/getRatePlanDetails`, `/getCancellationPolicies`, `/getCancellationPolicy`, `/getPolicies` — all 404), so we can't auto-sync; admin maintains. **Granularity may be reduced** — see [open design questions](https://claude.ai/chat/f7c44679-0eaf-433e-b582-dff9dfcccb3e#22-open-design-questions).  
-* **Postpartum reservation failure — handled by Phase 5 PMS retry cron.** When `postReservation` fails inline, `/api/bookings` still returns 502 (so the guest sees an error), but `cron-pms-retry` (every 5 min) picks the stuck booking up and retries for ~1h. After giveup: NR is auto-refunded, Flex has its saved PM detached, booking flips to `failed`. See section 19 Phase 5 for the full flow. **Open carry-forward:** the original extras list is lost on inline failure (bookingExtras rows aren't inserted until `postCustomItem` succeeds), so the retry restores the reservation but not the folio line items.  
-* **Per-extra failure handling is silent.** A failed `postCustomItem` is logged but not surfaced to admin.
+* **Postpartum reservation failure — handled by Phase 5 PMS retry cron.** When `postReservation` fails inline, `/api/bookings` still returns 502 (so the guest sees an error), but `cron-pms-retry` (every 5 min) picks the stuck booking up and retries for ~1h. After giveup: NR is auto-refunded, Flex has its saved PM detached, booking flips to `failed`. See section 19 Phase 5 for the full flow. **~~Open carry-forward: the original extras list is lost on inline failure~~ — RESOLVED 2026-05-20 (commit `b37b68e`).** `bookingExtras` rows are now inserted *before* `postCustomItem` with `cloudbedsItemId = null`, then patched with the real item ID on success. A failed call leaves the row in place for retry instead of evaporating.  
+* **Per-extra failure handling is silent** (still true for the guest-facing path — a failed `postCustomItem` is logged, not surfaced), **but the data is now recoverable.** New admin endpoint `POST /api/admin/properties/[id]/cloudbeds/sync-pending-extras` (Bearer `ADMIN_TOKEN`, idempotent) sweeps every `bookingExtras` row with `cloudbedsItemId IS NULL` whose booking has a Cloudbeds reservation and replays `postCustomItem`. Built to backfill the queue once the `write:item` scope is granted.
+
+### **Marketplace certification (2026-05-19 → 20)**
+
+We applied for Cloudbeds Marketplace certification. The reviewer (Manuel, Cloudbeds) provided a sandbox property — `[Demo] Manuel US2`, Cloudbeds `propertyID 5886676873777241`, on the `us2` cluster. **First attempt failed 2026-05-19.** This is the full post-mortem: what broke, in order; what was root-caused vs environmental; what we fixed; and where we stand.
+
+#### What broke during the live call (in order)
+
+1. **No Marketplace install flow.** The OAuth callback only did `UPDATE properties WHERE id = state.propertyId` — it never *created* a property. There was no entry point for a brand-new hotel. The admin "new hotel" button was a stub ("functionality coming later"). To get through the call we had to **manually `INSERT` a property row into the prod (Neon) DB** and then call `/api/cloudbeds/oauth/start` with `ADMIN_TOKEN` to mint a signed authorize URL.
+2. **`?property=<slug>` override didn't take effect.** The dev override (read in `get-property.ts` from the `x-property-slug` header, which `src/proxy.ts` sets) didn't change which property the bare URL resolved. **NOTE — initial mis-diagnosis:** during the session this was wrongly attributed to `src/proxy.ts` being mis-named (we briefly renamed it to `middleware.ts`). That was **wrong and has been reverted** — Next.js 16 renamed Middleware to **Proxy**, so `src/proxy.ts` exporting `proxy` is the *correct* convention (see §4 and `node_modules/next/dist/docs/.../version-16.md` line 627). The proxy was running fine. The real reason `?property=` didn't override is still **suspected response caching** of `/` (the cached HTML doesn't vary on the query string) — to be confirmed. Either way the domain-swap (next item) was the working path on the call.
+3. **Single-domain routing hack.** Because the middleware was dead and `properties.domain` is unique, the only way to make the Railway URL resolve to the cert hotel was to **swap the `domain` column** off the existing `demo` property onto `demo-manuel-us2` (and flip its status to `live`). This is why the bare URL had been showing the old Portico/demo data.
+4. **Stripe env vars missing on Railway.** `STRIPE_SECRET_KEY` / `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` lived only in local `.env.local`. `getStripe()` threw `"STRIPE_SECRET_KEY not configured"` — and it was called *outside* the route's try/catch, so the route crashed with a bare **500 and empty body** (very hard to diagnose live). Stripe Elements also wouldn't mount client-side (the "red, Stripe doesn't appear" symptom) without the publishable key.
+5. **Pasted env vars carried newlines.** After adding the keys in the Railway dashboard, the value picked up a line break → Node rejected the outbound `Authorization` header with `TypeError: Invalid character in header content ["Authorization"]` (`ERR_INVALID_CHAR`). Surfaced to the user as `StripeConnectionError` ("could not connect to Stripe, retried 2 times") which *looked* like a network fault but wasn't. Fix: re-paste each key as one unbroken line.
+6. **Inventory sync not part of OAuth completion.** The callback fired webhook subscription but not `syncInventoryForProperty`, so a freshly connected property had tokens but **no rooms** until something else triggered a sync.
+7. **Country field was free text.** `Checkout.tsx` had a plain `<Input autoComplete="country-name">`. The guest typed "United States"; Cloudbeds `postReservation` requires **ISO 3166-1 alpha-2** and rejected with `"Parameter guestCountry is not valid"` — the final-step failure on the call.
+
+#### Root-cause investigations (direct Cloudbeds API probing)
+
+After the call we probed Cloudbeds' API directly using the cert hotel's stored token (decrypt `cloudbeds_access_token` with `CLOUDBEDS_TOKEN_KEY`, format is `iv.tag.ciphertext` base64, AES-256-GCM) to separate *our* bugs from *their* environment:
+
+* **"We could not accommodate your request" on every `postReservation`, even though `getRatePlans` showed `roomsAvailable: 3`, `closedToArrival: false`, `cutOff: 0` for the same dates.** Reproduced with raw `curl` across many date ranges (today, +1 day, +1/2/7 months) — all rejected identically. Cause: **the cert hotel's rooms were flagged `isVirtual: true`** (confirmed via `getRooms`). Cloudbeds refuses bookings against virtual rooms by design — they're placeholders for setup/demo. The Rockenue demo property `302817` has `isVirtual: false` and its bookings succeed (3 of 6 synced in our DB; cert hotel was 0 of 5). **This was Cloudbeds' environment, not our code** — defensible evidence to push back on the reviewer. Once real (non-virtual) rooms were provided, bookings went through.
+* **Same-day-after-checkin-time also blocks.** The first failed booking was for *today*; the hotel is in Jakarta (UTC+7) with a 14:00 check-in, and we hit `postReservation` ~22:00 local. Cloudbeds rejects same-day reservations once the local check-in time has passed — a **property-level rule not surfaced by `getRatePlans`**. (Distinct from the virtual-room cause; both produce the same generic message.)
+* **Breakfast extra never reached the folio.** Booking synced fine (`50GPUPM1GK`) and `extras_total` was correct in our DB, but `booking_extras` had no row. Replaying `postCustomItem` by hand returned **`"Scope required for this call was not granted by property."`** → we hold `read:addon` but not **`write:item`**. See §7 → OAuth scopes.
+
+#### What we fixed
+
+**Commit `b4056ec` — cert blockers (booking-engine repo):**
+1. ~~`src/proxy.ts` → `src/middleware.ts` rename~~ **— MISTAKE, reverted (commit `<revert>`).** This was based on the wrong belief that `proxy.ts` was dead code. Next.js 16 uses `proxy.ts` (Middleware was renamed to Proxy); the original file was correct. `src/middleware.ts` deleted, `src/proxy.ts` restored. The `?property=` override still needs a real fix (suspected `/` response caching — TBD).
+2. `getStripe()` moved inside the try/catch in `payment-intent` + `setup-intent` routes → missing env var now returns a clear 502, not a bare 500.
+3. Country free-text → ISO 3166-1 alpha-2 `<Select>` (`src/lib/countries.ts`, new `Select` primitive in the Portico theme).
+4. `syncInventoryForProperty` fired (fire-and-forget) in the OAuth callback alongside webhook subscription → new connections get rooms/rates immediately.
+5. OAuth callback `UPDATE` → **upsert** (`insert … onConflictDoUpdate`). Existing "Connect Cloudbeds" button still updates in place; first-time installs create the row. Hotel name pulled from `getHotels`; slug = slugified name + UUID prefix.
+6. **`GET /api/install`** — the Marketplace install entry point. Allocates a UUID, signs OAuth state, redirects to Cloudbeds authorize. No DB write until token exchange succeeds, so abandoned installs leave no trace. This is the URL to set as the Marketplace "Install / Launch URL" (or paste directly in a browser to test).
+
+**Commit `b37b68e` — extras durability:**
+* `bookingExtras` rows inserted *before* `postCustomItem` (with `cloudbedsItemId = null`), patched on success — failures no longer lose the line item.
+* New `POST /api/admin/properties/[id]/cloudbeds/sync-pending-extras` retry sweep (see §7 → carry-forward).
+
+**Marketing-site repo (`rockenue-web`), earlier the same week:** added the mandatory support article at `rockenue.com/support/booking-engine` and a Guest Booking Data section to `rockenue.com/privacy` (Cloudbeds cert requires both).
+
+#### Temporary prod hacks made during the call — **TO CLEAN UP**
+
+These were done by hand against the prod Neon DB to get through the live call and are still in place:
+* `INSERT`ed the `demo-manuel-us2` property row (id `9d4f0e45-4825-4f12-afaf-c2eb37730473`).
+* Swapped `properties.domain` from `demo` → `demo-manuel-us2` (so the Railway URL resolves to the cert hotel). **`demo` no longer owns its domain.**
+* Copied the demo's **test** Stripe Connect account (`acct_1TSCLV1ZjN2BG9vB`, `stripe_account_status='active'`) onto `demo-manuel-us2` so checkout could complete — the cert hotel has no Stripe of its own. Stripe is in **test mode** (`sk_test_`), so no real money moved; test card `4242 4242 4242 4242`.
+
+Revert SQL when done testing:
+```sql
+UPDATE properties SET domain = 'booking-engine-production-b11b.up.railway.app' WHERE slug = 'demo';
+UPDATE properties SET domain = NULL, stripe_account_id = NULL, stripe_account_status = 'pending', stripe_account_currency = NULL WHERE slug = 'demo-manuel-us2';
+-- or DELETE the demo-manuel-us2 row entirely once cert is done with it
+```
+
+#### Where we are now (2026-05-20)
+
+* **Install → connect → sync → book works end-to-end** against a property with real (non-virtual) rooms, via `/api/install`, test card `4242…`, ISO country from the dropdown.
+* **One open blocker: `write:item` scope** for extras→folio. Code preserves extras locally and a retry endpoint is ready; just needs the scope granted, then add to `scopes.ts` → reconnect → run `sync-pending-extras`.
+* **Cert: failed 2026-05-19, retry pending.**
+
+#### Outstanding before/around the retry
+
+* Get **`write:item`** enabled in the Cloudbeds console; confirm whether `postPayment` needs a write scope too (NR-rate folio payment record).
+* **Confirm why `?property=<slug>` doesn't override in prod.** `src/proxy.ts` runs and sets `x-property-slug`, but the bare URL still resolved to the domain-matched property. Suspect `/` HTML is cached and doesn't vary on the query string. Until fixed, use `properties.domain` to control which property a deployment serves.
+* **Client-side same-day guard:** block check-in = today once `propertyCheckInTime` (from `getHotelDetails`) has passed in property-local time, so the UI never offers an unbookable slot.
+* **Real Stripe Connect onboarding** for cert/real hotels (currently borrowing the demo's test account). The "Start onboarding" flow errored during the call — needs its own debugging pass.
+* **Per-property theming** — drop the single-tenant `THEME` env var (see §5) so a connected hotel renders its own brand, not Portico, for true multi-tenant Marketplace use.
+* **Admin "create property" UI** — `/api/install` is currently the only way in.
+* **Clean up the prod hacks above.**
 
 ### **Cloudbeds operational scripts**
 

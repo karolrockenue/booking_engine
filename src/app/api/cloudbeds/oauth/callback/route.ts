@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { randomUUID } from "node:crypto";
 import { db } from "@/db";
 import { properties } from "@/db/schema";
 import { encryptToken, verifyOauthState } from "@/lib/crypto";
@@ -69,10 +70,20 @@ export async function GET(req: NextRequest) {
   const oauthError = searchParams.get("error");
 
   if (oauthError) return redirectWithError(oauthError);
-  if (!code || !state) return redirectWithError("missing_params");
+  if (!code) return redirectWithError("missing_params");
 
-  const verified = verifyOauthState(state);
-  if (!verified) return redirectWithError("invalid_state");
+  // Resolve the target property. Two entry paths:
+  //  1. App-initiated (our /api/install or the admin "Connect Cloudbeds"
+  //     button): `state` is our HMAC-signed token carrying the property UUID,
+  //     so we verify it and upsert that row in place.
+  //  2. Cloudbeds-initiated (Marketplace "Connect app"): Cloudbeds starts the
+  //     OAuth itself and redirects here with its own `state` (or none) that we
+  //     never signed — there is nothing to verify. Allocate a fresh UUID and
+  //     create a new property, exactly like a first-time install. (CSRF on this
+  //     leg is moot: the flow is initiated by Cloudbeds, and the auth code is
+  //     single-use, short-lived, and bound to our client + redirect URI.)
+  const verified = state ? verifyOauthState(state) : null;
+  const propertyId = verified?.propertyId ?? randomUUID();
 
   let tokens;
   try {
@@ -90,14 +101,15 @@ export async function GET(req: NextRequest) {
   const hotelName = hotel?.name ?? null;
 
   // Upsert: the admin "Connect Cloudbeds" button signs state against an
-  // existing property row, so we UPDATE in place. The /install Marketplace
-  // flow signs state against a freshly allocated UUID with no DB row yet, so
-  // we INSERT. onConflictDoUpdate handles both with a single statement.
+  // existing property row, so we UPDATE in place. First-time installs (our
+  // /api/install, or a Cloudbeds Marketplace "Connect app") carry a freshly
+  // allocated UUID with no DB row yet, so we INSERT. onConflictDoUpdate handles
+  // all three with a single statement.
   await db
     .insert(properties)
     .values({
-      id: verified.propertyId,
-      slug: buildSlug(hotelName, verified.propertyId),
+      id: propertyId,
+      slug: buildSlug(hotelName, propertyId),
       name: hotelName ?? "New Hotel",
       theme: {},
       status: "draft",
@@ -123,15 +135,15 @@ export async function GET(req: NextRequest) {
   // install feel "complete" — without it the property has tokens but no rooms
   // and the booking flow looks broken until something else triggers a sync.
   if (cloudbedsPropertyId) {
-    void subscribeWebhooksForProperty(verified.propertyId).catch((err) => {
+    void subscribeWebhooksForProperty(propertyId).catch((err) => {
       console.error("Cloudbeds webhook subscribe failed:", err);
     });
-    void syncInventoryForProperty(verified.propertyId).catch((err) => {
+    void syncInventoryForProperty(propertyId).catch((err) => {
       console.error("Cloudbeds initial inventory sync failed:", err);
     });
   }
 
   return NextResponse.redirect(
-    `${publicOrigin()}/admin/${verified.propertyId}/cloudbeds?connected=1`
+    `${publicOrigin()}/admin/${propertyId}/cloudbeds?connected=1`
   );
 }

@@ -1,11 +1,17 @@
 import { extrasSubtotal } from "./extra-pricing";
-import type { AvailabilityResult, Extra, GuestDetails } from "./types";
+import type {
+  AvailabilityResult,
+  Extra,
+  ExtraConfig,
+  GuestDetails,
+} from "./types";
 
 export interface SubmitBookingArgs {
   propertyId: string;
   orderId: string; // client-generated UUID, same one used as Stripe idempotency key + metadata
   result: AvailabilityResult;
   extras: Extra[]; // full extra objects for the selected IDs
+  extrasConfig?: Record<string, ExtraConfig>; // per-extra guest options (breakfast)
   guest: GuestDetails;
   checkIn: string;
   checkOut: string;
@@ -40,7 +46,8 @@ export async function submitBooking(
     args.extras,
     args.extras.map((e) => e.id),
     args.result.nights,
-    args.adults + args.children
+    args.adults + args.children,
+    args.extrasConfig
   );
   const totalPrice = args.result.totalPrice + extrasTotal;
 
@@ -68,6 +75,7 @@ export async function submitBooking(
       name: e.name,
       priceMinorUnits: e.priceMinorUnits,
       currency: e.currency,
+      config: args.extrasConfig?.[e.id],
     })),
     paymentIntentId: args.paymentIntentId,
     setupIntentId: args.setupIntentId,

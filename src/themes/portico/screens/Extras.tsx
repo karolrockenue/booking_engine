@@ -5,8 +5,10 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
   loadPersistedDraft,
+  stayMornings,
   useExtras,
   usePersistedDraft,
+  type ExtraConfig,
   type PersistedBookingDraft,
 } from "@/lib/booking";
 import type { ResolvedProperty } from "@/lib/get-property";
@@ -15,6 +17,7 @@ import { porticoImg } from "../tokens";
 import { PorticoShell } from "../PorticoShell";
 import { BookingNav } from "../components/Nav";
 import { PorticoStickyBar } from "../components/StickyBar";
+import { BreakfastPicker } from "../components/BreakfastPicker";
 
 export function PorticoExtras({ t, property }: { t: PorticoTokens; property: ResolvedProperty }) {
   const router = useRouter();
@@ -23,6 +26,8 @@ export function PorticoExtras({ t, property }: { t: PorticoTokens; property: Res
   const [persisted, setPersisted] = useState<PersistedBookingDraft | null>(null);
   const [hydrated, setHydrated] = useState(false);
   const [selectedExtras, setSelectedExtras] = useState<Set<string>>(new Set());
+  const [extrasConfig, setExtrasConfig] = useState<Record<string, ExtraConfig>>({});
+  const [customising, setCustomising] = useState<Set<string>>(new Set());
   const [specialRequests, setSpecialRequests] = useState("");
 
   useEffect(() => {
@@ -30,6 +35,7 @@ export function PorticoExtras({ t, property }: { t: PorticoTokens; property: Res
     /* eslint-disable react-hooks/set-state-in-effect */
     setPersisted(loaded);
     if (loaded?.extras) setSelectedExtras(new Set(loaded.extras));
+    if (loaded?.extrasConfig) setExtrasConfig(loaded.extrasConfig);
     if (loaded?.specialRequests) setSpecialRequests(loaded.specialRequests);
     setHydrated(true);
     /* eslint-enable react-hooks/set-state-in-effect */
@@ -57,6 +63,7 @@ export function PorticoExtras({ t, property }: { t: PorticoTokens; property: Res
     {
       result: persisted?.result ?? null,
       extras: selectedExtras,
+      extrasConfig,
     }
   );
 
@@ -88,8 +95,77 @@ export function PorticoExtras({ t, property }: { t: PorticoTokens; property: Res
   if (!hydrated || !persisted?.result) return null;
   const fmt = makeFormatter(currency);
   const result = persisted.result;
+  const headcount = persisted.adults + persisted.children;
+  const allMornings = stayMornings(persisted.checkIn, result.nights);
   const isEmpty = !extrasLoading && extras.length === 0;
   const selectedCount = selectedExtras.size;
+
+  // --- per_guest_per_night (breakfast) picker handlers ---
+  function selectBreakfastAll(id: string) {
+    setSelectedExtras((prev) => new Set(prev).add(id));
+    setExtrasConfig((prev) => {
+      const next = { ...prev };
+      delete next[id]; // no config = default (all guests, all mornings)
+      return next;
+    });
+    setCustomising((prev) => {
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
+  }
+
+  // Full remove — also clears any custom config + open editor. Used by both the
+  // picker's remove and the sticky bar's chip remove (safe for per_stay too).
+  function removeExtra(id: string) {
+    setSelectedExtras((prev) => {
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
+    setExtrasConfig((prev) => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+    setCustomising((prev) => {
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
+  }
+
+  function toggleCustomise(id: string) {
+    // Materialise a config on first open so the editor has values to edit.
+    setExtrasConfig((prev) =>
+      prev[id]
+        ? prev
+        : { ...prev, [id]: { guests: headcount, mornings: [...allMornings] } }
+    );
+    setCustomising((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function setBreakfastGuests(id: string, guests: number) {
+    setExtrasConfig((prev) => {
+      const cur = prev[id] ?? { guests: headcount, mornings: [...allMornings] };
+      return { ...prev, [id]: { ...cur, guests } };
+    });
+  }
+
+  function toggleBreakfastMorning(id: string, date: string) {
+    setExtrasConfig((prev) => {
+      const cur = prev[id] ?? { guests: headcount, mornings: [...allMornings] };
+      const mornings = cur.mornings.includes(date)
+        ? cur.mornings.filter((d) => d !== date)
+        : [...cur.mornings, date].sort();
+      return { ...prev, [id]: { ...cur, mornings } };
+    });
+  }
 
   return (
     <PorticoShell t={t}>
@@ -243,6 +319,29 @@ export function PorticoExtras({ t, property }: { t: PorticoTokens; property: Res
               extras.map((extra, i) => {
                 const isOn = selectedExtras.has(extra.id);
                 const price = extra.priceMinorUnits / 100;
+                const last = i === extras.length - 1;
+                if (extra.pricingModel === "per_guest_per_night") {
+                  return (
+                    <BreakfastPicker
+                      key={extra.id}
+                      t={t}
+                      extra={extra}
+                      headcount={headcount}
+                      nights={result.nights}
+                      mornings={allMornings}
+                      currency={currency}
+                      selected={isOn}
+                      config={extrasConfig[extra.id]}
+                      open={customising.has(extra.id)}
+                      last={last}
+                      onSelectAll={() => selectBreakfastAll(extra.id)}
+                      onRemove={() => removeExtra(extra.id)}
+                      onToggleCustomise={() => toggleCustomise(extra.id)}
+                      onSetGuests={(g) => setBreakfastGuests(extra.id, g)}
+                      onToggleMorning={(d) => toggleBreakfastMorning(extra.id, d)}
+                    />
+                  );
+                }
                 return (
                   <button
                     key={extra.id}
@@ -479,7 +578,8 @@ export function PorticoExtras({ t, property }: { t: PorticoTokens; property: Res
         extras={extras}
         selectedExtras={selectedExtras}
         guests={persisted.adults + persisted.children}
-        onRemoveExtra={toggleExtra}
+        extrasConfig={extrasConfig}
+        onRemoveExtra={removeExtra}
         onContinue={handleContinue}
         onClear={handleEditRoom}
         currency={currency}

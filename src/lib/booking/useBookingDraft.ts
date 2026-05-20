@@ -16,15 +16,15 @@ export function useBookingDraft(
   grandTotal: number;
 } {
   const [draft, setDraft] = useState<BookingDraft>(
-    initial ?? { result: null, extras: new Set() }
+    initial ?? { result: null, extras: new Set(), extrasConfig: {} }
   );
 
   const selectRoom = useCallback((result: AvailabilityResult) => {
-    setDraft({ result, extras: new Set() });
+    setDraft({ result, extras: new Set(), extrasConfig: {} });
   }, []);
 
   const clearRoom = useCallback(() => {
-    setDraft({ result: null, extras: new Set() });
+    setDraft({ result: null, extras: new Set(), extrasConfig: {} });
   }, []);
 
   const toggleExtra = useCallback((extraId: string) => {

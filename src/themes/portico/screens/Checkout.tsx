@@ -81,7 +81,7 @@ export function PorticoCheckout({ t, property }: { t: PorticoTokens; property: R
     if (!draft?.result) return { extrasTotal: 0, total: 0, nights: 0 };
     const nights = draft.result.nights;
     const guests = draft.adults + draft.children;
-    const extrasTotal = extrasSubtotal(extras, draft.extras, nights, guests);
+    const extrasTotal = extrasSubtotal(extras, draft.extras, nights, guests, draft.extrasConfig);
     return {
       extrasTotal,
       total: draft.result.totalPrice + extrasTotal,
@@ -185,6 +185,7 @@ export function PorticoCheckout({ t, property }: { t: PorticoTokens; property: R
         orderId: orderIdRef.current,
         result: draft.result,
         extras: selectedExtras,
+        extrasConfig: draft.extrasConfig,
         guest: {
           firstName: first,
           lastName: last,

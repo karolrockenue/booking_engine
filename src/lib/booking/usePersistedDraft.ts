@@ -71,6 +71,7 @@ export function usePersistedDraft(
       children: ctx.children,
       result: draft.result,
       extras: Array.from(draft.extras),
+      extrasConfig: draft.extrasConfig,
       specialRequests: ctx.specialRequests,
       savedAt: Date.now(),
     };
@@ -90,6 +91,7 @@ export function usePersistedDraft(
     ctx.specialRequests,
     draft.result,
     draft.extras,
+    draft.extrasConfig,
   ]);
 }
 

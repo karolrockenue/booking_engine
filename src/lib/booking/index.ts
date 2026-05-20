@@ -20,6 +20,7 @@ export type {
   AvailabilityResult,
   BookingDraft,
   Extra,
+  ExtraConfig,
   GuestDetails,
   NightlyRate,
   PersistedBookingDraft,
@@ -28,6 +29,7 @@ export type {
 export {
   PRICING_MODELS,
   isPricingModel,
+  stayMornings,
   extraQuantity,
   extraLineTotal,
   extrasSubtotal,

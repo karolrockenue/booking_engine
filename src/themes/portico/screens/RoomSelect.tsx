@@ -288,6 +288,7 @@ export function PorticoRoomSelect({ t, property, checkIn, checkOut, adults, chil
           extras={extras}
           selectedExtras={draft.extras}
           guests={adults + children}
+          extrasConfig={draft.extrasConfig}
           onRemoveExtra={toggleExtra}
           onContinue={handleContinue}
           onClear={clearRoom}

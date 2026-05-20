@@ -1,7 +1,7 @@
 "use client";
 
 import { extraLineTotal } from "@/lib/booking";
-import type { Extra, AvailabilityResult } from "@/lib/booking";
+import type { Extra, AvailabilityResult, ExtraConfig } from "@/lib/booking";
 import type { PorticoTokens } from "../tokens";
 
 interface Props {
@@ -10,6 +10,7 @@ interface Props {
   extras: Extra[];
   selectedExtras: Set<string>;
   guests: number;
+  extrasConfig?: Record<string, ExtraConfig>;
   onRemoveExtra: (extraId: string) => void;
   onContinue: () => void;
   onClear: () => void;
@@ -24,6 +25,7 @@ export function PorticoStickyBar({
   extras,
   selectedExtras,
   guests,
+  extrasConfig,
   onRemoveExtra,
   onContinue,
   onClear,
@@ -35,7 +37,9 @@ export function PorticoStickyBar({
   const nights = result.nights;
   const items = extras.filter((e) => selectedExtras.has(e.id));
   const extrasTotal = items.reduce(
-    (sum, e) => sum + extraLineTotal(e.priceMinorUnits / 100, e.pricingModel, nights, guests),
+    (sum, e) =>
+      sum +
+      extraLineTotal(e.priceMinorUnits / 100, e.pricingModel, nights, guests, extrasConfig?.[e.id]),
     0
   );
   const total = result.totalPrice + extrasTotal;
@@ -98,7 +102,7 @@ export function PorticoStickyBar({
           {items.length > 0 && (
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 4 }}>
               {items.map((extra) => {
-                const price = extraLineTotal(extra.priceMinorUnits / 100, extra.pricingModel, nights, guests);
+                const price = extraLineTotal(extra.priceMinorUnits / 100, extra.pricingModel, nights, guests, extrasConfig?.[extra.id]);
                 return (
                   <span
                     key={extra.id}

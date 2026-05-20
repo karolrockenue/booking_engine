@@ -38,9 +38,21 @@ export interface Extra {
   pricingModel: PricingModel;
 }
 
+// Guest-chosen options for a `per_guest_per_night` extra (e.g. breakfast):
+// how many of the party want it, and on which mornings. Absent = the default
+// (everyone, every morning). `mornings` are YYYY-MM-DD dates (the morning after
+// each night — see stayMornings()).
+export interface ExtraConfig {
+  guests: number;
+  mornings: string[];
+}
+
 export interface BookingDraft {
   result: AvailabilityResult | null;
   extras: Set<string>; // extra IDs currently selected
+  // Per-extra options for per_guest_per_night extras. Keyed by extra ID; only
+  // present for extras the guest has customised (others use the default).
+  extrasConfig: Record<string, ExtraConfig>;
 }
 
 // Persisted form (sets aren't JSON-serialisable). Used by usePersistedDraft.
@@ -52,6 +64,7 @@ export interface PersistedBookingDraft {
   children: number;
   result: AvailabilityResult | null;
   extras: string[];
+  extrasConfig?: Record<string, ExtraConfig>;
   specialRequests?: string;
   savedAt: number; // epoch ms; for TTL
 }

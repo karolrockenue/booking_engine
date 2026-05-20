@@ -15,8 +15,9 @@ import {
   extraQuantity,
   extraLineTotal,
   isPricingModel,
+  stayMornings,
 } from "@/lib/booking/extra-pricing";
-import type { PricingModel } from "@/lib/booking/types";
+import type { ExtraConfig, PricingModel } from "@/lib/booking/types";
 import { getStripe } from "@/lib/stripe/client";
 import {
   postReservation,
@@ -32,6 +33,7 @@ interface ExtraInput {
   name: string;
   priceMinorUnits: number;
   currency: string;
+  config?: { guests: number; mornings: string[] };
 }
 
 interface BookingRequestBody {
@@ -240,9 +242,27 @@ export async function POST(req: NextRequest) {
   }
   const modelFor = (id: string): PricingModel => extraModels.get(id) ?? "per_stay";
 
+  // Sanitise any guest-supplied per_guest_per_night options (breakfast) against
+  // the real headcount + stay mornings so a tampered client can't forge them.
+  const validMorningSet = new Set(stayMornings(body.checkIn, nights));
+  const configFor = (e: ExtraInput): ExtraConfig | undefined => {
+    if (modelFor(e.id) !== "per_guest_per_night" || !e.config) return undefined;
+    return {
+      guests: Math.max(0, Math.min(guests, Math.floor(e.config.guests ?? 0))),
+      mornings: (e.config.mornings ?? []).filter((d) => validMorningSet.has(d)),
+    };
+  };
+
   const extrasTotalNum = extrasItems.reduce(
     (sum, e) =>
-      sum + extraLineTotal(e.priceMinorUnits / 100, modelFor(e.id), nights, guests),
+      sum +
+      extraLineTotal(
+        e.priceMinorUnits / 100,
+        modelFor(e.id),
+        nights,
+        guests,
+        configFor(e)
+      ),
     0
   );
   const roomTotalNum = body.totalPrice - extrasTotalNum;
@@ -354,7 +374,8 @@ export async function POST(req: NextRequest) {
     // sweeps them and retries once the scope is enabled.
     for (const extra of extrasItems) {
       const unitMajor = extra.priceMinorUnits / 100;
-      const qty = extraQuantity(modelFor(extra.id), nights, guests);
+      const qty = extraQuantity(modelFor(extra.id), nights, guests, configFor(extra));
+      if (qty <= 0) continue;
       const lineTotalMajor = unitMajor * qty;
       const [extraRow] = await db
         .insert(bookingExtras)

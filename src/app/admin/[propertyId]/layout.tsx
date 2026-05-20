@@ -80,10 +80,14 @@ export default function PropertyLayout({ children }: { children: ReactNode }) {
   const tabSlug = segments[2];
   const activeTab = tabSlug ? TAB_FROM_PATH[tabSlug] ?? "overview" : "overview";
 
+  // Path-based routing: a hotel lives at /<slug> (the ?property= shim is
+  // retired — it fell through to the domain owner, opening the wrong hotel).
+  // A property with its own domain opens that; everything else (incl. a
+  // freshly-installed cert hotel with no domain yet) opens its slug path.
   const siteUrl = property?.domain
     ? `https://${property.domain}`
     : property?.slug
-      ? `${typeof window !== "undefined" ? window.location.origin : ""}/?property=${property.slug}`
+      ? `${typeof window !== "undefined" ? window.location.origin : ""}/${property.slug}`
       : null;
 
   return (

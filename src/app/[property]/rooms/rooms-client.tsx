@@ -30,7 +30,7 @@ export function RoomsClient({ property }: { property: ResolvedProperty }) {
   const currency = property.currency ?? "GBP";
 
   useEffect(() => {
-    if (!checkIn || !checkOut) router.replace("/");
+    if (!checkIn || !checkOut) router.replace(`/${property.slug}`);
   }, [checkIn, checkOut, router]);
 
   const { results, loading } = useAvailability({
@@ -76,7 +76,7 @@ export function RoomsClient({ property }: { property: ResolvedProperty }) {
 
   function handleContinue() {
     if (!draft.result) return;
-    router.push("/checkout");
+    router.push(`/${property.slug}/checkout`);
   }
 
   return (
@@ -136,7 +136,7 @@ export function RoomsClient({ property }: { property: ResolvedProperty }) {
                 </p>
               </div>
               <Link
-                href="/"
+                href={`/${property.slug}`}
                 className="text-sm px-4 py-2 rounded transition-colors self-start"
                 style={{
                   fontFamily: "var(--font-body)",

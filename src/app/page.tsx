@@ -1,25 +1,12 @@
-import {
-  resolveProperty,
-  getPropertyPhotos,
-  getPropertyContent,
-} from "@/lib/get-property";
-import { notFound } from "next/navigation";
-import { HomeClient } from "./home-client";
-import { activePorticoTokens } from "@/themes/portico";
-import { PorticoHome } from "@/themes/portico/screens/Home";
+import { resolveProperty } from "@/lib/get-property";
+import { notFound, redirect } from "next/navigation";
 
-export default async function HomePage() {
+// Bare "/" — no property slug in the path. Resolve by domain (a real hotel
+// domain in production, or the deployment's default in dev/staging) and
+// redirect to that property's path-scoped home, so the slug is always visible
+// in the URL and every downstream page resolves from the path.
+export default async function RootPage() {
   const property = await resolveProperty();
   if (!property) notFound();
-
-  const portico = await activePorticoTokens();
-  if (portico) {
-    const [photos, content] = await Promise.all([
-      getPropertyPhotos(property.id),
-      getPropertyContent(property.id),
-    ]);
-    return <PorticoHome t={portico} photos={photos} content={content} />;
-  }
-
-  return <HomeClient property={property} />;
+  redirect(`/${property.slug}`);
 }

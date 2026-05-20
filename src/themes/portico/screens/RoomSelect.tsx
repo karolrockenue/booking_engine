@@ -90,7 +90,7 @@ export function PorticoRoomSelect({ t, property, checkIn, checkOut, adults, chil
 
   function handleContinue() {
     // Defer one tick so the persistence effect has flushed before we navigate.
-    setTimeout(() => router.push("/extras"), 0);
+    setTimeout(() => router.push(`/${property.slug}/extras`), 0);
   }
 
   const dateRange = useMemo(() => {
@@ -158,7 +158,7 @@ export function PorticoRoomSelect({ t, property, checkIn, checkOut, adults, chil
             {children > 0 ? ` · ${children} ${children === 1 ? "child" : "children"}` : ""}
             {" · "}
             <Link
-              href={`/book?checkIn=${checkIn}&checkOut=${checkOut}&adults=${adults}&children=${children}`}
+              href={`/${property.slug}/book?checkIn=${checkIn}&checkOut=${checkOut}&adults=${adults}&children=${children}`}
               style={{ color: t.accent, textDecoration: "none", borderBottom: `1px solid ${t.accent}` }}
             >
               Edit
@@ -236,7 +236,7 @@ export function PorticoRoomSelect({ t, property, checkIn, checkOut, adults, chil
             }}
           >
             We couldn’t load availability ({error.message}). Please refresh, or
-            <Link href="/book" style={{ color: t.accent, marginLeft: 6 }}>
+            <Link href={`/${property.slug}/book`} style={{ color: t.accent, marginLeft: 6 }}>
               edit your dates
             </Link>
             .

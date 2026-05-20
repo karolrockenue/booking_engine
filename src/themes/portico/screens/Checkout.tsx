@@ -48,7 +48,7 @@ export function PorticoCheckout({ t, property }: { t: PorticoTokens; property: R
   }, []);
 
   useEffect(() => {
-    if (draftHydrated && (!draft || !draft.result)) router.replace("/");
+    if (draftHydrated && (!draft || !draft.result)) router.replace(`/${property.slug}`);
   }, [draftHydrated, draft, router]);
 
   const { extras } = useExtras(property.id);
@@ -228,7 +228,7 @@ export function PorticoCheckout({ t, property }: { t: PorticoTokens; property: R
         currency,
       });
       clearPersistedDraft();
-      router.push(`/confirmation?orderId=${encodeURIComponent(result.orderId)}`);
+      router.push(`/${property.slug}/confirmation?orderId=${encodeURIComponent(result.orderId)}`);
     } catch (e) {
       const msg =
         e instanceof SubmitBookingError
@@ -457,7 +457,7 @@ export function PorticoCheckout({ t, property }: { t: PorticoTokens; property: R
           )}
 
           <div style={{ marginTop: 28, fontSize: 11, opacity: 0.6 }}>
-            <Link href="/rooms" style={{ color: "inherit", textDecoration: "none", borderBottom: `1px solid ${t.summaryRule}` }}>
+            <Link href={`/${property.slug}/rooms`} style={{ color: "inherit", textDecoration: "none", borderBottom: `1px solid ${t.summaryRule}` }}>
               ← Change room
             </Link>
           </div>

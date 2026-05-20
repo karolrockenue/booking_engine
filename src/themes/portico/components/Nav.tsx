@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { useParams } from "next/navigation";
 import type { PorticoTokens } from "../tokens";
 import { PorticoLogo } from "./Logo";
 
@@ -22,6 +23,8 @@ interface Props {
 
 export function Nav({ t, variant = "solid", current, inkOverride }: Props) {
   const ink = inkOverride ?? t.ink;
+  const slug = useParams<{ property: string }>().property ?? "";
+  const home = `/${slug}`;
   const [menuOpen, setMenuOpen] = useState(false);
 
   return (
@@ -40,7 +43,7 @@ export function Nav({ t, variant = "solid", current, inkOverride }: Props) {
       }}
       className="portico-nav"
     >
-      <Link href="/" style={{ color: "inherit", textDecoration: "none" }} aria-label="The Portico Hotel — home">
+      <Link href={home} style={{ color: "inherit", textDecoration: "none" }} aria-label="The Portico Hotel — home">
         <PorticoLogo
           height={42}
           surface={variant === "transparent" ? "dark" : "light"}
@@ -61,7 +64,7 @@ export function Nav({ t, variant = "solid", current, inkOverride }: Props) {
         {NAV_LINKS.map((l) => (
           <Link
             key={l.label}
-            href={l.href}
+            href={`${home}${l.href.slice(1)}`}
             style={{
               color: "inherit",
               textDecoration: "none",
@@ -75,7 +78,7 @@ export function Nav({ t, variant = "solid", current, inkOverride }: Props) {
         ))}
       </div>
       <Link
-        href="/book"
+        href={`${home}/book`}
         style={{
           fontSize: 10,
           letterSpacing: "0.28em",
@@ -114,7 +117,7 @@ export function Nav({ t, variant = "solid", current, inkOverride }: Props) {
         <BurgerIcon />
       </button>
 
-      {menuOpen && <MobileMenu t={t} onClose={() => setMenuOpen(false)} />}
+      {menuOpen && <MobileMenu t={t} home={home} onClose={() => setMenuOpen(false)} />}
 
       <style>{`
         .portico-nav-cta:hover {
@@ -140,7 +143,7 @@ function BurgerIcon() {
   );
 }
 
-function MobileMenu({ t, onClose }: { t: PorticoTokens; onClose: () => void }) {
+function MobileMenu({ t, home, onClose }: { t: PorticoTokens; home: string; onClose: () => void }) {
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") onClose();
@@ -179,7 +182,7 @@ function MobileMenu({ t, onClose }: { t: PorticoTokens; onClose: () => void }) {
           borderBottom: `1px solid ${t.rule}`,
         }}
       >
-        <Link href="/" onClick={onClose} aria-label="Home" style={{ color: "inherit", textDecoration: "none" }}>
+        <Link href={home} onClick={onClose} aria-label="Home" style={{ color: "inherit", textDecoration: "none" }}>
           <PorticoLogo height={36} surface="light" />
         </Link>
         <button
@@ -214,7 +217,7 @@ function MobileMenu({ t, onClose }: { t: PorticoTokens; onClose: () => void }) {
         {NAV_LINKS.map((l) => (
           <Link
             key={l.label}
-            href={l.href}
+            href={`${home}${l.href.slice(1)}`}
             onClick={onClose}
             style={{
               fontFamily: "var(--portico-serif)",
@@ -234,7 +237,7 @@ function MobileMenu({ t, onClose }: { t: PorticoTokens; onClose: () => void }) {
 
       <div style={{ padding: "24px", borderTop: `1px solid ${t.rule}` }}>
         <Link
-          href="/book"
+          href={`${home}/book`}
           onClick={onClose}
           style={{
             display: "block",
@@ -265,6 +268,7 @@ export function BookingNav({
   step: StepIndex;
   phone?: string;
 }) {
+  const home = `/${useParams<{ property: string }>().property ?? ""}`;
   return (
     <div
       style={{
@@ -280,7 +284,7 @@ export function BookingNav({
       }}
       className="portico-bookingnav"
     >
-      <Link href="/" style={{ color: "inherit", textDecoration: "none" }} aria-label="Home">
+      <Link href={home} style={{ color: "inherit", textDecoration: "none" }} aria-label="Home">
         <PorticoLogo height={36} surface="light" />
       </Link>
       <Stepper t={t} step={step} />

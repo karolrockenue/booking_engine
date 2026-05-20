@@ -283,7 +283,7 @@ export function ConfirmationClient({
           {/* ── Return ── */}
           <div className="text-center">
             <Link
-              href="/"
+              href={`/${property.slug}`}
               className="inline-block px-8 py-3 text-sm uppercase tracking-wider rounded transition-colors"
               style={{
                 fontFamily: "var(--font-body)",

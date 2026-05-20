@@ -49,7 +49,7 @@ export function CheckoutClient({ property }: { property: ResolvedProperty }) {
 
   useEffect(() => {
     if (draftHydrated && (!draft || !draft.result)) {
-      router.replace("/");
+      router.replace(`/${property.slug}`);
     }
   }, [draftHydrated, draft, router]);
 
@@ -256,7 +256,7 @@ export function CheckoutClient({ property }: { property: ResolvedProperty }) {
         currency,
       });
       clearPersistedDraft();
-      router.push(`/confirmation?orderId=${encodeURIComponent(result.orderId)}`);
+      router.push(`/${property.slug}/confirmation?orderId=${encodeURIComponent(result.orderId)}`);
     } catch (e) {
       const msg =
         e instanceof SubmitBookingError
@@ -321,7 +321,7 @@ export function CheckoutClient({ property }: { property: ResolvedProperty }) {
                 </p>
               </div>
               <a
-                href={`/rooms?checkIn=${checkIn}&checkOut=${checkOut}&adults=${adults}`}
+                href={`/${property.slug}/rooms?checkIn=${checkIn}&checkOut=${checkOut}&adults=${adults}`}
                 className="text-sm px-4 py-2 rounded transition-colors text-white flex items-center gap-2 self-start"
                 style={{ border: "1px solid rgba(255,255,255,0.3)" }}
               >

@@ -17,7 +17,7 @@ export function HomeClient({ property }: { property: ResolvedProperty }) {
   const theme = property.theme;
 
   function handleSearch(checkIn: string, checkOut: string, adults: number, children: number, rooms: number) {
-    router.push(`/rooms?${new URLSearchParams({ checkIn, checkOut, adults: adults.toString(), children: children.toString(), rooms: rooms.toString() })}`);
+    router.push(`/${property.slug}/rooms?${new URLSearchParams({ checkIn, checkOut, adults: adults.toString(), children: children.toString(), rooms: rooms.toString() })}`);
   }
 
   const gallery = [

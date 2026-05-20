@@ -24,10 +24,12 @@ const FALLBACK_GALLERY_IMAGES = [
 
 export function PorticoHome({
   t,
+  slug,
   photos,
   content,
 }: {
   t: PorticoTokens;
+  slug: string;
   photos?: PropertyPhotos;
   content?: PropertyContent;
 }) {
@@ -61,7 +63,7 @@ export function PorticoHome({
           .portico-section { padding: 64px 24px !important; }
         }
       `}</style>
-      <Hero t={t} heroSrc={heroSrc} heroAlt={heroAlt} content={c.hero} />
+      <Hero t={t} slug={slug} heroSrc={heroSrc} heroAlt={heroAlt} content={c.hero} />
       <Neighbourhood
         t={t}
         photoSrc={neighbourhoodSrc}
@@ -70,7 +72,7 @@ export function PorticoHome({
       />
       <Inside t={t} galleryUrls={galleryUrls} />
       <GoodToKnow t={t} content={c.goodToKnow} />
-      <Footer t={t} content={c} />
+      <Footer t={t} slug={slug} content={c} />
     </PorticoShell>
   );
 }
@@ -78,11 +80,13 @@ export function PorticoHome({
 // ─── Hero ────────────────────────────────────────────────────────────────
 function Hero({
   t,
+  slug,
   heroSrc,
   heroAlt,
   content,
 }: {
   t: PorticoTokens;
+  slug: string;
   heroSrc: string;
   heroAlt: string;
   content: PropertyContent["hero"];
@@ -184,7 +188,7 @@ function Hero({
         }}
       >
         <Link
-          href="/book"
+          href={`/${slug}/book`}
           style={{
             background: t.accent,
             color: t.accentInk,
@@ -610,9 +614,11 @@ function GoodToKnow({
 // rather than three. Doubles as the /#contact anchor target.
 function Footer({
   t,
+  slug,
   content,
 }: {
   t: PorticoTokens;
+  slug: string;
   content: PropertyContent;
 }) {
   const inkOn = t.summaryInk;
@@ -666,7 +672,7 @@ function Footer({
             {fc.brandTagline}
           </p>
           <Link
-            href="/book"
+            href={`/${slug}/book`}
             style={{
               display: "inline-block",
               background: inkOn,

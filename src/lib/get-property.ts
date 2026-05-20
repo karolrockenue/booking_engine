@@ -73,8 +73,12 @@ export async function resolveProperty(): Promise<ResolvedProperty | null> {
     [property] = await db.select().from(properties).limit(1);
   }
 
-  if (!property) return null;
+  return property ? toResolved(property) : null;
+}
 
+type PropertyRow = typeof properties.$inferSelect;
+
+function toResolved(property: PropertyRow): ResolvedProperty {
   return {
     id: property.id,
     slug: property.slug,
@@ -85,6 +89,23 @@ export async function resolveProperty(): Promise<ResolvedProperty | null> {
     theme: parseTheme(property.theme),
     status: property.status,
   };
+}
+
+/**
+ * Resolve a property directly by its slug — used by the per-property customer
+ * routes under app/[property]/. The slug comes from the URL path, so the
+ * property is whatever the path says (no domain/header guessing). Returns null
+ * for an unknown slug so the page can 404.
+ */
+export async function resolvePropertyBySlug(
+  slug: string
+): Promise<ResolvedProperty | null> {
+  const [property] = await db
+    .select()
+    .from(properties)
+    .where(eq(properties.slug, slug))
+    .limit(1);
+  return property ? toResolved(property) : null;
 }
 
 export async function getPropertyWithContent(propertyId: string) {

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useParams } from "next/navigation";
 import { useTheme } from "@/components/layout/ThemeProvider";
 
 interface NavBarProps {
@@ -13,6 +14,8 @@ interface NavBarProps {
 
 export function NavBar({ logoUrl, variant = "default", hideCta = false }: NavBarProps) {
   const theme = useTheme();
+  const params = useParams<{ property: string }>();
+  const home = params.property ? `/${params.property}` : "/";
   const [mobileOpen, setMobileOpen] = useState(false);
 
   const links = theme.nav?.links ?? [];
@@ -39,7 +42,7 @@ export function NavBar({ logoUrl, variant = "default", hideCta = false }: NavBar
       >
         <div className="flex items-center gap-3">
           <a
-            href="/"
+            href={home}
             className="text-xl font-bold tracking-wide"
             style={{
               fontFamily: "var(--font-heading)",
@@ -110,7 +113,7 @@ export function NavBar({ logoUrl, variant = "default", hideCta = false }: NavBar
           )}
           {!isBookingFlow && !hideCta && (
             <a
-              href="/"
+              href={home}
               className="px-6 py-2 text-sm uppercase tracking-wider transition-colors"
               style={{
                 fontFamily: "var(--font-body)",
@@ -174,7 +177,7 @@ export function NavBar({ logoUrl, variant = "default", hideCta = false }: NavBar
           ))}
           {!isBookingFlow && !hideCta && (
             <a
-              href="/"
+              href={home}
               className="px-6 py-3 text-sm uppercase tracking-wider text-center"
               style={{
                 fontFamily: "var(--font-body)",

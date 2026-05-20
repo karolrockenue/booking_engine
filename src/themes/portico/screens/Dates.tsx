@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useMemo, useState } from "react";
 import { differenceInCalendarDays, format, parseISO } from "date-fns";
 import type { PorticoTokens } from "../tokens";
@@ -15,6 +15,7 @@ import { PorticoCalendar } from "../components/Calendar";
 export function PorticoDates({ t, currency }: { t: PorticoTokens; currency: string }) {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const slug = useParams<{ property: string }>().property ?? "";
 
   const initial = useMemo(() => {
     const ci = searchParams.get("checkIn");
@@ -46,7 +47,7 @@ export function PorticoDates({ t, currency }: { t: PorticoTokens; currency: stri
       children: children.toString(),
       rooms: "1",
     });
-    router.push(`/rooms?${params.toString()}`);
+    router.push(`/${slug}/rooms?${params.toString()}`);
   }
 
   return (

@@ -36,7 +36,7 @@ export function PorticoExtras({ t, property }: { t: PorticoTokens; property: Res
   }, []);
 
   useEffect(() => {
-    if (hydrated && (!persisted || !persisted.result)) router.replace("/book");
+    if (hydrated && (!persisted || !persisted.result)) router.replace(`/${property.slug}/book`);
   }, [hydrated, persisted, router]);
 
   const { extras, loading: extrasLoading } = useExtras(property.id);
@@ -70,7 +70,7 @@ export function PorticoExtras({ t, property }: { t: PorticoTokens; property: Res
   }
 
   function handleContinue() {
-    setTimeout(() => router.push("/checkout"), 0);
+    setTimeout(() => router.push(`/${property.slug}/checkout`), 0);
   }
 
   function handleEditRoom() {
@@ -82,7 +82,7 @@ export function PorticoExtras({ t, property }: { t: PorticoTokens; property: Res
       children: String(persisted.children),
       rooms: "1",
     });
-    router.push(`/rooms?${params.toString()}`);
+    router.push(`/${property.slug}/rooms?${params.toString()}`);
   }
 
   if (!hydrated || !persisted?.result) return null;

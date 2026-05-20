@@ -253,7 +253,7 @@ export function PorticoConfirmation({ t, property }: { t: PorticoTokens; propert
             }}
           >
             <Link
-              href="/"
+              href={`/${property.slug}`}
               style={{
                 background: t.ink,
                 color: t.bg,
@@ -268,7 +268,7 @@ export function PorticoConfirmation({ t, property }: { t: PorticoTokens; propert
               Return home
             </Link>
             <Link
-              href="/#good-to-know"
+              href={`/${property.slug}#good-to-know`}
               style={{
                 fontSize: 10,
                 letterSpacing: "0.22em",

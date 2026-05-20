@@ -282,6 +282,23 @@ export function PorticoConfirmation({ t, property }: { t: PorticoTokens; propert
             >
               Good to know
             </Link>
+            {details?.cancelUrl && (
+              <a
+                href={details.cancelUrl}
+                style={{
+                  fontSize: 10,
+                  letterSpacing: "0.22em",
+                  textTransform: "uppercase",
+                  color: t.inkSoft,
+                  textDecoration: "none",
+                  borderBottom: `1px solid ${t.rule}`,
+                  paddingBottom: 2,
+                  fontFamily: "var(--portico-sans)",
+                }}
+              >
+                Cancel booking
+              </a>
+            )}
             <span
               style={{
                 fontSize: 10,

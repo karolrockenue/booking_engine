@@ -22,6 +22,7 @@ export interface PersistedConfirmation {
   orderId: string;
   bookingId: string;
   cloudbedsReservationId?: string;
+  cancelUrl?: string;
   firstName: string;
   lastName: string;
   email: string;

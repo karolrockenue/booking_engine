@@ -28,6 +28,7 @@ export interface SubmitBookingResult {
   orderId: string;
   bookingId: string;
   cloudbedsReservationId?: string;
+  cancelUrl?: string; // Flex self-cancel link, for the confirmation screen
 }
 
 export class SubmitBookingError extends Error {
@@ -94,6 +95,7 @@ export async function submitBooking(
     orderId?: string;
     bookingId?: string;
     cloudbedsReservationId?: string;
+    cancelUrl?: string;
   };
 
   if (!res.ok || !data.orderId || !data.bookingId) {
@@ -107,5 +109,6 @@ export async function submitBooking(
     orderId: data.orderId,
     bookingId: data.bookingId,
     cloudbedsReservationId: data.cloudbedsReservationId,
+    cancelUrl: data.cancelUrl,
   };
 }

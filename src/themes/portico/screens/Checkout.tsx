@@ -209,6 +209,7 @@ export function PorticoCheckout({ t, property }: { t: PorticoTokens; property: R
         orderId: result.orderId,
         bookingId: result.bookingId,
         cloudbedsReservationId: result.cloudbedsReservationId,
+        cancelUrl: result.cancelUrl,
         firstName: first,
         lastName: last,
         email,

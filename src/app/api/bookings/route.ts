@@ -345,6 +345,7 @@ export async function POST(req: NextRequest) {
   // money taken (NR) or card saved (Flex) but no PMS reservation. Per build
   // plan: land happy path; the retry/refund recovery flow lands before launch.
   let cloudbedsReservationId: string | undefined;
+  let cancelUrl: string | undefined;
   try {
     const result = await postReservation(body.propertyId, {
       cloudbedsPropertyId: property.cloudbedsPropertyId,
@@ -518,7 +519,7 @@ export async function POST(req: NextRequest) {
 
     // Self-cancel link only for Flex bookings — NR has no self-cancel path
     // (the cancel route returns "non_refundable" / "contact hotel" for those).
-    const cancelUrl =
+    cancelUrl =
       rateType === "flex"
         ? `${publicOrigin()}/cancel/${signCancelToken(booking.id)}`
         : undefined;
@@ -575,6 +576,7 @@ export async function POST(req: NextRequest) {
     orderId: body.orderId,
     bookingId: booking.id,
     cloudbedsReservationId,
+    cancelUrl,
   });
 }
 

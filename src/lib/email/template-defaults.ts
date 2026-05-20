@@ -307,6 +307,7 @@ ${row("Check-out", "{{booking.checkOut}}")}
 ${row("Guests", "{{booking.adults}}")}
 ${row("Total", "{{booking.grandTotal}}")}
 <hr class="hr">
+{{links.cancelBlock}}
 <p>Need to make a change? Reply to this email and we'll help. We look forward to welcoming you to {{property.name}}.</p>
 `,
   });

@@ -52,6 +52,22 @@ function formatDate(iso: string): string {
   });
 }
 
+// Pre-rendered "Cancel booking" block, injected as a single variable so the
+// email template needs no conditional logic: it's the styled button for
+// bookings that can self-cancel (Flex, where links.cancel is set), or an empty
+// string otherwise (NR — contact the hotel). Inline styles so it survives in
+// any client / custom template.
+function cancelBlockHtml(url: string): string {
+  return (
+    `<div style="margin:20px 0;">` +
+    `<p style="font-size:15px;line-height:150%;margin:0 0 10px;color:#2a2a2a;">` +
+    `Plans changed? You can cancel this booking online.</p>` +
+    `<a href="${url}" style="display:inline-block;background:#15252a;color:#ffffff;` +
+    `font-size:14px;line-height:16px;padding:12px 24px;border-radius:2px;` +
+    `text-decoration:none;">Cancel booking</a></div>`
+  );
+}
+
 export function buildVarMap(ctx: VariableContext): EmailVarMap {
   const sym = ctx.booking.symbol || symbolFor(ctx.booking.currency);
   const fmt = (n: number) => `${sym}${n.toFixed(2)}`;
@@ -79,6 +95,9 @@ export function buildVarMap(ctx: VariableContext): EmailVarMap {
     "property.phone": ctx.property.phone,
     "property.email": ctx.property.email,
     "links.cancel": ctx.links.cancel ?? "",
+    // Prebuilt button (raw HTML) or empty — lets templates show a cancel button
+    // without if-logic and without a dead link on non-cancellable bookings.
+    "links.cancelBlock": ctx.links.cancel ? cancelBlockHtml(ctx.links.cancel) : "",
     "links.maps": ctx.links.maps ?? "",
   };
 }

@@ -113,6 +113,10 @@ interface PostCustomItemParams {
   name: string;
   amount: number; // major units, in property currency
   quantity: number;
+  // Optional folio service date (YYYY-MM-DD). Used to date each breakfast to
+  // the morning it's served, so the folio + "items by date" reports show staff
+  // the per-day counts. Defaults (omitted) to the post date.
+  serviceDate?: string;
 }
 
 interface PostCustomItemResponse {
@@ -151,6 +155,7 @@ export async function postCustomItem(
   form.set("items[0][itemName]", params.name);
   form.set("items[0][itemQuantity]", String(params.quantity));
   form.set("items[0][itemPrice]", params.amount.toFixed(2));
+  if (params.serviceDate) form.set("items[0][serviceDate]", params.serviceDate);
 
   const res = await fetch(url, {
     method: "POST",
@@ -321,5 +326,66 @@ export async function putReservationStatus(
     reservationID: body.reservationID ?? params.reservationID,
     status: body.status ?? params.status,
   };
+}
+
+interface PostReservationNoteParams {
+  cloudbedsPropertyId: string;
+  reservationID: string;
+  note: string;
+}
+
+interface PostReservationNoteResponse {
+  success: boolean;
+  reservationNoteID?: string;
+  message?: string;
+}
+
+/**
+ * Add a staff-facing note to a reservation (the reservation's Notes tab). We
+ * use it to summarise breakfast — how many, on which mornings — so the front
+ * desk sees it at a glance. The field is `reservationNote` (verified against
+ * the demo property 2026-05-20). Non-fatal: a failed note never voids a
+ * booking.
+ */
+export async function postReservationNote(
+  ourPropertyId: string,
+  params: PostReservationNoteParams
+): Promise<{ noteID: string }> {
+  const token = await getValidAccessToken(ourPropertyId);
+
+  const url = new URL(`${API_BASE}/postReservationNote`);
+  url.searchParams.set("propertyID", params.cloudbedsPropertyId);
+
+  const form = new URLSearchParams();
+  form.set("reservationID", params.reservationID);
+  form.set("reservationNote", params.note);
+
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/x-www-form-urlencoded",
+      Accept: "application/json",
+    },
+    body: form.toString(),
+  });
+
+  const text = await res.text();
+  let body: PostReservationNoteResponse;
+  try {
+    body = JSON.parse(text) as PostReservationNoteResponse;
+  } catch {
+    throw new Error(
+      `Cloudbeds postReservationNote: non-JSON response (${res.status}): ${text.slice(0, 300)}`
+    );
+  }
+
+  if (!res.ok || !body.success) {
+    throw new Error(
+      `Cloudbeds postReservationNote failed: ${body.message ?? `HTTP ${res.status}`} — ${text.slice(0, 300)}`
+    );
+  }
+
+  return { noteID: body.reservationNoteID ?? "" };
 }
 

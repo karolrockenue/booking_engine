@@ -12,17 +12,18 @@ import {
 } from "@/db/schema";
 import { eq, and, gte, lt } from "drizzle-orm";
 import {
-  extraQuantity,
   extraLineTotal,
   isPricingModel,
   stayMornings,
 } from "@/lib/booking/extra-pricing";
 import type { ExtraConfig, PricingModel } from "@/lib/booking/types";
+import { format, parseISO } from "date-fns";
 import { getStripe } from "@/lib/stripe/client";
 import {
   postReservation,
   postCustomItem,
   postPayment,
+  postReservationNote,
 } from "@/lib/cloudbeds/reservations";
 import { sendBookingConfirmationEmail } from "@/lib/email/booking-confirmation";
 import { signCancelToken } from "@/lib/crypto";
@@ -244,7 +245,8 @@ export async function POST(req: NextRequest) {
 
   // Sanitise any guest-supplied per_guest_per_night options (breakfast) against
   // the real headcount + stay mornings so a tampered client can't forge them.
-  const validMorningSet = new Set(stayMornings(body.checkIn, nights));
+  const allMornings = stayMornings(body.checkIn, nights);
+  const validMorningSet = new Set(allMornings);
   const configFor = (e: ExtraInput): ExtraConfig | undefined => {
     if (modelFor(e.id) !== "per_guest_per_night" || !e.config) return undefined;
     return {
@@ -365,38 +367,94 @@ export async function POST(req: NextRequest) {
     });
     cloudbedsReservationId = result.reservationID;
 
-    // Attach each extra as a folio line item. One Cloudbeds call per extra
-    // (no batch endpoint). Insert the row locally before the Cloudbeds call
-    // so the line item survives a postCustomItem failure — the common case
-    // today is the write:item scope not yet being granted by Cloudbeds.
-    // Failed rows keep cloudbedsItemId = null; the
-    // /api/admin/properties/[id]/cloudbeds/sync-pending-extras endpoint
-    // sweeps them and retries once the scope is enabled.
+    // Attach extras to the folio. Insert our row before the Cloudbeds call so
+    // the line survives a postCustomItem failure (the retry sweep at
+    // /api/admin/properties/[id]/cloudbeds/sync-pending-extras picks up rows
+    // left with cloudbedsItemId = null).
+    //
+    //  - per_stay (Early Check-In, …): one folio line, quantity 1.
+    //  - per_guest_per_night (breakfast): ONE dated line PER chosen morning
+    //    (quantity = guests that morning), so the folio's Service Date column +
+    //    Cloudbeds' "items by date" reports give staff the per-day counts. Our
+    //    bookingExtras keeps a single row (total qty) with the per-morning IDs
+    //    comma-joined in cloudbedsItemId.
+    const noteLines: string[] = [];
     for (const extra of extrasItems) {
       const unitMajor = extra.priceMinorUnits / 100;
-      const qty = extraQuantity(modelFor(extra.id), nights, guests, configFor(extra));
-      if (qty <= 0) continue;
-      const lineTotalMajor = unitMajor * qty;
+
+      if (modelFor(extra.id) === "per_guest_per_night") {
+        const cfg = configFor(extra) ?? { guests, mornings: allMornings };
+        const perMorning = cfg.guests;
+        const mornings = cfg.mornings;
+        if (perMorning <= 0 || mornings.length === 0) continue;
+        const totalQty = perMorning * mornings.length;
+
+        const [extraRow] = await db
+          .insert(bookingExtras)
+          .values({
+            bookingId: booking.id,
+            cloudbedsItemId: null,
+            name: extra.name,
+            qty: totalQty,
+            unitPrice: unitMajor.toFixed(2),
+            totalPrice: (unitMajor * totalQty).toFixed(2),
+            currency: extra.currency,
+          })
+          .returning({ id: bookingExtras.id });
+
+        const itemIds: string[] = [];
+        for (const morning of mornings) {
+          try {
+            const { itemID } = await postCustomItem(body.propertyId, {
+              cloudbedsPropertyId: property.cloudbedsPropertyId,
+              reservationID: cloudbedsReservationId,
+              name: extra.name,
+              amount: unitMajor,
+              quantity: perMorning,
+              serviceDate: morning,
+            });
+            if (itemID) itemIds.push(itemID);
+          } catch (extraErr) {
+            console.error(
+              `postCustomItem failed for ${extra.name} (${morning}) on reservation ${cloudbedsReservationId}:`,
+              extraErr
+            );
+          }
+        }
+        if (itemIds.length > 0) {
+          await db
+            .update(bookingExtras)
+            .set({ cloudbedsItemId: itemIds.join(",") })
+            .where(eq(bookingExtras.id, extraRow.id));
+        }
+        noteLines.push(
+          `${extra.name}: ${perMorning} guest${perMorning === 1 ? "" : "s"} × ${mornings
+            .map(fmtMorning)
+            .join(", ")} (${totalQty} total)`
+        );
+        continue;
+      }
+
+      // per_stay — one folio line, quantity 1
       const [extraRow] = await db
         .insert(bookingExtras)
         .values({
           bookingId: booking.id,
           cloudbedsItemId: null,
           name: extra.name,
-          qty,
+          qty: 1,
           unitPrice: unitMajor.toFixed(2),
-          totalPrice: lineTotalMajor.toFixed(2),
+          totalPrice: unitMajor.toFixed(2),
           currency: extra.currency,
         })
         .returning({ id: bookingExtras.id });
-
       try {
         const { itemID } = await postCustomItem(body.propertyId, {
           cloudbedsPropertyId: property.cloudbedsPropertyId,
           reservationID: cloudbedsReservationId,
           name: extra.name,
           amount: unitMajor,
-          quantity: qty,
+          quantity: 1,
         });
         if (itemID) {
           await db
@@ -409,7 +467,23 @@ export async function POST(req: NextRequest) {
           `postCustomItem failed for ${extra.name} on reservation ${cloudbedsReservationId}:`,
           extraErr
         );
-        // Row stays with cloudbedsItemId = null. Retry sweep picks it up.
+      }
+    }
+
+    // Staff-facing reservation note: which breakfasts, how many, on which
+    // mornings. Non-fatal — a failed note never voids the booking.
+    if (noteLines.length > 0) {
+      try {
+        await postReservationNote(body.propertyId, {
+          cloudbedsPropertyId: property.cloudbedsPropertyId,
+          reservationID: cloudbedsReservationId,
+          note: noteLines.join(" | "),
+        });
+      } catch (noteErr) {
+        console.error(
+          `postReservationNote failed for reservation ${cloudbedsReservationId}:`,
+          noteErr
+        );
       }
     }
 
@@ -502,4 +576,13 @@ export async function POST(req: NextRequest) {
     bookingId: booking.id,
     cloudbedsReservationId,
   });
+}
+
+// Short morning label for the staff reservation note, e.g. "Wed 28 May".
+function fmtMorning(d: string): string {
+  try {
+    return format(parseISO(d), "EEE d MMM");
+  } catch {
+    return d;
+  }
 }

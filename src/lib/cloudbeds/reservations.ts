@@ -16,7 +16,8 @@ interface PostReservationParams {
   ratesID: string; // Cloudbeds rate plan ID (otaRateId)
   adults: number;
   children: number;
-  subtotal: number; // major units (e.g. 108.00)
+  subtotal: number; // ROOM subtotal, major units (extras are posted separately).
+  // Informational only — Cloudbeds prices the room from roomRateID, not this.
   thirdPartyIdentifier: string; // our orderId
   paymentMethod?: string; // "credit" | "cash" | "other"
 }
@@ -58,6 +59,14 @@ export async function postReservation(
   // Single-room booking shape. Multi-room would use rooms[i][roomTypeID].
   form.set("rooms[0][roomTypeID]", params.roomTypeID);
   form.set("rooms[0][quantity]", "1");
+  // roomRateID is what actually selects the rate Cloudbeds prices the room at.
+  // `ratesID` (singular) and `subtotal[][subtotal]` are NOT honored for pricing:
+  // without roomRateID, Cloudbeds falls back to the room's master/base rate.
+  // Verified against the demo property 2026-05-20 — a derived "Direct Rate"
+  // (rateID 3117104, base − 10%) booked via ratesID alone priced at the base
+  // 120 instead of 108; adding rooms[0][roomRateID]=3117104 priced it at 108.
+  // Set it to the same rate we sold so the PMS folio matches the guest's quote.
+  form.set("rooms[0][roomRateID]", params.ratesID);
   form.set("adults[0][roomTypeID]", params.roomTypeID);
   form.set("adults[0][quantity]", String(params.adults));
   form.set("children[0][roomTypeID]", params.roomTypeID);

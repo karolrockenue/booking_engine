@@ -307,7 +307,10 @@ export async function POST(req: NextRequest) {
       ratesID: ratePlan.otaRateId,
       adults: body.adults ?? 1,
       children: body.children ?? 0,
-      subtotal: body.totalPrice,
+      // Room subtotal only — extras are attached separately via postCustomItem.
+      // (Cloudbeds prices the room from roomRateID inside postReservation; this
+      // value is informational. Previously sent room+extras, which was wrong.)
+      subtotal: roomTotalNum,
       thirdPartyIdentifier: body.orderId,
     });
     cloudbedsReservationId = result.reservationID;

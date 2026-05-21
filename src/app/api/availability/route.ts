@@ -165,7 +165,8 @@ async function computeAvailability(
           ratePlan: {
             id: plan.id,
             otaRateId: plan.otaRateId,
-            name: plan.namePublic ?? plan.name,
+            // Admin override wins; otherwise the Cloudbeds name.
+            name: plan.displayName ?? plan.namePublic ?? plan.name,
             isRefundable: plan.isRefundable ?? true,
           },
           totalPrice,

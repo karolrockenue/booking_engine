@@ -17,6 +17,7 @@ interface RatePlan {
   otaRateId: string;
   name: string;
   namePublic: string | null;
+  displayName: string | null;
   isPublic: boolean | null;
   isRefundable: boolean | null;
   cancellationPolicy: CancellationPolicy | null;
@@ -30,6 +31,7 @@ interface RatePlan {
 interface RateGroup {
   key: string;
   name: string;
+  displayName: string | null;
   plans: RatePlan[];
   isRefundable: boolean;
   isShown: boolean;
@@ -100,6 +102,7 @@ export default function RatesPage() {
       .map(([key, plans]) => ({
         key,
         name: key,
+        displayName: plans[0]?.displayName ?? null,
         plans,
         isRefundable: plans[0]?.isRefundable !== false,
         isShown: plans.every((p) => p.isPublic !== false),
@@ -180,12 +183,7 @@ export default function RatesPage() {
               group={g}
               open={openKey === g.key}
               onExpand={() => setOpenKey(openKey === g.key ? null : g.key)}
-              onToggleVisibility={() =>
-                patchGroup(g, { isPublic: !g.isShown })
-              }
-              onSavePolicy={(isRefundable, policy) =>
-                patchGroup(g, { isRefundable, cancellationPolicy: policy })
-              }
+              onPatch={(body) => patchGroup(g, body)}
             />
           ))}
         </div>
@@ -207,26 +205,22 @@ function GroupRow({
   group,
   open,
   onExpand,
-  onToggleVisibility,
-  onSavePolicy,
+  onPatch,
 }: {
   group: RateGroup;
   open: boolean;
   onExpand: () => void;
-  onToggleVisibility: () => Promise<boolean>;
-  onSavePolicy: (
-    isRefundable: boolean,
-    policy: CancellationPolicy | null
-  ) => Promise<boolean>;
+  onPatch: (body: Record<string, unknown>) => Promise<boolean>;
 }) {
   const [savingVisibility, setSavingVisibility] = useState(false);
   const roomCount = group.plans.length;
+  const shownName = group.displayName || group.name;
 
   async function toggle() {
     if (savingVisibility) return;
     setSavingVisibility(true);
     try {
-      await onToggleVisibility();
+      await onPatch({ isPublic: !group.isShown });
     } finally {
       setSavingVisibility(false);
     }
@@ -257,12 +251,23 @@ function GroupRow({
             ›
           </span>
           <div className="flex-1 min-w-0">
-            <div className="text-[13px] font-medium truncate">{group.name}</div>
+            <div className="text-[13px] font-medium truncate">
+              {shownName}
+              {group.displayName && (
+                <span
+                  className="ml-1.5 font-normal font-jbm text-[10.5px]"
+                  style={{ color: "var(--a-accent)" }}
+                >
+                  · custom
+                </span>
+              )}
+            </div>
             <div
-              className="font-jbm text-[11px] mt-0.5"
+              className="font-jbm text-[11px] mt-0.5 truncate"
               style={{ color: "var(--a-muted)" }}
             >
-              {roomCount} room {roomCount === 1 ? "type" : "types"}
+              Cloudbeds: {group.name} · {roomCount} room{" "}
+              {roomCount === 1 ? "type" : "types"}
             </div>
           </div>
         </button>
@@ -302,7 +307,7 @@ function GroupRow({
           </button>
         </div>
       </div>
-      {open && <Editor group={group} onSave={onSavePolicy} onDone={onExpand} />}
+      {open && <Editor group={group} onPatch={onPatch} onDone={onExpand} />}
     </div>
   );
 }
@@ -311,16 +316,16 @@ function GroupRow({
 
 function Editor({
   group,
-  onSave,
+  onPatch,
   onDone,
 }: {
   group: RateGroup;
-  onSave: (
-    isRefundable: boolean,
-    policy: CancellationPolicy | null
-  ) => Promise<boolean>;
+  onPatch: (body: Record<string, unknown>) => Promise<boolean>;
   onDone: () => void;
 }) {
+  const [displayName, setDisplayName] = useState<string>(
+    group.displayName ?? ""
+  );
   const [isRefundable, setIsRefundable] = useState<boolean>(group.isRefundable);
   const [deadlineHours, setDeadlineHours] = useState<string>(
     group.policy?.deadlineHours?.toString() ?? "48"
@@ -353,7 +358,11 @@ function Editor({
           ? { note: note.trim() }
           : null;
 
-      const ok = await onSave(isRefundable, policy);
+      const ok = await onPatch({
+        displayName: displayName.trim() || null,
+        isRefundable,
+        cancellationPolicy: policy,
+      });
       if (!ok) throw new Error("save failed (some rooms did not update)");
       onDone();
     } catch (e) {
@@ -374,6 +383,21 @@ function Editor({
       >
         Applies to all {group.plans.length} room{" "}
         {group.plans.length === 1 ? "type" : "types"} offering this rate.
+      </div>
+      <div className="mb-3">
+        <Field
+          label="Booking-engine name"
+          hint={`shown to guests instead of the Cloudbeds name — leave blank to use "${group.name}"`}
+        >
+          <input
+            type="text"
+            value={displayName}
+            onChange={(e) => setDisplayName(e.target.value)}
+            placeholder={group.name}
+            className="w-full px-2 py-1 border rounded text-[12.5px]"
+            style={{ borderColor: "var(--a-border)", background: "white" }}
+          />
+        </Field>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <Field label="Refundable">

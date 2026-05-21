@@ -19,6 +19,7 @@ export async function GET(
       otaRateId: ratePlans.otaRateId,
       name: ratePlans.name,
       namePublic: ratePlans.namePublic,
+      displayName: ratePlans.displayName,
       isPublic: ratePlans.isPublic,
       isRefundable: ratePlans.isRefundable,
       cancellationPolicy: ratePlans.cancellationPolicy,

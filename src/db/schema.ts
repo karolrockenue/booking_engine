@@ -162,6 +162,10 @@ export const ratePlans = pgTable(
     otaRateId: text("ota_rate_id").notNull(),
     name: text("name").notNull(),
     namePublic: text("name_public"),
+    // Admin-set display name for the booking engine. Our own config — the sync
+    // never writes it, so it survives re-syncs. NULL → fall back to the
+    // Cloudbeds name (namePublic ?? name).
+    displayName: text("display_name"),
     isPublic: boolean("is_public").default(true),
     isRefundable: boolean("is_refundable").default(true),
     cancellationPolicy: jsonb("cancellation_policy"),

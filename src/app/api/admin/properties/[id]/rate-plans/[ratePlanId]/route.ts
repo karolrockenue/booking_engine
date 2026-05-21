@@ -17,6 +17,9 @@ interface PatchBody {
   // Visibility in the booking engine. Availability filters on isPublic, and the
   // sync never overwrites it, so an admin's choice survives re-syncs.
   isPublic?: boolean;
+  // Display name shown on the booking engine. null/"" clears the override and
+  // falls back to the Cloudbeds name. Sync never writes it.
+  displayName?: string | null;
 }
 
 export async function PATCH(
@@ -35,6 +38,11 @@ export async function PATCH(
     updates.cancellationPolicy = body.cancellationPolicy;
   }
   if (body.isPublic !== undefined) updates.isPublic = body.isPublic;
+  if (body.displayName !== undefined) {
+    const trimmed =
+      typeof body.displayName === "string" ? body.displayName.trim() : "";
+    updates.displayName = trimmed.length > 0 ? trimmed : null;
+  }
 
   if (Object.keys(updates).length === 0) {
     return NextResponse.json(

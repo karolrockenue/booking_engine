@@ -14,6 +14,9 @@ interface CancellationPolicy {
 interface PatchBody {
   isRefundable?: boolean;
   cancellationPolicy?: CancellationPolicy | null;
+  // Visibility in the booking engine. Availability filters on isPublic, and the
+  // sync never overwrites it, so an admin's choice survives re-syncs.
+  isPublic?: boolean;
 }
 
 export async function PATCH(
@@ -31,6 +34,7 @@ export async function PATCH(
   if (body.cancellationPolicy !== undefined) {
     updates.cancellationPolicy = body.cancellationPolicy;
   }
+  if (body.isPublic !== undefined) updates.isPublic = body.isPublic;
 
   if (Object.keys(updates).length === 0) {
     return NextResponse.json(

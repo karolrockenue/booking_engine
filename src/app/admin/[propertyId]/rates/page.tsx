@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { TopStrip, Btn } from "@/components/admin/TopStrip";
 import { useAdminToken } from "../../layout";
@@ -65,17 +65,6 @@ export default function RatesPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, propertyId]);
 
-  const grouped = useMemo(() => {
-    const groups = new Map<string, RatePlan[]>();
-    for (const r of list) {
-      const key = r.roomTypeName ?? "—";
-      const arr = groups.get(key) ?? [];
-      arr.push(r);
-      groups.set(key, arr);
-    }
-    return Array.from(groups.entries());
-  }, [list]);
-
   return (
     <>
       <TopStrip
@@ -83,7 +72,7 @@ export default function RatesPage() {
         subtitle={
           loading
             ? "Loading…"
-            : `${list.length} rate plans across ${grouped.length} room ${grouped.length === 1 ? "type" : "types"} · synced from Cloudbeds · admin-editable: refundability + cancellation policy`
+            : `${list.length} rate ${list.length === 1 ? "plan" : "plans"} · synced from Cloudbeds · toggle visibility, edit refundability + cancellation policy`
         }
         actions={
           <Btn href={`/admin/${propertyId}/cloudbeds`}>
@@ -108,40 +97,21 @@ export default function RatesPage() {
           No rate plans yet. Run a Cloudbeds sync to populate.
         </div>
       ) : (
-        <div className="flex flex-col gap-5">
-          {grouped.map(([roomName, plans]) => (
-            <div key={roomName}>
-              <h2
-                className="text-[12px] font-semibold uppercase tracking-wider mb-2"
-                style={{ color: "var(--a-muted)" }}
-              >
-                {roomName}
-                <span
-                  className="font-jbm font-normal ml-2 text-[11px]"
-                  style={{ color: "var(--a-muted)" }}
-                >
-                  · {plans.length}{" "}
-                  {plans.length === 1 ? "rate plan" : "rate plans"}
-                </span>
-              </h2>
-              <div className="flex flex-col gap-1.5">
-                {plans.map((rp) => (
-                  <RatePlanRow
-                    key={rp.id}
-                    plan={rp}
-                    open={openId === rp.id}
-                    onToggle={() => setOpenId(openId === rp.id ? null : rp.id)}
-                    onSaved={(updated) => {
-                      setList((cur) =>
-                        cur.map((r) => (r.id === updated.id ? { ...r, ...updated } : r))
-                      );
-                    }}
-                    propertyId={propertyId}
-                    token={token}
-                  />
-                ))}
-              </div>
-            </div>
+        <div className="flex flex-col gap-1.5">
+          {list.map((rp) => (
+            <RatePlanRow
+              key={rp.id}
+              plan={rp}
+              open={openId === rp.id}
+              onToggle={() => setOpenId(openId === rp.id ? null : rp.id)}
+              onSaved={(updated) => {
+                setList((cur) =>
+                  cur.map((r) => (r.id === updated.id ? { ...r, ...updated } : r))
+                );
+              }}
+              propertyId={propertyId}
+              token={token}
+            />
           ))}
         </div>
       )}
@@ -171,38 +141,70 @@ function RatePlanRow({
   propertyId: string;
   token: string;
 }) {
+  const [savingPublic, setSavingPublic] = useState(false);
+  const isShown = plan.isPublic !== false;
+
+  async function togglePublic() {
+    if (savingPublic) return;
+    const next = !isShown;
+    setSavingPublic(true);
+    onSaved({ ...plan, isPublic: next }); // optimistic
+    try {
+      const r = await fetch(
+        `/api/admin/properties/${propertyId}/rate-plans/${plan.id}`,
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ isPublic: next }),
+        }
+      );
+      if (!r.ok) onSaved({ ...plan, isPublic: isShown }); // revert
+    } catch {
+      onSaved({ ...plan, isPublic: isShown }); // revert
+    } finally {
+      setSavingPublic(false);
+    }
+  }
+
   return (
     <div
       className="border rounded-md overflow-hidden"
       style={{
         borderColor: open ? "var(--a-accent)" : "var(--a-border)",
         background: "var(--a-surface)",
+        opacity: isShown ? 1 : 0.6,
       }}
     >
-      <button
-        onClick={onToggle}
-        className="w-full px-3.5 py-2.5 flex items-center gap-3 text-left hover:bg-[var(--a-surface-2)]"
-      >
-        <span
-          className="text-[11px]"
-          style={{
-            color: "var(--a-muted)",
-            transform: open ? "rotate(90deg)" : "none",
-            transition: "transform .15s",
-          }}
+      <div className="w-full px-3.5 py-2.5 flex items-center gap-3">
+        <button
+          onClick={onToggle}
+          className="flex items-center gap-3 text-left flex-1 min-w-0 hover:opacity-80"
         >
-          ›
-        </span>
-        <div className="flex-1 min-w-0">
-          <div className="text-[13px] font-medium">{plan.name}</div>
-          <div
-            className="font-jbm text-[11px] mt-0.5"
-            style={{ color: "var(--a-muted)" }}
+          <span
+            className="text-[11px]"
+            style={{
+              color: "var(--a-muted)",
+              transform: open ? "rotate(90deg)" : "none",
+              transition: "transform .15s",
+            }}
           >
-            CB rateID {plan.otaRateId}
+            ›
+          </span>
+          <div className="flex-1 min-w-0">
+            <div className="text-[13px] font-medium truncate">{plan.name}</div>
+            <div
+              className="font-jbm text-[11px] mt-0.5 truncate"
+              style={{ color: "var(--a-muted)" }}
+            >
+              {plan.roomTypeName ? `${plan.roomTypeName} · ` : ""}CB rateID{" "}
+              {plan.otaRateId}
+            </div>
           </div>
-        </div>
-        <div className="flex items-center gap-1.5">
+        </button>
+        <div className="flex items-center gap-1.5 flex-shrink-0">
           {plan.isRefundable === false ? (
             <Pill tone="gray">non-refundable</Pill>
           ) : (
@@ -211,8 +213,33 @@ function RatePlanRow({
           {plan.cancellationPolicy?.deadlineHours !== undefined && (
             <Pill tone="blue">{plan.cancellationPolicy.deadlineHours}h deadline</Pill>
           )}
+          <button
+            onClick={togglePublic}
+            disabled={savingPublic}
+            title={
+              isShown
+                ? "Shown in the booking engine — click to hide"
+                : "Hidden from the booking engine — click to show"
+            }
+            className="text-[11px] px-2 py-0.5 rounded border font-medium"
+            style={
+              isShown
+                ? {
+                    borderColor: "rgba(0,135,90,0.25)",
+                    color: "var(--a-green)",
+                    background: "var(--a-green-soft)",
+                  }
+                : {
+                    borderColor: "var(--a-border)",
+                    color: "var(--a-muted)",
+                    background: "var(--a-surface-2)",
+                  }
+            }
+          >
+            {savingPublic ? "…" : isShown ? "Shown" : "Hidden"}
+          </button>
         </div>
-      </button>
+      </div>
       {open && (
         <Editor
           plan={plan}

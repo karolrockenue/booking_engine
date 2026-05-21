@@ -1,12 +1,43 @@
 # **Booking Engine — Blueprint**
 
-**Last updated:** 2026-05-20 **Status:** Phases 1–5 \+ 6.5 \+ 6.6 \+ 7.1 shipped. Stripe Connect live on UAE sandbox (Polish entity migration scheduled post-19 May). Flex auto-charge \+ PMS retry recovery live on production. **Guest comms (Phase 7.1) shipped end-to-end — Unlayer composer + R2 image pipeline + scheduler + send log. Maily.to replaced 2026-05-12 (no font control); Unlayer integrates uploads into the Media library and supports brand fonts. See §13.** Welcome Pickups partnership in motion. **✅ Cloudbeds Marketplace CERTIFIED 2026-05-20** — passed via the live Marketplace "Connect app" flow. The retry-day fixes that closed it: the OAuth callback now accepts **Cloudbeds-initiated** installs (unsigned state → fresh property, `63d5745`); the admin "Open site" button uses the `/<slug>` path, not the retired `?property=` shim (`8c4079b`); and the Cloudbeds console's **Login URL** (a stale `market-pulse.io` value) was repointed to `/api/install`. Full chain verified end-to-end: OAuth → auto-create hotel → inventory/rates/extras/hotel-details sync → webhooks → Stripe auto-attach → real NR + Flex bookings with per-morning breakfast folio + cancel. **us2 needs no special handling** — OAuth authorize is the standard `hotels.cloudbeds.com/api/v1.3/oauth` (not `us2`/`v1.1`); the cluster resolves internally. See the **2026-05-20 session log** immediately below + §7 chronicle. **Post-cert cleanup pending: DROP the `cert_attach_test_stripe` trigger + delete the throwaway test properties.**
+**Last updated:** 2026-05-21 **Status:** Phases 1–5 \+ 6.5 \+ 6.6 \+ 7.1 shipped. Stripe Connect live on UAE sandbox (Polish entity migration scheduled post-19 May). Flex auto-charge \+ PMS retry recovery live on production. **Guest comms (Phase 7.1) shipped end-to-end — Unlayer composer + R2 image pipeline + scheduler + send log. Maily.to replaced 2026-05-12 (no font control); Unlayer integrates uploads into the Media library and supports brand fonts. See §13.** Welcome Pickups partnership in motion. **✅ Cloudbeds Marketplace CERTIFIED 2026-05-20** — passed via the live Marketplace "Connect app" flow. The retry-day fixes that closed it: the OAuth callback now accepts **Cloudbeds-initiated** installs (unsigned state → fresh property, `63d5745`); the admin "Open site" button uses the `/<slug>` path, not the retired `?property=` shim (`8c4079b`); and the Cloudbeds console's **Login URL** (a stale `market-pulse.io` value) was repointed to `/api/install`. Full chain verified end-to-end: OAuth → auto-create hotel → inventory/rates/extras/hotel-details sync → webhooks → Stripe auto-attach → real NR + Flex bookings with per-morning breakfast folio + cancel. **us2 needs no special handling** — OAuth authorize is the standard `hotels.cloudbeds.com/api/v1.3/oauth` (not `us2`/`v1.1`); the cluster resolves internally. See the **2026-05-20 session log** immediately below + §7 chronicle. **Post-cert cleanup pending: DROP the `cert_attach_test_stripe` trigger + delete the throwaway test properties.** **2026-05-21 (post-cert):** platform domain **`app.rockenue.tech`** is live (Hostinger DNS → Railway) with a Rockenue Tech landing page; admin gained **room-type visibility** + a dedicated **Rooms** page, and **Rate plans** now show logical (deduped) plans with per-plan visibility + a booking-engine display-name override. **Google Hotel Center integration Sprints 1–4 shipped** (separate work stream — see `Google Hotel Center — Blueprint.md`). See the **2026-05-21 session log** below.
 
 Multi-tenant hotel website \+ booking engine platform. Each hotel runs on its own custom domain with a bespoke website and an integrated booking flow connected to Cloudbeds. Built and managed by Rockenue as the webmaster across all properties (≈40 independent hotels, luxury → near-hostel spectrum).
 
 This document is the single source of truth. It replaces `README.md`, `hotel-platform-build-plan.md`, `THEMES.md`, and `TODO.md`. AI agent rules continue to live in `AGENTS.md` / `CLAUDE.md`.
 
 > **Companion blueprint — Google Hotel Center.** The Google integration work stream (Free Booking Links / Hotel Ads — Hotel List XML feed, ARI Push, Landing Pages XML, JSON-LD hotel-price data, Connectivity Partner application) lives in its **own** document: **`Google Hotel Center — Blueprint.md`** in the repo root. If a task touches Google feeds, Hotel Center, FBL/Hotel Ads, or hotel-price structured data, read that file — it's the source of truth for that work stream. This document stays focused on the IBE (booking engine, Cloudbeds, Stripe, admin, themes, email).
+
+---
+
+## **2026-05-21 session log — post-cert: admin polish, platform domain, Google integration**
+
+Post-certification work, all deployed to `main`/Railway. Newest first; commit hashes in parentheses.
+
+### Google Hotel Center integration — Sprints 1–4 (`d7352bd`, `3abda76`, `8876820`, `5e5d98a`)
+- New work stream in **its own doc — `Google Hotel Center — Blueprint.md`** (Free Booking Links first, Hotel Ads later). It carries a standing **plan → execute → update** process (its §11 Progress log). Code lives in `src/lib/google-hotels/` + `src/app/api/google/feeds/`.
+- **Sprint 1 — Hotel List XML feed** (`/api/google/feeds/hotel-list`, admin-gated): emits the `<listings>` identity feed from `properties` + `content_blocks`; **validates against Google's `local_feed.xsd`**.
+- **Sprint 2 — JSON-LD on `/rooms`**: extracted `computeAvailability` into **`src/lib/booking/availability.ts`** (now shared by the availability route AND the JSON-LD builder, so the structured-data price can't drift from the booking page). `buildHotelJsonLd` injects a server-rendered schema.org `Hotel` + `makesOffer` into the shared `/rooms` route. Verified: JSON-LD price === availability lowest.
+- **Sprint 3 — VAT / rate-display audit** (no code): confirmed feed price = displayed = booking = Stripe charge; VAT sits inside the Cloudbeds rate; the 3% platform fee is a Stripe `application_fee` **deduction** from the hotel payout, never a checkout add-on. Decision: feed declares an all-inclusive `Baserate`.
+- **Sprint 4 — Landing Pages XML** (`/api/google/feeds/landing-pages`, admin-gated): a `<PointsOfSale>` macro-templated deep-link URL; the substituted URL returns **HTTP 200 on the live app**. Hotel List feed's `alternate_hotel_id` is now the **slug** (the routing key).
+- **Next: Sprint 5 (ARI Push, ~15 days)** — heavy + only fully testable once Google allowlists us.
+
+### Platform domain + landing page (`206a11c`, `b5c82d6`, `12e8107`, `b8dbcc5`)
+- **`app.rockenue.tech` live** (Hostinger DNS CNAME → Railway, SSL issued). Intended canonical host for admin + the Cloudbeds OAuth/webhook + Stripe webhook + Google feeds. **Endpoint cutover still pending** — swap `CLOUDBEDS_REDIRECT_URI` / `CLOUDBEDS_WEBHOOK_URL` / `PUBLIC_APP_URL`, add the new redirect URI + Login URL in the Cloudbeds console (parallel with the Railway ones), re-point the Stripe webhook, then retire the Railway URL (see §19 Phase 6).
+- **Rockenue Tech landing page** at the bare platform host (`src/components/rockenue/Landing.tsx`): dark `#14181D`, teal/gold `(tech)` motif, Inter, **Admin button → `/admin`**. Bare `/` now renders this instead of falling through to the first Cloudbeds hotel; a host a hotel owns still redirects to `/<slug>`; per-hotel sites remain at `/<slug>`.
+- Root tidy: removed `.DS_Store` + `tmp/` scratch; gitignored `/backups/` (local DB snapshots).
+
+### Admin — Rate plans: logical plans + visibility + display name (`720a578`, `6776355`, `9459255`)
+- The Rate plans page no longer lists per-room rows — they're **grouped into logical plans** (Standard, Non Refundable, Direct Rate, Direct NRF) by stripping the room-type prefix from synthesised "<Room> Standard" master names. Lancaster's **27 rows → 4**. Hiding or editing one **fans out to every underlying per-room rate plan**.
+- **Visibility toggle** per logical plan reuses **`rate_plans.isPublic`** (availability already filters on it; the sync never overwrites it). Hidden plans drop from the booking engine.
+- **Booking-engine display-name override** — new **`rate_plans.display_name`** (admin-owned; sync never writes it). Availability serves `displayName ?? namePublic ?? name`; the admin row shows both the booking-engine name and the Cloudbeds name (defaults to the CB name).
+
+### Admin — Room-type visibility + dedicated Rooms page (`3399859`, `72a8c6c`, `29fc813`)
+- New **`room_types.hidden_from_booking`** (admin-owned; sync never writes it). Availability filters hidden rooms out, so virtual/staff room types (e.g. Lancaster's **"Virtual Double"**, **"Air BnB"**) drop from the booking engine.
+- **Dedicated "Rooms" sidebar page** (`/admin/[id]/rooms`, between Media and Rate plans) with a Shown/Hidden toggle per room — moved out of the Content page (which no longer fetches/renders rooms). Cloudbeds HTML room descriptions are flattened to plain text in the admin row.
+
+### Cert documentation (`27de6b6`, `77d0835`)
+- Recorded the Cloudbeds Marketplace **certification** + retry-day fixes (Cloudbeds-initiated OAuth callback, Open Site path fix, console Login URL repoint). See the 2026-05-20 session log + §7.
 
 ---
 
@@ -191,7 +222,8 @@ Not yet fully scaffolded — `src/lib/booking` exists and is canonical; the `src
 ### **Property resolution (`src/lib/get-property.ts`)**
 
 - **Customer pages** (under `[property]`) call `resolvePropertyBySlug(slug)` with the route param → `notFound()` on an unknown slug. This is the primary path.
-- **Bare `/`** and the token routes (`/cancel/[token]`, `/payment-update/[token]`) call `resolveProperty()` — resolves by `properties.domain` exact match, else the first property with `cloudbedsPropertyId` set (dev/staging fallback), else any property. Bare `/` then redirects to `/<slug>`.
+- **Bare `/`** (since 2026-05-21) resolves by **host**: if a hotel owns the exact host (`properties.domain` match) it redirects to that hotel's `/<slug>`; otherwise it's the **platform host** (`app.rockenue.tech`) and renders the **Rockenue Tech landing page** (`src/components/rockenue/Landing.tsx`, Admin button → `/admin`). It no longer falls through to the first Cloudbeds-connected hotel. (`src/app/page.tsx`.)
+- **Token routes** (`/cancel/[token]`, `/payment-update/[token]`) still call `resolveProperty()` — resolves by `properties.domain` exact match, else the first property with `cloudbedsPropertyId` set (dev/staging fallback), else any property.
 
 The old `?property=<slug>` shim is **retired** — the path replaces it. (It was the source of the cert-day "wrong property after navigation" bug: internal navigation dropped the query param and fell back to the domain owner. See the 2026-05-20 session log.) For a single deployment that should serve one hotel from its bare domain, set `properties.domain`.
 
@@ -299,9 +331,9 @@ Live on Neon. Push schema changes via `npx drizzle-kit push` (no migrations dir)
 * Variants: `variants` JSONB (`{ hero: {key,url,w,h,sizeBytes}, gallery: {...}, thumb: {...} }`)  
 * R2 keys follow `properties/<propertyId>/<uuid>-{hero|gallery|thumb}.jpg`
 
-**`room_types`** — mirrored from Cloudbeds (`otaRoomId` \= Cloudbeds `roomTypeID`, numeric)
+**`room_types`** — mirrored from Cloudbeds (`otaRoomId` \= Cloudbeds `roomTypeID`, numeric). `hiddenFromBooking` (bool, default false) is admin-controlled visibility — the inventory sync never writes it, so it survives re-syncs; `/api/availability` filters hidden room types out (used to hide virtual/staff rooms). Managed on Admin → **Rooms** (2026-05-21).
 
-**`rate_plans`** — mirrored from Cloudbeds (`otaRateId` \= Cloudbeds `rateID`); `isRefundable` \+ `cancellationPolicy` are admin-managed (not in CB API), seeded from a name heuristic on first sync.
+**`rate_plans`** — mirrored from Cloudbeds (`otaRateId` \= Cloudbeds `rateID`); `isRefundable` \+ `cancellationPolicy` are admin-managed (not in CB API), seeded from a name heuristic on first sync. **`isPublic`** (bool, default true) is admin-controlled visibility — availability filters on it; the sync never overwrites it (used by the Rate plans "Shown/Hidden" toggle). **`displayName`** (nullable, 2026-05-21) is an admin override for the name shown on the booking engine — availability serves `displayName ?? namePublic ?? name`; sync never writes it.
 
 **`inventory`** — ARI cache (date × room × rate → units, rate, restrictions); upserted by `syncInventoryForProperty`.
 
@@ -621,7 +653,7 @@ Shipped 2026-05-07. Full UX signed off as `public/mockups/admin-mockup-v3.html`.
 
 * `src/app/admin/layout.tsx` — auth gate only (token via localStorage, `useAdminAuth()` exposes `{ token, setToken, logout }`).  
 * `src/app/admin/[propertyId]/layout.tsx` — fetches property meta, renders the sidebar shell. Active nav item inferred from pathname. `<PropertyBar>` at top of main area shows hotel name \+ status pill \+ domain \+ currency \+ always-new-tab "Open site ↗".  
-* `src/components/admin/Sidebar.tsx` — 240px persistent sidebar. Hotel switcher card (HOTEL label + hotel name + slug · currency meta + ⇅ icon — clearly reads as a switcher; clicking returns to the cross-hotel dashboard) → Property nav (Overview, Bookings, Content, Media, Rate plans, Emails, Alerts) → Integrations nav (Cloudbeds, Stripe, Domain) → user/logout chip.  
+* `src/components/admin/Sidebar.tsx` — 240px persistent sidebar. Hotel switcher card (HOTEL label + hotel name + slug · currency meta + ⇅ icon — clearly reads as a switcher; clicking returns to the cross-hotel dashboard) → Property nav (Overview, Bookings, Content, Media, **Rooms**, Rate plans, Extras, Emails, Alerts) → Integrations nav (Cloudbeds, Stripe, Domain) → user/logout chip.  
 * `src/components/admin/TopStrip.tsx` — page header \+ button primitive (`<Btn>`) with variants `primary | secondary | danger | ghost`, sizes `sm | md`, `newTab` prop. Also exports `<Crumb to={parentHref}>Section</Crumb>` — muted grey clickable parent + slash, used in titles of every sub-page (e.g. `Emails / Booking confirmation`). Sidebar active state stays on the parent section even when deep in a sub-page so admin always knows where they are.  
 * **Content width:** `max-w-[1560px]` on both `/admin` dashboard and per-property `<main>` (raised from 1180px on 2026-05-12). Pages center on wide screens; on 13–15" laptops the cap is never hit.  
 * v3 design tokens scoped under `.admin-root` in `src/app/globals.css` — `--a-bg`, `--a-side`, `--a-ink`, `--a-accent` (`#5B5BD6`), tinted soft variants for green/amber/red/blue, `.font-jbm` utility for JetBrains Mono.
@@ -635,8 +667,10 @@ Shipped 2026-05-07. Full UX signed off as `public/mockups/admin-mockup-v3.html`.
 | `/admin/[id]/bookings` | `GET /api/admin/properties/[id]/bookings` (200-row cap, hydrates extras) | ✅ |
 | `/admin/[id]/content` | `GET POST /api/admin/properties/[id]/content` | ✅ |
 | `/admin/[id]/media` | `GET POST /api/admin/properties/[id]/photos` \+ `PATCH DELETE /[photoId]` | ✅ (renamed from `/photos` 2026-05-12; API path keeps `photos` for now) |
+| `/admin/[id]/rooms` | `GET /api/admin/properties/[id]/rooms` \+ `PATCH` (`hiddenFromBooking`) | ✅ (2026-05-21 — Shown/Hidden toggle per room type; hides virtual/staff rooms from the booking engine) |
+| `/admin/[id]/extras` | `GET PATCH /api/admin/properties/[id]/extras` (per-extra `pricing_model`) | ✅ |
 | `/admin/[id]/emails`, `/template/[key]`, `/schedule`, `/log` | `/api/admin/properties/[id]/email-templates`, `/email-schedules`, `/email-sends` | ✅ (Phase 7.1 — Unlayer composer; see §13) |
-| `/admin/[id]/rates` | `GET /api/admin/properties/[id]/rate-plans` \+ `PATCH /[ratePlanId]` | ✅ |
+| `/admin/[id]/rates` | `GET /api/admin/properties/[id]/rate-plans` \+ `PATCH /[ratePlanId]` | ✅ (2026-05-21 — **logical** rate plans, deduped across room types; per-plan Shown/Hidden via `isPublic`; booking-engine `displayName` override) |
 | `/admin/[id]/cloudbeds` | `GET /api/admin/properties/[id]/cloudbeds` \+ `POST /sync` | ✅ |
 | `/admin/[id]/stripe` | `GET /api/admin/properties/[id]/stripe` (Promise.allSettled across account/fees/payouts/balance/refunds) | ✅ |
 | `/admin/[id]/domain` | TODO | 🟡 stub |
@@ -820,8 +854,9 @@ src/
 │       │   └── webhooks/[token]/route.ts  # Token-gated webhook handler
 │       ├── cron/inventory-sync/route.ts   # Bearer-protected sync sweep
 │       ├── stripe/                        # connect/start, connect/return, payment-intent, setup-intent, webhooks
+│       ├── google/feeds/                  # hotel-list/, landing-pages/ (admin-gated; see Google blueprint)
 │       └── admin/properties/[id]/         # Admin REST endpoints
-│           ├── route.ts, overview/, bookings/, content/, photos/, rate-plans/, cloudbeds/, stripe/
+│           ├── route.ts, overview/, bookings/, content/, photos/, rooms/, extras/, rate-plans/, cloudbeds/, stripe/
 ├── components/
 │   ├── layout/                            # ThemeProvider, NavBar, Footer
 │   ├── website/                           # HeroSection (legacy theme)
@@ -835,11 +870,13 @@ src/
 │   └── index.ts                           # Neon connection
 ├── lib/
 │   ├── theme.ts, content-defaults.ts, get-property.ts, admin-auth.ts, crypto.ts, active-theme.ts
-│   ├── booking/                           # Headless booking hooks
+│   ├── booking/                           # Headless booking hooks + availability.ts (shared computeAvailability)
 │   ├── cloudbeds/                         # client, scopes, sync-inventory, sync-extras, sync-hotel-details, reservations, webhook-*
+│   ├── google-hotels/                     # Google Hotel Center: hotel-list-feed, landing-pages, hotel-json-ld, types (see Google blueprint)
 │   ├── stripe/                            # client (platform), browser, status, amounts, detach
 │   ├── email/                             # sendgrid, booking-confirmation, booking-cancellation, unlayer-renderer, template-defaults, send-template, scheduler, seed-templates, variables, fonts
 │   └── r2/                                # client, resize
+├── components/rockenue/                   # Landing.tsx — Rockenue Tech platform landing page (bare app.rockenue.tech)
 ├── themes/portico/                        # Portico Ivory theme
 │   ├── PorticoShell.tsx, tokens.ts, fonts.ts, stripe-appearance.ts, index.ts
 │   ├── components/                        # Nav, Calendar, Gallery, Map, primitives, RoomGallery, StickyBar, Logo, Wordmark, emphasis

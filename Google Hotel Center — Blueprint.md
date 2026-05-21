@@ -3,7 +3,7 @@
 > **Scope:** Direct integration with Google Hotel Center for **Free Booking Links** (FBL) primarily, **Paid Hotel Ads** later. Single-purpose document for an AI agent picking up this work stream.
 >
 > **Last updated:** 2026-05-21
-> **Status:** Pre-application. **Sprints 1–3 shipped 2026-05-21** — Hotel List XML feed (validates vs XSD) + JSON-LD hotel-price data on `/rooms` (price matches booking page) + VAT/rate-display audit (price is all-inclusive, no checkout add-ons; 3% is a deduction not an add-on). Next: Sprint 4 (Landing Pages XML + URL routing). Connectivity Partner application after the feed is productionised (zip + BASIC auth + per-hotel domains). See Progress log (§11).
+> **Status:** Pre-application. **Sprints 1–4 shipped 2026-05-21** — Hotel List XML feed (validates vs XSD) + JSON-LD hotel-price data on `/rooms` (price matches booking page) + VAT/rate-display audit (all-inclusive, no checkout add-ons) + Landing Pages XML (deep-link verified HTTP 200 on the live app). Next: **Sprint 5 (ARI Push pipeline — the heavy lift, ~15 days; only fully testable once Google allowlists us)**. Connectivity Partner application after the feed is productionised (zip + BASIC auth + per-hotel domains). See Progress log (§11).
 
 > **⚙️ Working process — every AI agent on this stream MUST follow this.** Before a big chunk of work, **append a Plan** to the **Progress log (§11, bottom of this doc)**: what you'll build, where, and the acceptance check. Then execute. Then **update that same entry to Shipped** when done — recording what actually changed and any deviations. Keep the plan and the outcome in one place so this blueprint always reflects reality. The loop is **plan → execute → update**, every time.
 
@@ -450,6 +450,24 @@ The technical work we build is the same regardless — Hotel List XML, ARI Push,
 - **One open item (operational, not code):** confirm each hotel sets **VAT-inclusive rates in Cloudbeds** during onboarding (fold into Hannah's GBP/property audit). For non-UK/test hotels on USD (the partner-account demo) VAT doesn't apply.
 
 **Next: Sprint 4 (Landing Pages XML + URL routing).**
+
+### Sprint 4 — Landing Pages XML + URL routing — ✅ SHIPPED (2026-05-21)
+
+**Plan:**
+- Refine the Hotel List feed: emit `client_attr alternate_hotel_id = <slug>` **always** (the booking-engine routing key Landing Pages needs), keeping `<website> = domain` when set. (Sprint 1 used the domain for alternate_hotel_id; the slug is the routing key + always present. `<website>` must precede `<client_attr>` per the XSD attributes sequence.)
+- `src/lib/google-hotels/landing-pages.ts` — `buildLandingPagesFeed()`: a single `<PointsOfSale>` → `<PointOfSale id>` with `<Match status="yes"/>` and a `<URL>` template that deep-links into our flow via Google macros:
+  `https://app.rockenue.tech/(ALTERNATE-HOTEL-ID)/rooms?checkIn=(CHECKINYEAR)-(CHECKINMONTH)-(CHECKINDAY)&checkOut=(CHECKOUTYEAR)-(CHECKOUTMONTH)-(CHECKOUTDAY)&adults=(NUM-ADULTS)&children=(NUM-CHILDREN)` (host overridable via `GOOGLE_LANDING_HOST`).
+- `src/app/api/google/feeds/landing-pages/route.ts` — admin-gated GET serving the XML.
+- Validate well-formed XML (`xmllint --noout`) + simulate macro substitution → confirm the URL matches our `/<slug>/rooms` route.
+
+**Decisions:**
+- v1 deep-links to the platform host + slug (`app.rockenue.tech/<slug>/rooms`); when hotels get their own domains the host/template switches (future).
+- `(ALTERNATE-HOTEL-ID)` = slug; `(PARTNER-HOTEL-ID)` = the feed `<id>` (`roc-<uuid>`).
+- `<Match status="yes"/>` broad (no country restriction) for v1.
+
+**Acceptance:** well-formed Landing Pages XML; substituting the macros yields a working `/<slug>/rooms?checkIn=…` URL.
+
+**Shipped (2026-05-21):** Hotel List feed now emits `client_attr alternate_hotel_id = <slug>` for every hotel (`<website>` before it per the XSD), re-validated against `local_feed.xsd` → `validates`. Added `src/lib/google-hotels/landing-pages.ts` (`buildLandingPagesFeed`) + admin-gated `src/app/api/google/feeds/landing-pages/route.ts`. Landing Pages XML is well-formed (`xmllint --noout`). Macro substitution for Lancaster produced `https://app.rockenue.tech/lancaster-court-hotel-a740c31e/rooms?checkIn=2026-05-31&checkOut=2026-06-02&adults=2&children=0`, which **returns HTTP 200 on the live app** (deep-link resolves to the real rooms page; same dates carry the Sprint-2 JSON-LD). Build passes. **Host overridable via `GOOGLE_LANDING_HOST`; switches to per-hotel domains later. Next: Sprint 5 (ARI Push pipeline — the big one, ~15 days; only fully testable once Google allowlists us).**
 
 ---
 

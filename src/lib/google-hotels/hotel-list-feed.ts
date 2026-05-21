@@ -123,20 +123,24 @@ export async function buildHotelListFeed(): Promise<HotelListFeedResult> {
     if (phone) lines.push(`    <phone type="main">${esc(phone)}</phone>`);
     lines.push(`    <category>hotel</category>`);
 
+    // content/attributes. Per the XSD sequence, <website> must precede
+    // <client_attr>. alternate_hotel_id = slug is the booking-engine routing
+    // key the Landing Pages feed substitutes into the deep-link URL, so we
+    // emit it for every hotel; <website> only when a domain is set.
+    lines.push(`    <content>`);
+    lines.push(`      <attributes>`);
     if (p.domain) {
       withWebsite++;
       const website = /^https?:\/\//i.test(p.domain)
         ? p.domain
         : `https://${p.domain}`;
-      lines.push(`    <content>`);
-      lines.push(`      <attributes>`);
       lines.push(`        <website>${esc(website)}</website>`);
-      lines.push(
-        `        <client_attr name="alternate_hotel_id">${esc(p.domain)}</client_attr>`
-      );
-      lines.push(`      </attributes>`);
-      lines.push(`    </content>`);
     }
+    lines.push(
+      `        <client_attr name="alternate_hotel_id">${esc(p.slug)}</client_attr>`
+    );
+    lines.push(`      </attributes>`);
+    lines.push(`    </content>`);
 
     lines.push(`  </listing>`);
     listings.push(lines.join("\n"));

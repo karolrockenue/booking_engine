@@ -482,3 +482,35 @@ export const emailSends = pgTable(
     index("email_sends_sendgrid_msg_idx").on(table.sendgridMessageId),
   ]
 );
+
+// --- Google Hotel Center ARI message log/queue (Sprint 5) ---
+//
+// Audit + retry queue for every ARI/Transaction message pushed to Google.
+// status: pending → sent (HTTP 200) | failed. Built against a mock endpoint
+// until Google allowlists us; see "Google Hotel Center — Blueprint.md" §11.
+
+export const googleAriMessages = pgTable(
+  "google_ari_messages",
+  {
+    id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+    propertyId: uuid("property_id").references(() => properties.id),
+    // property_data | transaction_price | ota_rate | ota_avail | ota_inv
+    messageType: text("message_type").notNull(),
+    status: text("status").notNull().default("pending"),
+    httpStatus: integer("http_status"),
+    payload: text("payload").notNull(), // the XML we sent
+    attempts: integer("attempts").notNull().default(0),
+    lastError: text("last_error"),
+    createdAt: timestamp("created_at", { withTimezone: true }).default(
+      sql`NOW()`
+    ),
+    sentAt: timestamp("sent_at", { withTimezone: true }),
+  },
+  (table) => [
+    index("google_ari_messages_property_idx").on(
+      table.propertyId,
+      table.createdAt
+    ),
+    index("google_ari_messages_status_idx").on(table.status),
+  ]
+);

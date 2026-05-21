@@ -469,6 +469,27 @@ The technical work we build is the same regardless — Hotel List XML, ARI Push,
 
 **Shipped (2026-05-21):** Hotel List feed now emits `client_attr alternate_hotel_id = <slug>` for every hotel (`<website>` before it per the XSD), re-validated against `local_feed.xsd` → `validates`. Added `src/lib/google-hotels/landing-pages.ts` (`buildLandingPagesFeed`) + admin-gated `src/app/api/google/feeds/landing-pages/route.ts`. Landing Pages XML is well-formed (`xmllint --noout`). Macro substitution for Lancaster produced `https://app.rockenue.tech/lancaster-court-hotel-a740c31e/rooms?checkIn=2026-05-31&checkOut=2026-06-02&adults=2&children=0`, which **returns HTTP 200 on the live app** (deep-link resolves to the real rooms page; same dates carry the Sprint-2 JSON-LD). Build passes. **Host overridable via `GOOGLE_LANDING_HOST`; switches to per-hotel domains later. Next: Sprint 5 (ARI Push pipeline — the big one, ~15 days; only fully testable once Google allowlists us).**
 
+### Sprint 5 — ARI Push pipeline — ⏳ IN PROGRESS (2026-05-21)
+
+Big one (~15 days; ~12 buildable offline). Built against a **mock endpoint** + validated offline; swap env vars when Google allowlists us. Apply for Connectivity Partner in parallel.
+
+**Message formats (confirmed from Google docs 2026-05-21):** ARI is a **mix** — Property Data uses Google's own **`<Transaction>`** format; rates/availability/inventory use OpenTravel **`OTA_HotelRateAmountNotifRQ` / `OTA_HotelAvailNotifRQ` / `OTA_HotelInvCountNotifRQ`**. There is also a simpler `<Transaction>`/`<Result>` price overlay (`Baserate`/`Tax`/`OtherFees` per itinerary) which maps cleanly to our `computeAvailability` output.
+
+**Plan / checklist:**
+- [x] **`google_ari_messages`** audit/queue table (type, status, payload XML, http status, attempts, error, timestamps).
+- [x] **OAuth module** (`ari/oauth.ts`) — service-account JWT → access-token flow; mock-aware (returns a mock token until `GOOGLE_ARI_OAUTH_KEY` is set).
+- [x] **Mock Google endpoint** (`/api/google/ari/mock`) — logs the payload, returns 200, so the full generate→POST→log loop runs offline.
+- [x] **Client** (`ari/client.ts`) — `postAriMessage()` POSTs to `GOOGLE_ARI_ENDPOINT` (default = mock), records a `google_ari_messages` row.
+- [x] **Transaction generators** (`ari/transaction.ts`) — Property Data `<Transaction>` + price `<Result>` (from `computeAvailability`, all-inclusive `Baserate`).
+- [ ] **OTA messages** — `OTA_HotelRateAmountNotifRQ` / `OTA_HotelAvailNotifRQ` / `OTA_HotelInvCountNotifRQ` (pending exact element structure + a validation schema/sample).
+- [ ] **Delta/dedup** — only fire on real state changes (diff inventory), not every sync.
+- [ ] **Retry queue** — Railway cron, 1/5/20-min backoff over `google_ari_messages` (mirror the existing pms-retry/auto-charge cron recipe).
+- [ ] **Cloudbeds webhook → ARI fire** — map CB inventory/rate changes to the right messages.
+- [ ] **Confirm validation story** — find the published XSD(s)/sample XML for OTA messages (Sprint 1's confidence came from a real XSD; verify the ARI equivalent before trusting "validated offline").
+- [ ] **Real-creds swap** — `GOOGLE_ARI_ENDPOINT` + partner id (`<RequestorID>`) + real OAuth key, end-to-end test.
+
+**Acceptance (foundation):** generate well-formed Property Data + price `<Transaction>` XML for a connected hotel, POST it to the mock endpoint, get 200, and see a `google_ari_messages` row. (Full ARI = the unchecked items above.)
+
 ---
 
 *Last updated: 2026-05-21. Updated whenever a binding decision is made or a sprint completes.*

@@ -3,7 +3,7 @@
 > **Scope:** Direct integration with Google Hotel Center for **Free Booking Links** (FBL) primarily, **Paid Hotel Ads** later. Single-purpose document for an AI agent picking up this work stream.
 >
 > **Last updated:** 2026-05-21
-> **Status:** Pre-application. **Sprints 1–4 shipped 2026-05-21** — Hotel List XML feed (validates vs XSD) + JSON-LD hotel-price data on `/rooms` (price matches booking page) + VAT/rate-display audit (all-inclusive, no checkout add-ons) + Landing Pages XML (deep-link verified HTTP 200 on the live app). Next: **Sprint 5 (ARI Push pipeline — the heavy lift, ~15 days; only fully testable once Google allowlists us)**. Connectivity Partner application after the feed is productionised (zip + BASIC auth + per-hotel domains). See Progress log (§11).
+> **Status:** Pre-application. **Sprints 1–4 shipped + Sprint 5 foundation shipped 2026-05-21** — Hotel List XML feed (validates vs XSD), JSON-LD hotel-price data on `/rooms`, VAT/rate-display audit, Landing Pages XML (deep-link HTTP 200 live), and the ARI push **foundation** (Transaction generators + OAuth + mock endpoint + audit log; full generate→POST→200→log loop verified against the live mock). **Remaining in Sprint 5:** OTA rate/avail/inventory messages, delta/dedup, retry cron, Cloudbeds-webhook→fire — best finished with the exact OTA structure and/or Google allowlisting. Connectivity Partner application + feed productionising (zip + BASIC auth + per-hotel domains) are the parallel non-code track. See Progress log (§11).
 
 > **⚙️ Working process — every AI agent on this stream MUST follow this.** Before a big chunk of work, **append a Plan** to the **Progress log (§11, bottom of this doc)**: what you'll build, where, and the acceptance check. Then execute. Then **update that same entry to Shipped** when done — recording what actually changed and any deviations. Keep the plan and the outcome in one place so this blueprint always reflects reality. The loop is **plan → execute → update**, every time.
 
@@ -489,6 +489,8 @@ Big one (~15 days; ~12 buildable offline). Built against a **mock endpoint** + v
 - [ ] **Real-creds swap** — `GOOGLE_ARI_ENDPOINT` + partner id (`<RequestorID>`) + real OAuth key, end-to-end test.
 
 **Acceptance (foundation):** generate well-formed Property Data + price `<Transaction>` XML for a connected hotel, POST it to the mock endpoint, get 200, and see a `google_ari_messages` row. (Full ARI = the unchecked items above.)
+
+**Foundation shipped + verified (2026-05-21, commit `37f2c9a`):** built the `google_ari_messages` table, `ari/oauth.ts` (service-account JWT flow, mock-aware), `ari/transaction.ts` (Property Data + price `<Result>` generators), `ari/client.ts` (`postAriMessage` → endpoint + audit log), and `/api/google/ari/mock`. **Verified end-to-end against the live deployed mock:** Lancaster Property Data (6 visible rooms — hidden Air BnB / Virtual Double excluded) + price `<Transaction>` (£110.50, matches the booking page + JSON-LD) both POSTed → **HTTP 200**, logged as `sent` in `google_ari_messages`. Generators emit well-formed XML. **Remaining for full Sprint 5** = the unchecked items above (OTA `OTA_HotelRate/Avail/InvCount` messages, delta/dedup, retry cron, Cloudbeds-webhook→fire, validation-schema confirmation) — best finished once the exact OTA structure is confirmed and/or Google allowlists us for a real end-to-end test.
 
 ---
 

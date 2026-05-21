@@ -1,6 +1,6 @@
 # **Booking Engine — Blueprint**
 
-**Last updated:** 2026-05-20 **Status:** Phases 1–5 \+ 6.5 \+ 6.6 \+ 7.1 shipped. Stripe Connect live on UAE sandbox (Polish entity migration scheduled post-19 May). Flex auto-charge \+ PMS retry recovery live on production. **Guest comms (Phase 7.1) shipped end-to-end — Unlayer composer + R2 image pipeline + scheduler + send log. Maily.to replaced 2026-05-12 (no font control); Unlayer integrates uploads into the Media library and supports brand fonts. See §13.** Welcome Pickups partnership in motion. **Cloudbeds Marketplace cert: first attempt failed 2026-05-19; all of OUR blockers are now fixed + verified live (scopes, `postCustomItem` shape, rate pricing, path routing, auto-onboarding, Stripe auto-attach, breakfast pricing/picker, per-day folio + note, cancel + reversal, confirmation breakdown, admin extras). Retry pending — the only remaining dependency is Cloudbeds-side: the cert hotel must have non-virtual rooms + Manuel must re-authorise. **us2 is NOT a special case** — the "no access" seen post-call was a revoked grant, not a cluster/host issue (proven). See the **2026-05-20 session log** immediately below + §7 chronicle.**
+**Last updated:** 2026-05-20 **Status:** Phases 1–5 \+ 6.5 \+ 6.6 \+ 7.1 shipped. Stripe Connect live on UAE sandbox (Polish entity migration scheduled post-19 May). Flex auto-charge \+ PMS retry recovery live on production. **Guest comms (Phase 7.1) shipped end-to-end — Unlayer composer + R2 image pipeline + scheduler + send log. Maily.to replaced 2026-05-12 (no font control); Unlayer integrates uploads into the Media library and supports brand fonts. See §13.** Welcome Pickups partnership in motion. **✅ Cloudbeds Marketplace CERTIFIED 2026-05-20** — passed via the live Marketplace "Connect app" flow. The retry-day fixes that closed it: the OAuth callback now accepts **Cloudbeds-initiated** installs (unsigned state → fresh property, `63d5745`); the admin "Open site" button uses the `/<slug>` path, not the retired `?property=` shim (`8c4079b`); and the Cloudbeds console's **Login URL** (a stale `market-pulse.io` value) was repointed to `/api/install`. Full chain verified end-to-end: OAuth → auto-create hotel → inventory/rates/extras/hotel-details sync → webhooks → Stripe auto-attach → real NR + Flex bookings with per-morning breakfast folio + cancel. **us2 needs no special handling** — OAuth authorize is the standard `hotels.cloudbeds.com/api/v1.3/oauth` (not `us2`/`v1.1`); the cluster resolves internally. See the **2026-05-20 session log** immediately below + §7 chronicle. **Post-cert cleanup pending: DROP the `cert_attach_test_stripe` trigger + delete the throwaway test properties.**
 
 Multi-tenant hotel website \+ booking engine platform. Each hotel runs on its own custom domain with a bespoke website and an integrated booking flow connected to Cloudbeds. Built and managed by Rockenue as the webmaster across all properties (≈40 independent hotels, luxury → near-hostel spectrum).
 
@@ -11,6 +11,16 @@ This document is the single source of truth. It replaces `README.md`, `hotel-pla
 ## **2026-05-20 session log — cert-prep sprint**
 
 A large batch shipped + verified live against `demo` (Cloudbeds `302817`, us1). All deployed to `main`/Railway unless noted. Newest first; commit hashes in parentheses.
+
+### ✅ CERTIFIED — live Marketplace "Connect app" flow (`8c4079b`, `63d5745`)
+- **Cloudbeds Marketplace certification PASSED 2026-05-20.**
+- **The blocker that remained from the failed attempt: the install is Cloudbeds-INITIATED.** "Connect app" starts OAuth on Cloudbeds' side and hits our callback with a `state` we never signed → the old callback rejected it with `invalid_state`. **Fix (`63d5745`):** treat a missing/unverifiable state as a first-time install — allocate a fresh property UUID + INSERT, exactly like `/api/install`. A valid signed state still takes the app-initiated path (admin "Connect Cloudbeds" upserts in place). Verified live (callback probe returns `token_exchange_failed`, not `invalid_state`).
+- **Open Site fix (`8c4079b`):** the admin button still built `/?property=<slug>` (retired shim → fell through to the domain owner, opening the wrong hotel). Now `/<slug>`. The path-routing sprint (`a755baf`) had missed this one button.
+- **Cloudbeds console config corrected:** the app's **Login URL** field held a stale `market-pulse.io` value (legacy host) → "during OAuth it took me to market-pulse". Repointed — **Login URL** = `…/api/install`, **Connect App URL** = "Use OAuth URL" (v1.3 authorize → our callback), **Redirect URL** = `…/api/cloudbeds/oauth/callback`. Declared scopes include `write:item` + `write:payment`.
+- **us2 / version learning:** OAuth must use **`hotels.cloudbeds.com/api/v1.3/oauth`** — NOT `us2.cloudbeds.com` or `/api/v1.1`. Authorize + token exchange must match host+version (our token endpoint is `hotels.cloudbeds.com/api/v1.3/access_token`). The cluster resolves internally; us2 needs no special host.
+- **Clean-slate rehearsal:** wiped all properties (snapshot → `backups/`), re-OAuthed the Rockenue partner account via the exact Cloudbeds-initiated path → fresh property created + synced (3 rooms · 8 rates · 686 inventory rows · 3 extras · 8 webhooks · currency USD), Stripe auto-attached (`acct_1TSCLV1ZjN2BG9vB`, `charges_enabled`), and **two real bookings** (NR `1474805519554` + Flex `5256302014941`) with per-morning breakfast folio (`postCustomItem` ✓) + cancel.
+- **`cert_attach_test_stripe` trigger made self-contained** — now copies a literal test-account id instead of reading the (deletable) `demo` row, so any fresh install still gets test Stripe.
+- **Post-cert cleanup pending:** DROP `cert_attach_test_stripe` trigger + function; delete throwaway test properties; (optional) add an "already connected?" guard so the `/api/install` Login URL doesn't create a duplicate row when an installed hotel re-opens the app.
 
 ### Path-based per-property routing (`a755baf`)
 - Customer site moved under a **`[property]` dynamic segment**: `/<slug>`, `/<slug>/rooms`, `/<slug>/book`, `/<slug>/extras`, `/<slug>/checkout`, `/<slug>/confirmation`. Resolved from the **path** (`resolvePropertyBySlug`), not the Host header. Bare `/` resolves by domain → redirects to `/<slug>`. See §4 (rewritten).
@@ -160,7 +170,7 @@ Not yet fully scaffolded — `src/lib/booking` exists and is canonical; the `src
 | **Hosting** | Railway Pro | ✅ |
 | **UI Library** | Radix UI (popovers), react-day-picker (calendar), Lucide (icons) | ✅ |
 | **Font** | Inter (Google Fonts in default theme) · Cormorant Garamond \+ Inter (Portico) | ✅ |
-| **PMS** | Cloudbeds REST API (OAuth2 per property) | 🟢 Inventory, rates, extras, webhooks, write paths live |
+| **PMS** | Cloudbeds REST API (OAuth2 per property) | 🟢 Inventory, rates, extras, webhooks, write paths live · **Marketplace CERTIFIED 2026-05-20** |
 | **Payments** | Stripe Connect (Standard accounts, direct charges \+ `on_behalf_of`) | 🟢 Live on UAE sandbox; Polish entity migration scheduled |
 | **Image storage** | Cloudflare R2 \+ `@aws-sdk/client-s3` \+ `sharp` | 🟢 Bucket `rockenue-hotel-photos`, 3 variants per upload (hero 1600w / gallery 800w / thumb 400w) |
 | **Email** | SendGrid (`@sendgrid/mail`) · Unlayer composer (`react-email-editor`) | 🟢 Transactional + scheduled flows; admin composer with R2 media library |
@@ -374,7 +384,9 @@ Cloudbeds **does not sign webhooks**. Security comes from:
 * **Postpartum reservation failure — handled by Phase 5 PMS retry cron.** When `postReservation` fails inline, `/api/bookings` still returns 502 (so the guest sees an error), but `cron-pms-retry` (every 5 min) picks the stuck booking up and retries for ~1h. After giveup: NR is auto-refunded, Flex has its saved PM detached, booking flips to `failed`. See section 19 Phase 5 for the full flow. **~~Open carry-forward: the original extras list is lost on inline failure~~ — RESOLVED 2026-05-20 (commit `b37b68e`).** `bookingExtras` rows are now inserted *before* `postCustomItem` with `cloudbedsItemId = null`, then patched with the real item ID on success. A failed call leaves the row in place for retry instead of evaporating.  
 * **Per-extra failure handling is silent** (still true for the guest-facing path — a failed `postCustomItem` is logged, not surfaced), **but the data is now recoverable.** New admin endpoint `POST /api/admin/properties/[id]/cloudbeds/sync-pending-extras` (Bearer `ADMIN_TOKEN`, idempotent) sweeps every `bookingExtras` row with `cloudbedsItemId IS NULL` whose booking has a Cloudbeds reservation and replays `postCustomItem`. Built to backfill the queue once the `write:item` scope is granted.
 
-### **Marketplace certification (2026-05-19 → 20)**
+### **Marketplace certification (2026-05-19 → 20) — ✅ CERTIFIED 2026-05-20**
+
+**Outcome: PASSED on 2026-05-20** via the live Marketplace "Connect app" flow. The final blocker (after the cert-prep sprint fixed everything else) was that the Marketplace install is **Cloudbeds-initiated** — "Connect app" starts OAuth on Cloudbeds' side and returns to our callback with a `state` we never signed, which the old callback rejected with `invalid_state`. Closed by `63d5745` (callback accepts unsigned state → fresh install), `8c4079b` (Open Site → `/<slug>`), and repointing the Cloudbeds console **Login URL** off a stale `market-pulse.io` value to `/api/install`. Also confirmed: OAuth authorize must be `hotels.cloudbeds.com/api/v1.3/oauth` (not `us2`/`v1.1`). See the **2026-05-20 session log** at the top for the full retry-day write-up. The post-mortem of the *first* (failed) attempt follows.
 
 We applied for Cloudbeds Marketplace certification. The reviewer (Manuel, Cloudbeds) provided a sandbox property — `[Demo] Manuel US2`, Cloudbeds `propertyID 5886676873777241`, on the `us2` cluster. **First attempt failed 2026-05-19.** This is the full post-mortem: what broke, in order; what was root-caused vs environmental; what we fixed; and where we stand.
 
@@ -430,18 +442,20 @@ DROP TRIGGER IF EXISTS cert_attach_test_stripe_trg ON properties;  -- cert Strip
 DROP FUNCTION IF EXISTS cert_attach_test_stripe();
 ```
 
-#### Where we are now (2026-05-20, end of cert-prep sprint)
+#### Where we are now (2026-05-20) — ✅ CERTIFIED
 
-* **All of OUR cert blockers are fixed + verified** — full list in the 2026-05-20 session log at the top. Onboarding is hands-off: `/api/install` → OAuth **auto-creates** the hotel shell + syncs inventory → the `cert_attach_test_stripe` trigger attaches test Stripe → book with `4242`.
-* **us2 is a non-issue** — the post-call "no access" was a **revoked grant**, not a cluster/host problem (proof in the session log). us2 onboarding == normal.
-* **Cert: failed 2026-05-19, retry pending.** The remaining dependencies are Cloudbeds-side, not ours.
+* **CERTIFIED 2026-05-20.** Onboarding is hands-off: "Connect app" (or `/api/install`) → OAuth **auto-creates** the hotel shell + syncs inventory/rates/extras/details + subscribes webhooks → the `cert_attach_test_stripe` trigger attaches test Stripe → book with `4242`. Verified end-to-end live (incl. NR + Flex bookings with per-morning breakfast folio + cancel).
+* **us2 needs no special handling** — OAuth authorize is the standard `hotels.cloudbeds.com/api/v1.3/oauth`; the cluster resolves internally. Earlier "no access" was a revoked/non-included property grant, never a host issue.
 
-#### Outstanding before/around the retry
+#### Post-cert cleanup (do before real multi-tenant onboarding)
 
-* **Cloudbeds-side (ask Manuel):** the cert hotel must have **non-virtual, bookable rooms** (last time they were `isVirtual:true`, which Cloudbeds refuses to book — proven not our bug), and Manuel must **re-authorise** the app (he revoked it after the failed call).
-* ~~`?property=` override in prod~~ — **FIXED** by path-based routing (§4).
-* ~~`write:item`/`write:payment` + `postCustomItem` shape~~ — **DONE** (session log).
-* **Drop the cert Stripe trigger after the cert** (revert SQL above) + clean up the other prod hacks (domain swap still in place).
+* **DROP the cert Stripe trigger** — `DROP TRIGGER IF EXISTS cert_attach_test_stripe_trg ON properties; DROP FUNCTION IF EXISTS cert_attach_test_stripe();`. It now attaches a literal **test** account (`acct_1TSCLV1ZjN2BG9vB`) to every fresh install — must go before live hotels onboard.
+* **Delete the throwaway test properties** created during cert rehearsals (e.g. `rockenue-partner-account-*`). Snapshot of the pre-wipe state is in `backups/prod-snapshot-*.json`.
+* **`/api/install` Login URL creates a duplicate row on app re-open** — add an "already connected for this Cloudbeds property?" guard before wider rollout.
+* **Cloudbeds-side (was the first-attempt killer):** a hotel must have **non-virtual, bookable rooms** — Cloudbeds refuses to book `isVirtual:true` rooms (proven not our bug).
+
+#### Still open (not cert blockers)
+
 * **Real per-hotel Stripe Connect onboarding** — the test-account trigger is an interim shim; the real "Start onboarding" flow errored on the call and needs its own pass before real hotels go live.
 * **Client-side same-day guard:** block check-in = today once `propertyCheckInTime` (from `getHotelDetails`) has passed in property-local time.
 * **Per-property theming** — drop the single-tenant `THEME` env var (§5) so each hotel renders its own brand, not Portico.

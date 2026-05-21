@@ -13,6 +13,7 @@ interface SidebarProps {
     | "bookings"
     | "content"
     | "media"
+    | "rooms"
     | "rates"
     | "extras"
     | "emails"
@@ -29,7 +30,7 @@ interface SidebarProps {
   onLogout?: () => void;
 }
 
-type PropertyItemId = "overview" | "bookings" | "content" | "media" | "rates" | "extras" | "emails" | "alerts";
+type PropertyItemId = "overview" | "bookings" | "content" | "media" | "rooms" | "rates" | "extras" | "emails" | "alerts";
 
 const PROPERTY_ITEMS: Array<{
   id: PropertyItemId;
@@ -41,6 +42,7 @@ const PROPERTY_ITEMS: Array<{
   { id: "bookings", icon: "▤", label: "Bookings", countKey: "bookingsCount" },
   { id: "content", icon: "¶", label: "Content" },
   { id: "media", icon: "▣", label: "Media", countKey: "photosCount" },
+  { id: "rooms", icon: "⌂", label: "Rooms" },
   { id: "rates", icon: "≡", label: "Rate plans", countKey: "ratesCount" },
   { id: "extras", icon: "✦", label: "Extras" },
   { id: "emails", icon: "✉", label: "Emails", countKey: "emailsCount" },

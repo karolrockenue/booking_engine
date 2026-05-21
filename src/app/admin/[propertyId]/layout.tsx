@@ -18,6 +18,7 @@ const TAB_FROM_PATH: Record<string, Parameters<typeof Sidebar>[0]["activeTab"]> 
   bookings: "bookings",
   content: "content",
   media: "media",
+  rooms: "rooms",
   rates: "rates",
   extras: "extras",
   emails: "emails",

@@ -16,24 +16,12 @@ interface ContentBlock {
   content: unknown;
 }
 
-interface RoomTypeRow {
-  id: string;
-  name: string;
-  description: string | null;
-  maxOccupancy: number | null;
-  baseOccupancy: number | null;
-  amenities: unknown;
-  otaRoomId: string;
-  hiddenFromBooking: boolean;
-}
-
 export default function ContentPage() {
   const { propertyId } = useParams<{ propertyId: string }>();
   const token = useAdminToken();
 
   const [draft, setDraft] = useState<PropertyContent>(defaultContent);
   const [original, setOriginal] = useState<PropertyContent>(defaultContent);
-  const [rooms, setRooms] = useState<RoomTypeRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -44,21 +32,15 @@ export default function ContentPage() {
     setLoading(true);
     setError(null);
     try {
-      const [contentRes, roomsRes] = await Promise.all([
-        fetch(`/api/admin/properties/${propertyId}/content`, {
-          headers: { Authorization: `Bearer ${token}` },
-        }),
-        fetch(`/api/admin/properties/${propertyId}/rooms`, {
-          headers: { Authorization: `Bearer ${token}` },
-        }),
-      ]);
+      const contentRes = await fetch(
+        `/api/admin/properties/${propertyId}/content`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
       if (!contentRes.ok) throw new Error(`HTTP ${contentRes.status}`);
-      if (!roomsRes.ok) throw new Error(`HTTP ${roomsRes.status}`);
       const blocks = (await contentRes.json()) as ContentBlock[];
       const merged = mergeBlocks(blocks);
       setDraft(merged);
       setOriginal(merged);
-      setRooms((await roomsRes.json()) as RoomTypeRow[]);
     } catch (e) {
       setError(e instanceof Error ? e.message : "failed to load");
     } finally {
@@ -173,18 +155,6 @@ export default function ContentPage() {
             <FooterCard
               value={draft.footer}
               onChange={(v) => patch("footer", v)}
-            />
-            <RoomsCard
-              rooms={rooms}
-              propertyId={propertyId}
-              token={token}
-              onToggle={(roomId, hidden) =>
-                setRooms((prev) =>
-                  prev.map((r) =>
-                    r.id === roomId ? { ...r, hiddenFromBooking: hidden } : r
-                  )
-                )
-              }
             />
           </div>
           <div className="flex flex-col gap-4">
@@ -598,157 +568,6 @@ function parseLabelHrefRows(
       const [label, ...rest] = line.split(/\s*·\s*/);
       return { label: label ?? "", href: rest.join(" · ") || "#" };
     });
-}
-
-// ─── Rooms (synced from Cloudbeds; visibility is admin-controlled) ──
-
-function RoomsCard({
-  rooms,
-  propertyId,
-  token,
-  onToggle,
-}: {
-  rooms: RoomTypeRow[];
-  propertyId: string;
-  token: string | null;
-  onToggle: (roomId: string, hidden: boolean) => void;
-}) {
-  const [savingId, setSavingId] = useState<string | null>(null);
-
-  async function toggle(room: RoomTypeRow) {
-    if (!token || savingId) return;
-    const next = !room.hiddenFromBooking;
-    setSavingId(room.id);
-    onToggle(room.id, next); // optimistic
-    try {
-      const res = await fetch(`/api/admin/properties/${propertyId}/rooms`, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ roomId: room.id, hiddenFromBooking: next }),
-      });
-      if (!res.ok) onToggle(room.id, !next); // revert on failure
-    } catch {
-      onToggle(room.id, !next); // revert on failure
-    } finally {
-      setSavingId(null);
-    }
-  }
-
-  return (
-    <Card
-      title="Rooms"
-      hint="synced from Cloudbeds · toggle which room types sell in the booking engine"
-    >
-      {rooms.length === 0 ? (
-        <div className="text-[12.5px]" style={{ color: "var(--a-muted)" }}>
-          No room types synced yet. Connect Cloudbeds and trigger a sync.
-        </div>
-      ) : (
-        <div className="flex flex-col gap-3">
-          {rooms.map((r) => {
-            const occ =
-              r.maxOccupancy != null
-                ? `${r.baseOccupancy ?? 1}–${r.maxOccupancy} guests`
-                : null;
-            const amenities = Array.isArray(r.amenities)
-              ? (r.amenities as unknown[]).filter(
-                  (a) => typeof a === "string"
-                ) as string[]
-              : [];
-            return (
-              <div
-                key={r.id}
-                className="border rounded-md p-3"
-                style={{
-                  borderColor: "var(--a-border-soft)",
-                  opacity: r.hiddenFromBooking ? 0.6 : 1,
-                }}
-              >
-                <div className="flex items-center justify-between gap-2 mb-1">
-                  <div className="flex items-baseline gap-2 min-w-0">
-                    <div className="text-[13px] font-semibold truncate">
-                      {r.name}
-                    </div>
-                    {occ && (
-                      <div
-                        className="text-[11px] flex-shrink-0"
-                        style={{ color: "var(--a-muted)" }}
-                      >
-                        {occ}
-                      </div>
-                    )}
-                  </div>
-                  <button
-                    onClick={() => toggle(r)}
-                    disabled={!token || savingId === r.id}
-                    title={
-                      r.hiddenFromBooking
-                        ? "Hidden from the booking engine — click to show"
-                        : "Shown in the booking engine — click to hide"
-                    }
-                    className="text-[11px] px-2 py-0.5 rounded border font-medium flex-shrink-0"
-                    style={
-                      r.hiddenFromBooking
-                        ? {
-                            borderColor: "var(--a-border)",
-                            color: "var(--a-muted)",
-                            background: "var(--a-surface-2)",
-                          }
-                        : {
-                            borderColor: "rgba(0,135,90,0.25)",
-                            color: "var(--a-green)",
-                            background: "var(--a-green-soft)",
-                          }
-                    }
-                  >
-                    {savingId === r.id
-                      ? "…"
-                      : r.hiddenFromBooking
-                        ? "Hidden"
-                        : "Shown"}
-                  </button>
-                </div>
-                {r.description && (
-                  <div
-                    className="text-[12px] mb-2"
-                    style={{ color: "var(--a-ink-2)" }}
-                  >
-                    {r.description}
-                  </div>
-                )}
-                {amenities.length > 0 ? (
-                  <div className="flex flex-wrap gap-1">
-                    {amenities.map((a, i) => (
-                      <span
-                        key={i}
-                        className="text-[11px] px-1.5 py-0.5 rounded border"
-                        style={{
-                          borderColor: "var(--a-border-soft)",
-                          color: "var(--a-ink-2)",
-                        }}
-                      >
-                        {a}
-                      </span>
-                    ))}
-                  </div>
-                ) : (
-                  <div
-                    className="text-[11px]"
-                    style={{ color: "var(--a-muted)" }}
-                  >
-                    No amenities listed in Cloudbeds.
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      )}
-    </Card>
-  );
 }
 
 // ─── Preview ──────────────────────────────────────────────────────

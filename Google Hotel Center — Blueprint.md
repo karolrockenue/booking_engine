@@ -3,7 +3,7 @@
 > **Scope:** Direct integration with Google Hotel Center for **Free Booking Links** (FBL) primarily, **Paid Hotel Ads** later. Single-purpose document for an AI agent picking up this work stream.
 >
 > **Last updated:** 2026-05-21
-> **Status:** Pre-application. **Sprints 1–2 shipped 2026-05-21** — Hotel List XML feed (validates vs XSD, admin-gated route) + JSON-LD hotel-price structured data on `/rooms` (price matches the booking page). Next: Sprint 3 (UK VAT inclusion review + rate display audit). Connectivity Partner application after the feed is productionised (zip + BASIC auth + per-hotel domains). See Progress log (§11).
+> **Status:** Pre-application. **Sprints 1–3 shipped 2026-05-21** — Hotel List XML feed (validates vs XSD) + JSON-LD hotel-price data on `/rooms` (price matches booking page) + VAT/rate-display audit (price is all-inclusive, no checkout add-ons; 3% is a deduction not an add-on). Next: Sprint 4 (Landing Pages XML + URL routing). Connectivity Partner application after the feed is productionised (zip + BASIC auth + per-hotel domains). See Progress log (§11).
 
 > **⚙️ Working process — every AI agent on this stream MUST follow this.** Before a big chunk of work, **append a Plan** to the **Progress log (§11, bottom of this doc)**: what you'll build, where, and the acceptance check. Then execute. Then **update that same entry to Shipped** when done — recording what actually changed and any deviations. Keep the plan and the outcome in one place so this blueprint always reflects reality. The loop is **plan → execute → update**, every time.
 
@@ -82,7 +82,7 @@ Out of scope (Phase 2):
 ### Pricing and compliance
 
 - **Platform commission (3%) is baked into the rate**, not added at checkout. Feed price = displayed price = booking price. Avoids Google's "extra service charges at checkout" penalty.
-- **UK 20% VAT is included in rate (all-inclusive)**, not added at checkout. Either via `<Baserate all_inclusive="true">` or split via `<Tax>` element — final choice deferred to implementation.
+- **UK 20% VAT is included in rate (all-inclusive)**, not added at checkout. **DECIDED (Sprint 3 audit, 2026-05-21): the ARI feed declares the rate as all-inclusive `Baserate` (`all_inclusive="true"`), NOT a separate `<Tax>` element** — our data model holds one all-in nightly rate (`inventory.rate`) and bookings carry `taxesTotal = 0`; we have no separate VAT amount to itemise. **Operational assumption to verify per hotel:** the hotel must set VAT-inclusive rates in Cloudbeds (we never add or strip VAT). If a hotel configures VAT-exclusive CB rates, their displayed price would be ex-VAT — a hotel-config fix, not a code one.
 - **JSON-LD hotel-price structured data on every `/rooms` page** is mandatory (not optional) to keep price-accuracy score Excellent. Helps SEO regardless of Hotel Center status.
 - **Mass property additions to feed must roll in batches of ≤10** to avoid Google's mass-change auto-block (triggers at ~10% delta).
 
@@ -431,6 +431,25 @@ The technical work we build is the same regardless — Hotel List XML, ARI Push,
 **Acceptance:** `/rooms?checkIn=…&checkOut=…` emits a valid schema.org `Hotel` JSON-LD block whose price equals the lowest the booking page shows for those dates; build passes.
 
 **Shipped (2026-05-21):** extracted `computeAvailability` (+ `AvailabilityResultRow`) into `src/lib/booking/availability.ts` (the route now imports it). Added `src/lib/google-hotels/hotel-json-ld.ts` (`buildHotelJsonLd`) and injected a server-rendered `<script type="application/ld+json">` into `src/app/[property]/rooms/page.tsx` (both themed + default branches). Verified on Lancaster (2026-05-31→06-02, 2 adults): valid `Hotel` + `makesOffer`, address parsed (202-204 Sussex Gardens / London / W2 3UA / GB), and **JSON-LD price £110.50 === availability lowest £110.50** (price-accuracy holds). Build passes. **Deviations:** lowest single offer only; default 15:00/11:00 times; `addressRegion` omitted. **Next: Sprint 3 (UK VAT inclusion review + rate display audit).**
+
+### Sprint 3 — UK VAT inclusion review + rate display audit — ✅ SHIPPED (2026-05-21)
+
+**Plan (audit — likely no/low code):**
+- Trace the price end-to-end: availability (Cloudbeds rate) → checkout display → Stripe charge amount → `postReservation`/`postPayment` → confirmation → JSON-LD/feed. Confirm one number flows through unchanged.
+- Verify no checkout add-ons: `taxesTotal` stays 0, and the 3% platform fee is a Stripe `application_fee_amount` **deducted from the hotel payout**, NOT added to the guest total.
+- Verify VAT: the Cloudbeds rate is VAT-inclusive (hotel config); we never add or strip VAT.
+- Record the binding decision for how VAT is represented in the **ARI feed (Sprint 5)**: all-inclusive `Baserate` (`all_inclusive="true"`) vs explicit `<Tax>`.
+
+**Acceptance:** documented confirmation that feed price = displayed price = booking price = Stripe charge, VAT-inclusive, no checkout add-ons; any gap flagged.
+
+**Shipped (2026-05-21) — audit findings (no code change needed):**
+- **Price path traced & consistent.** `availability.totalPrice` (sum of nightly `inventory.rate`, the Cloudbeds rate) → checkout `total = result.totalPrice + extrasSubtotal` (`checkout-client.tsx`) → Stripe `amount: t.total` (`payment-intent`/`setup-intent`) → `/api/bookings` `grandTotal` → confirmation. One number, unchanged. JSON-LD/feed price = the room rate (availability lowest).
+- **No checkout add-ons.** No tax/VAT/fee line anywhere in the checkout UI. `bookings.taxesTotal = "0.00"`. The 3% is `application_fee_amount` in the Stripe PI — **deducted from the hotel's payout via `transfer_data`/`on_behalf_of`, never added to the guest's `amount`.** Verified against real bookings (NR £108+£10 → charge £118, fee £3.54 = 3%; Flex £240+£20 → £260, fee £7.80).
+- **VAT.** We never add or strip VAT; the Cloudbeds nightly rate is treated as all-inclusive. Extras (breakfast etc.) are guest-elected, so they're not "mandatory hidden fees" under Google's policy.
+- **Binding decision recorded** in §3: ARI feed uses all-inclusive `Baserate` (`all_inclusive="true"`), no separate `<Tax>`.
+- **One open item (operational, not code):** confirm each hotel sets **VAT-inclusive rates in Cloudbeds** during onboarding (fold into Hannah's GBP/property audit). For non-UK/test hotels on USD (the partner-account demo) VAT doesn't apply.
+
+**Next: Sprint 4 (Landing Pages XML + URL routing).**
 
 ---
 

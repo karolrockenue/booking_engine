@@ -15,6 +15,21 @@ interface RoomRow {
   hiddenFromBooking: boolean;
 }
 
+// Cloudbeds room descriptions can be rich HTML (lists, headings, a Note block).
+// We only show a compact reference line here, so flatten tags to plain text.
+function plainText(html: string | null): string {
+  if (!html) return "";
+  return html
+    .replace(/<\/(li|ul|ol|p|div|h[1-6])>/gi, " · ")
+    .replace(/<[^>]*>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/(\s*·\s*)+/g, " · ")
+    .replace(/\s+/g, " ")
+    .replace(/^[\s·]+|[\s·]+$/g, "")
+    .trim();
+}
+
 export default function RoomsPage() {
   const { propertyId } = useParams<{ propertyId: string }>();
   const token = useAdminToken();
@@ -151,7 +166,7 @@ export default function RoomsPage() {
                     className="font-jbm text-[11px] mt-0.5 truncate"
                     style={{ color: "var(--a-muted)" }}
                   >
-                    {r.description ||
+                    {plainText(r.description) ||
                       (amenities.length
                         ? amenities.join(" · ")
                         : "No description in Cloudbeds")}

@@ -46,6 +46,9 @@ next-env.d.ts
 # scratch / smoke test output (may contain Cloudbeds response data)
 /tmp/
 
+# local DB snapshots (contain prod data — never commit)
+/backups/
+
 # Claude Code local state (per-developer, not project)
 /.claude/
 

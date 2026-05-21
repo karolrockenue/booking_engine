@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { TopStrip, Btn } from "@/components/admin/TopStrip";
 import { useAdminToken } from "../../layout";
@@ -25,12 +25,36 @@ interface RatePlan {
   roomTypeOtaId: string | null;
 }
 
+// One logical rate plan (e.g. "Standard", "Non Refundable", "Direct Rate"),
+// collapsing the per-room-type rows Cloudbeds returns.
+interface RateGroup {
+  key: string;
+  name: string;
+  plans: RatePlan[];
+  isRefundable: boolean;
+  isShown: boolean;
+  policy: CancellationPolicy | null;
+}
+
 const PENALTY_TYPES: Array<{ value: CancellationPolicy["penaltyType"]; label: string }> = [
   { value: "none", label: "None — full refund" },
   { value: "first_night", label: "First night" },
   { value: "full_stay", label: "Full stay" },
   { value: "percent", label: "Percentage" },
 ];
+
+// Cloudbeds models rate plans per room type. Master/BAR rates come through named
+// "<Room type> Standard" (synthesised in the sync), while derived rates (Non
+// Refundable, Direct Rate, …) already share one name across rooms. Strip the
+// room-type prefix so the "{Room} Standard" rows collapse into a single
+// "Standard" logical rate plan.
+function logicalName(plan: RatePlan): string {
+  const room = (plan.roomTypeName ?? "").trim();
+  if (room && plan.name.startsWith(room)) {
+    return plan.name.slice(room.length).trim() || plan.name;
+  }
+  return plan.name;
+}
 
 export default function RatesPage() {
   const { propertyId } = useParams<{ propertyId: string }>();
@@ -39,17 +63,16 @@ export default function RatesPage() {
   const [list, setList] = useState<RatePlan[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [openId, setOpenId] = useState<string | null>(null);
+  const [openKey, setOpenKey] = useState<string | null>(null);
 
   async function load() {
     if (!token || !propertyId) return;
     setLoading(true);
     setError(null);
     try {
-      const r = await fetch(
-        `/api/admin/properties/${propertyId}/rate-plans`,
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
+      const r = await fetch(`/api/admin/properties/${propertyId}/rate-plans`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       const d = (await r.json()) as { ratePlans: RatePlan[] };
       setList(d.ratePlans);
@@ -65,6 +88,57 @@ export default function RatesPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, propertyId]);
 
+  const groups: RateGroup[] = useMemo(() => {
+    const map = new Map<string, RatePlan[]>();
+    for (const r of list) {
+      const k = logicalName(r);
+      const arr = map.get(k) ?? [];
+      arr.push(r);
+      map.set(k, arr);
+    }
+    return Array.from(map.entries())
+      .map(([key, plans]) => ({
+        key,
+        name: key,
+        plans,
+        isRefundable: plans[0]?.isRefundable !== false,
+        isShown: plans.every((p) => p.isPublic !== false),
+        policy: plans[0]?.cancellationPolicy ?? null,
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [list]);
+
+  // Apply a partial update to every underlying per-room rate plan of a group,
+  // so a single admin action (hide, or set policy) lands across all room types.
+  async function patchGroup(
+    group: RateGroup,
+    body: Record<string, unknown>
+  ): Promise<boolean> {
+    if (!token) return false;
+    const ids = new Set(group.plans.map((p) => p.id));
+    // optimistic
+    setList((cur) => cur.map((r) => (ids.has(r.id) ? { ...r, ...body } : r)));
+    const results = await Promise.allSettled(
+      group.plans.map((p) =>
+        fetch(`/api/admin/properties/${propertyId}/rate-plans/${p.id}`, {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify(body),
+        }).then((r) => {
+          if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        })
+      )
+    );
+    if (results.some((r) => r.status === "rejected")) {
+      await load(); // re-pull truth on any partial failure
+      return false;
+    }
+    return true;
+  }
+
   return (
     <>
       <TopStrip
@@ -72,7 +146,9 @@ export default function RatesPage() {
         subtitle={
           loading
             ? "Loading…"
-            : `${list.length} rate ${list.length === 1 ? "plan" : "plans"} · synced from Cloudbeds · toggle visibility, edit refundability + cancellation policy`
+            : `${groups.length} rate ${
+                groups.length === 1 ? "plan" : "plans"
+              } · synced from Cloudbeds · toggle visibility & edit policy across all room types`
         }
         actions={
           <Btn href={`/admin/${propertyId}/cloudbeds`}>
@@ -89,7 +165,7 @@ export default function RatesPage() {
         <div className="text-[13px]" style={{ color: "var(--a-red)" }}>
           {error}
         </div>
-      ) : list.length === 0 ? (
+      ) : groups.length === 0 ? (
         <div
           className="border rounded-md p-12 text-center text-[13px]"
           style={{ borderColor: "var(--a-border)", color: "var(--a-muted)" }}
@@ -98,27 +174,28 @@ export default function RatesPage() {
         </div>
       ) : (
         <div className="flex flex-col gap-1.5">
-          {list.map((rp) => (
-            <RatePlanRow
-              key={rp.id}
-              plan={rp}
-              open={openId === rp.id}
-              onToggle={() => setOpenId(openId === rp.id ? null : rp.id)}
-              onSaved={(updated) => {
-                setList((cur) =>
-                  cur.map((r) => (r.id === updated.id ? { ...r, ...updated } : r))
-                );
-              }}
-              propertyId={propertyId}
-              token={token}
+          {groups.map((g) => (
+            <GroupRow
+              key={g.key}
+              group={g}
+              open={openKey === g.key}
+              onExpand={() => setOpenKey(openKey === g.key ? null : g.key)}
+              onToggleVisibility={() =>
+                patchGroup(g, { isPublic: !g.isShown })
+              }
+              onSavePolicy={(isRefundable, policy) =>
+                patchGroup(g, { isRefundable, cancellationPolicy: policy })
+              }
             />
           ))}
         </div>
       )}
 
       <p className="mt-6 text-[11.5px]" style={{ color: "var(--a-muted)" }}>
-        CB-side rate name &amp; price stay authoritative — admin only edits display + policy.
-        Supporting note &amp; inclusions land when those columns are added to the schema.
+        Rate plans are grouped across room types — hiding or editing one applies
+        to every room that offers it. CB-side rate name &amp; price stay
+        authoritative; admin only edits visibility, refundability &amp;
+        cancellation policy.
       </p>
     </>
   );
@@ -126,46 +203,32 @@ export default function RatesPage() {
 
 // ─── Row ─────────────────────────────────────────────────────────
 
-function RatePlanRow({
-  plan,
+function GroupRow({
+  group,
   open,
-  onToggle,
-  onSaved,
-  propertyId,
-  token,
+  onExpand,
+  onToggleVisibility,
+  onSavePolicy,
 }: {
-  plan: RatePlan;
+  group: RateGroup;
   open: boolean;
-  onToggle: () => void;
-  onSaved: (rp: RatePlan) => void;
-  propertyId: string;
-  token: string;
+  onExpand: () => void;
+  onToggleVisibility: () => Promise<boolean>;
+  onSavePolicy: (
+    isRefundable: boolean,
+    policy: CancellationPolicy | null
+  ) => Promise<boolean>;
 }) {
-  const [savingPublic, setSavingPublic] = useState(false);
-  const isShown = plan.isPublic !== false;
+  const [savingVisibility, setSavingVisibility] = useState(false);
+  const roomCount = group.plans.length;
 
-  async function togglePublic() {
-    if (savingPublic) return;
-    const next = !isShown;
-    setSavingPublic(true);
-    onSaved({ ...plan, isPublic: next }); // optimistic
+  async function toggle() {
+    if (savingVisibility) return;
+    setSavingVisibility(true);
     try {
-      const r = await fetch(
-        `/api/admin/properties/${propertyId}/rate-plans/${plan.id}`,
-        {
-          method: "PATCH",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({ isPublic: next }),
-        }
-      );
-      if (!r.ok) onSaved({ ...plan, isPublic: isShown }); // revert
-    } catch {
-      onSaved({ ...plan, isPublic: isShown }); // revert
+      await onToggleVisibility();
     } finally {
-      setSavingPublic(false);
+      setSavingVisibility(false);
     }
   }
 
@@ -175,12 +238,12 @@ function RatePlanRow({
       style={{
         borderColor: open ? "var(--a-accent)" : "var(--a-border)",
         background: "var(--a-surface)",
-        opacity: isShown ? 1 : 0.6,
+        opacity: group.isShown ? 1 : 0.6,
       }}
     >
       <div className="w-full px-3.5 py-2.5 flex items-center gap-3">
         <button
-          onClick={onToggle}
+          onClick={onExpand}
           className="flex items-center gap-3 text-left flex-1 min-w-0 hover:opacity-80"
         >
           <span
@@ -194,36 +257,35 @@ function RatePlanRow({
             ›
           </span>
           <div className="flex-1 min-w-0">
-            <div className="text-[13px] font-medium truncate">{plan.name}</div>
+            <div className="text-[13px] font-medium truncate">{group.name}</div>
             <div
-              className="font-jbm text-[11px] mt-0.5 truncate"
+              className="font-jbm text-[11px] mt-0.5"
               style={{ color: "var(--a-muted)" }}
             >
-              {plan.roomTypeName ? `${plan.roomTypeName} · ` : ""}CB rateID{" "}
-              {plan.otaRateId}
+              {roomCount} room {roomCount === 1 ? "type" : "types"}
             </div>
           </div>
         </button>
         <div className="flex items-center gap-1.5 flex-shrink-0">
-          {plan.isRefundable === false ? (
-            <Pill tone="gray">non-refundable</Pill>
-          ) : (
+          {group.isRefundable ? (
             <Pill tone="green">refundable</Pill>
+          ) : (
+            <Pill tone="gray">non-refundable</Pill>
           )}
-          {plan.cancellationPolicy?.deadlineHours !== undefined && (
-            <Pill tone="blue">{plan.cancellationPolicy.deadlineHours}h deadline</Pill>
+          {group.policy?.deadlineHours !== undefined && (
+            <Pill tone="blue">{group.policy.deadlineHours}h deadline</Pill>
           )}
           <button
-            onClick={togglePublic}
-            disabled={savingPublic}
+            onClick={toggle}
+            disabled={savingVisibility}
             title={
-              isShown
-                ? "Shown in the booking engine — click to hide"
-                : "Hidden from the booking engine — click to show"
+              group.isShown
+                ? "Shown in the booking engine — click to hide across all rooms"
+                : "Hidden from the booking engine — click to show across all rooms"
             }
             className="text-[11px] px-2 py-0.5 rounded border font-medium"
             style={
-              isShown
+              group.isShown
                 ? {
                     borderColor: "rgba(0,135,90,0.25)",
                     color: "var(--a-green)",
@@ -236,21 +298,11 @@ function RatePlanRow({
                   }
             }
           >
-            {savingPublic ? "…" : isShown ? "Shown" : "Hidden"}
+            {savingVisibility ? "…" : group.isShown ? "Shown" : "Hidden"}
           </button>
         </div>
       </div>
-      {open && (
-        <Editor
-          plan={plan}
-          propertyId={propertyId}
-          token={token}
-          onSaved={(updated) => {
-            onSaved(updated);
-            onToggle();
-          }}
-        />
-      )}
+      {open && <Editor group={group} onSave={onSavePolicy} onDone={onExpand} />}
     </div>
   );
 }
@@ -258,33 +310,29 @@ function RatePlanRow({
 // ─── Editor ─────────────────────────────────────────────────────
 
 function Editor({
-  plan,
-  propertyId,
-  token,
-  onSaved,
+  group,
+  onSave,
+  onDone,
 }: {
-  plan: RatePlan;
-  propertyId: string;
-  token: string;
-  onSaved: (rp: RatePlan) => void;
+  group: RateGroup;
+  onSave: (
+    isRefundable: boolean,
+    policy: CancellationPolicy | null
+  ) => Promise<boolean>;
+  onDone: () => void;
 }) {
-  const [isRefundable, setIsRefundable] = useState<boolean>(
-    plan.isRefundable ?? true
-  );
+  const [isRefundable, setIsRefundable] = useState<boolean>(group.isRefundable);
   const [deadlineHours, setDeadlineHours] = useState<string>(
-    plan.cancellationPolicy?.deadlineHours?.toString() ?? "48"
+    group.policy?.deadlineHours?.toString() ?? "48"
   );
   const [penaltyType, setPenaltyType] = useState<
     NonNullable<CancellationPolicy["penaltyType"]>
-  >(plan.cancellationPolicy?.penaltyType ?? "first_night");
+  >(group.policy?.penaltyType ?? "first_night");
   const [penaltyPercent, setPenaltyPercent] = useState<string>(
-    plan.cancellationPolicy?.penaltyPercent?.toString() ?? "100"
+    group.policy?.penaltyPercent?.toString() ?? "100"
   );
-  const [note, setNote] = useState<string>(
-    plan.cancellationPolicy?.note ?? ""
-  );
+  const [note, setNote] = useState<string>(group.policy?.note ?? "");
   const [saving, setSaving] = useState(false);
-  const [savedAt, setSavedAt] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   async function save() {
@@ -293,9 +341,7 @@ function Editor({
     try {
       const policy: CancellationPolicy | null = isRefundable
         ? {
-            deadlineHours: deadlineHours
-              ? parseInt(deadlineHours, 10)
-              : undefined,
+            deadlineHours: deadlineHours ? parseInt(deadlineHours, 10) : undefined,
             penaltyType,
             penaltyPercent:
               penaltyType === "percent" && penaltyPercent
@@ -307,26 +353,9 @@ function Editor({
           ? { note: note.trim() }
           : null;
 
-      const r = await fetch(
-        `/api/admin/properties/${propertyId}/rate-plans/${plan.id}`,
-        {
-          method: "PATCH",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            isRefundable,
-            cancellationPolicy: policy,
-          }),
-        }
-      );
-      if (!r.ok) {
-        const body = (await r.json().catch(() => ({}))) as { error?: string };
-        throw new Error(body.error ?? `HTTP ${r.status}`);
-      }
-      setSavedAt(Date.now());
-      onSaved({ ...plan, isRefundable, cancellationPolicy: policy });
+      const ok = await onSave(isRefundable, policy);
+      if (!ok) throw new Error("save failed (some rooms did not update)");
+      onDone();
     } catch (e) {
       setError(e instanceof Error ? e.message : "save failed");
     } finally {
@@ -339,6 +368,13 @@ function Editor({
       className="px-3.5 py-3 border-t"
       style={{ borderColor: "var(--a-border-soft)", background: "var(--a-surface-2)" }}
     >
+      <div
+        className="text-[11px] mb-3"
+        style={{ color: "var(--a-muted)" }}
+      >
+        Applies to all {group.plans.length} room{" "}
+        {group.plans.length === 1 ? "type" : "types"} offering this rate.
+      </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <Field label="Refundable">
           <select
@@ -387,10 +423,7 @@ function Editor({
             ))}
           </select>
         </Field>
-        <Field
-          label="Percent (if percent)"
-          hint="0–100"
-        >
+        <Field label="Percent (if percent)" hint="0–100">
           <input
             type="number"
             min={0}
@@ -425,11 +458,6 @@ function Editor({
         {error && (
           <span className="text-[11.5px]" style={{ color: "var(--a-red)" }}>
             {error}
-          </span>
-        )}
-        {savedAt && !error && (
-          <span className="text-[11.5px]" style={{ color: "var(--a-green)" }}>
-            Saved.
           </span>
         )}
       </div>

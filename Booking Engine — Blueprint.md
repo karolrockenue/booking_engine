@@ -1040,7 +1040,9 @@ None of these are blockers — Phase 5 is in production and the smoke probes \+ 
 
 ### **Phase 6 — Launch hardening (remaining)**
 
-* **Custom domains per hotel** — Cloudflare DNS → Railway.  
+* **Platform domain `app.rockenue.tech`** (Hostinger DNS → Railway, live 2026-05-21). Canonical host for admin + Cloudbeds OAuth/webhooks + Stripe webhook + Google feeds. Cutover pending: swap `CLOUDBEDS_REDIRECT_URI` / `CLOUDBEDS_WEBHOOK_URL` / `PUBLIC_APP_URL`, add the new redirect URI + Login URL in the Cloudbeds console (keep the old Railway ones in parallel), re-point the Stripe webhook, then retire the `…up.railway.app` URL.
+* **Rockenue Tech landing page at the platform host** — bare `app.rockenue.tech` currently falls through to the first Cloudbeds-connected hotel (via `resolveProperty()`). It should instead render a Rockenue Tech corporate/landing page with an **Admin** button (top-right) → `/admin`. Needs: detect the platform host (vs a hotel custom domain or `/<slug>`) and render the landing page instead of resolving a property. Page not yet designed/built.
+* **Custom domains per hotel** — registrar DNS (Hostinger/Cloudflare) → Railway; set `properties.domain` per hotel so guests see their own brand, not the platform host.  
 * **Real copy \+ room descriptions in DB** — move out of `AvailabilityResults.tsx` `ROOM_DESCRIPTIONS`.  
 * **JSON-LD Hotel schema** on each homepage (also feeds GEO work in Phase 7).  
 * **`next/font` swap** for the Google Fonts `<link>` in `layout.tsx`.  

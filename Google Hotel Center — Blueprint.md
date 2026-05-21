@@ -3,7 +3,7 @@
 > **Scope:** Direct integration with Google Hotel Center for **Free Booking Links** (FBL) primarily, **Paid Hotel Ads** later. Single-purpose document for an AI agent picking up this work stream.
 >
 > **Last updated:** 2026-05-21
-> **Status:** Pre-application. **Sprint 1 (Hotel List XML feed generator) shipped 2026-05-21** — validates against the XSD; admin-gated route live. Next: Sprint 2 (JSON-LD on `/rooms`). Connectivity Partner application after the feed is productionised (zip + BASIC auth + per-hotel domains). See Progress log (§11).
+> **Status:** Pre-application. **Sprints 1–2 shipped 2026-05-21** — Hotel List XML feed (validates vs XSD, admin-gated route) + JSON-LD hotel-price structured data on `/rooms` (price matches the booking page). Next: Sprint 3 (UK VAT inclusion review + rate display audit). Connectivity Partner application after the feed is productionised (zip + BASIC auth + per-hotel domains). See Progress log (§11).
 
 > **⚙️ Working process — every AI agent on this stream MUST follow this.** Before a big chunk of work, **append a Plan** to the **Progress log (§11, bottom of this doc)**: what you'll build, where, and the acceptance check. Then execute. Then **update that same entry to Shipped** when done — recording what actually changed and any deviations. Keep the plan and the outcome in one place so this blueprint always reflects reality. The loop is **plan → execute → update**, every time.
 
@@ -414,6 +414,23 @@ The technical work we build is the same regardless — Hotel List XML, ARI Push,
 **Acceptance:** valid XML for the currently-connected hotels; `xmllint --schema …/local_feed.xsd` reports `validates`.
 
 **Shipped (2026-05-21):** built `src/lib/google-hotels/{types,hotel-list-feed}.ts` + `README.md` and `src/app/api/google/feeds/hotel-list/route.ts` (admin-gated `GET`, returns the XML + `X-Feed-*` stat headers). Generated the feed for the 3 currently-connected hotels (Lancaster + 2 `rockenue-partner-account` rows) and **validated against `local_feed.xsd` with `xmllint` → `validates`**. Address parsing splits street / city / UK-postcode / country correctly. All three emitted without `<website>` (no domains yet) — surfaced as `warnings` + the `X-Feed-Warnings` header. Build passes. **Next: Sprint 2 (JSON-LD on `/rooms`).**
+
+### Sprint 2 — JSON-LD hotel-price structured data on /rooms — ✅ SHIPPED (2026-05-21)
+
+**Plan:**
+- Extract `computeAvailability` (+ `AvailabilityResultRow`) out of `src/app/api/availability/route.ts` into `src/lib/booking/availability.ts` (shared) so the route AND the JSON-LD builder use the **exact same** price logic — JSON-LD price MUST equal the booking page (price-accuracy policy).
+- `src/lib/google-hotels/hotel-json-ld.ts` — `buildHotelJsonLd({ property, checkIn, checkOut, adults })`: schema.org `Hotel` with `name`, `identifier` (`roc-<id>`), `address` (PostalAddress from `content_blocks`, reusing `parseAddress`), and `makesOffer` (`["Offer","LodgingReservation"]`) carrying `checkinTime`/`checkoutTime` + `priceSpecification` (`CompoundPriceSpecification`, lowest available total incl. tax, in property currency). `makesOffer` omitted when nothing's available.
+- Inject a server-rendered `<script type="application/ld+json">` into `src/app/[property]/rooms/page.tsx` (shared route — both the themed and default branches), so crawlers see it.
+
+**Decisions:**
+- Emit the **lowest available offer** (the headline "from" price) for v1; per-room/per-rate offers + member rates are a later enhancement.
+- Default check-in/out times 15:00 / 11:00 (real per-hotel times a later improvement).
+- `addressRegion` omitted when not derivable.
+- Reuses the real availability compute → guaranteed to match the booking page.
+
+**Acceptance:** `/rooms?checkIn=…&checkOut=…` emits a valid schema.org `Hotel` JSON-LD block whose price equals the lowest the booking page shows for those dates; build passes.
+
+**Shipped (2026-05-21):** extracted `computeAvailability` (+ `AvailabilityResultRow`) into `src/lib/booking/availability.ts` (the route now imports it). Added `src/lib/google-hotels/hotel-json-ld.ts` (`buildHotelJsonLd`) and injected a server-rendered `<script type="application/ld+json">` into `src/app/[property]/rooms/page.tsx` (both themed + default branches). Verified on Lancaster (2026-05-31→06-02, 2 adults): valid `Hotel` + `makesOffer`, address parsed (202-204 Sussex Gardens / London / W2 3UA / GB), and **JSON-LD price £110.50 === availability lowest £110.50** (price-accuracy holds). Build passes. **Deviations:** lowest single offer only; default 15:00/11:00 times; `addressRegion` omitted. **Next: Sprint 3 (UK VAT inclusion review + rate display audit).**
 
 ---
 

@@ -6,6 +6,8 @@ Multi-tenant hotel website \+ booking engine platform. Each hotel runs on its ow
 
 This document is the single source of truth. It replaces `README.md`, `hotel-platform-build-plan.md`, `THEMES.md`, and `TODO.md`. AI agent rules continue to live in `AGENTS.md` / `CLAUDE.md`.
 
+> **Companion blueprint — Google Hotel Center.** The Google integration work stream (Free Booking Links / Hotel Ads — Hotel List XML feed, ARI Push, Landing Pages XML, JSON-LD hotel-price data, Connectivity Partner application) lives in its **own** document: **`Google Hotel Center — Blueprint.md`** in the repo root. If a task touches Google feeds, Hotel Center, FBL/Hotel Ads, or hotel-price structured data, read that file — it's the source of truth for that work stream. This document stays focused on the IBE (booking engine, Cloudbeds, Stripe, admin, themes, email).
+
 ---
 
 ## **2026-05-20 session log — cert-prep sprint**
@@ -1227,7 +1229,7 @@ Goal: per-hotel designable email templates \+ smart scheduling \+ ops view. Repl
 
 ### **Already in pipeline (separate work stream)**
 
-* Google Hotel Ads \+ Meta Travel Ads — paid acquisition handled separately. Needs `/feeds/google-hotels.xml`, `/feeds/meta-catalog.csv`, Meta Pixel, server-side Conversions API on `booking.confirmed`. Apply to Google Hotel Center 1–2 weeks after first hotel goes live with real bookings flowing.
+* **Google Hotel Center (Free Booking Links / Hotel Ads)** — full work stream documented in its own **`Google Hotel Center — Blueprint.md`** (Hotel List XML, ARI Push, Landing Pages XML, JSON-LD, Connectivity Partner application). Start at its Sprint 1 (Hotel List feed generator). Meta Travel Ads — paid acquisition handled separately: `/feeds/meta-catalog.csv`, Meta Pixel, server-side Conversions API on `booking.confirmed`.
 
 ---
 

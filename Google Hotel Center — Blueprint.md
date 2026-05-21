@@ -2,8 +2,10 @@
 
 > **Scope:** Direct integration with Google Hotel Center for **Free Booking Links** (FBL) primarily, **Paid Hotel Ads** later. Single-purpose document for an AI agent picking up this work stream.
 >
-> **Last updated:** 2026-05-19
-> **Status:** Pre-application. No engineering started. Decision made to begin Sprint 1 (Hotel List XML feed generator) before submitting the Connectivity Partner interest form.
+> **Last updated:** 2026-05-21
+> **Status:** Pre-application. **Sprint 1 (Hotel List XML feed generator) shipped 2026-05-21** — validates against the XSD; admin-gated route live. Next: Sprint 2 (JSON-LD on `/rooms`). Connectivity Partner application after the feed is productionised (zip + BASIC auth + per-hotel domains). See Progress log (§11).
+
+> **⚙️ Working process — every AI agent on this stream MUST follow this.** Before a big chunk of work, **append a Plan** to the **Progress log (§11, bottom of this doc)**: what you'll build, where, and the acceptance check. Then execute. Then **update that same entry to Shipped** when done — recording what actually changed and any deviations. Keep the plan and the outcome in one place so this blueprint always reflects reality. The loop is **plan → execute → update**, every time.
 
 ---
 
@@ -380,6 +382,7 @@ The technical work we build is the same regardless — Hotel List XML, ARI Push,
 
 ## 10. Notes for the next AI agent
 
+- **Follow the working process: plan → execute → update.** Append a Plan to the Progress log (§11) before any big chunk; mark it Shipped (with deviations) when done. See the callout at the top.
 - **Start with Sprint 1.** Hotel List XML feed generator. Smallest, most self-contained. Validates against publicly available XSD. Read `https://developers.google.com/hotels/hotel-prices/xml-reference/hotel-list-feed` first.
 - **The 3% platform fee is already baked into the rate** by the hotel when they set their Cloudbeds rates. No code change needed for compliance — but verify with Karol when in doubt that no extra fees are added at checkout.
 - **Cloudbeds is the source of truth** for inventory, rates, and extras. Cloudbeds webhooks fire when anything changes. Use existing `syncInventoryForProperty` patterns in `src/lib/cloudbeds/`.
@@ -389,4 +392,29 @@ The technical work we build is the same regardless — Hotel List XML, ARI Push,
 
 ---
 
-*Last updated: 2026-05-19. Updated whenever a binding decision is made or a sprint completes.*
+## 11. Progress log
+
+> Append-only record of work on this stream. **Process:** before a big chunk, append a **Plan** entry here; execute; then update the same entry to **Shipped** with what changed + any deviations. (See the working-process callout at the top.)
+
+### Sprint 1 — Hotel List XML feed generator — ✅ SHIPPED (2026-05-21)
+
+**Plan:**
+- `src/lib/google-hotels/types.ts` — TS types for the feed nodes.
+- `src/lib/google-hotels/hotel-list-feed.ts` — `buildHotelListFeed()`: read `properties` + `content_blocks`, map each property to a `<listing>` (id, name, structured address parsed from `contact.addressLines`, country, lat/long from `neighbourhood.mapLat/mapLon`, phone from `contact.reservationsPhone`, `<website>` from `properties.domain` when set, `client_attr alternate_hotel_id`). Wrap in `<listings>` with the XSD schema location + `<language>en</language>`.
+- `src/app/api/google/feeds/hotel-list/route.ts` — admin-gated GET returning the XML (no zip / BASIC-auth yet, per Sprint 1 scope).
+- `src/lib/google-hotels/README.md` — what it does + how to validate.
+- Validate output against `http://www.gstatic.com/localfeed/local_feed.xsd` with `xmllint`.
+
+**Sprint-1 decisions / deviations from §5:**
+- Include all currently-connected hotels (even without a domain) so we can validate now; `<website>` is omitted when `properties.domain` is null. Gating on domain before feeding Google is a later (productionising) step.
+- Address parsed heuristically from `addressLines` (addr1 = first line; UK postcode via regex; city = remainder; country = trailing 2-letter code or default `GB`). Structured per-field address columns are a future improvement.
+- Stable `<id>` = `roc-<properties.id>` (UUID-based, permanent — never reused).
+- Per the Google reference each `<listing>` needs id, name, address, country, and phone OR lat/long; we emit lat/long + phone when present.
+
+**Acceptance:** valid XML for the currently-connected hotels; `xmllint --schema …/local_feed.xsd` reports `validates`.
+
+**Shipped (2026-05-21):** built `src/lib/google-hotels/{types,hotel-list-feed}.ts` + `README.md` and `src/app/api/google/feeds/hotel-list/route.ts` (admin-gated `GET`, returns the XML + `X-Feed-*` stat headers). Generated the feed for the 3 currently-connected hotels (Lancaster + 2 `rockenue-partner-account` rows) and **validated against `local_feed.xsd` with `xmllint` → `validates`**. Address parsing splits street / city / UK-postcode / country correctly. All three emitted without `<website>` (no domains yet) — surfaced as `warnings` + the `X-Feed-Warnings` header. Build passes. **Next: Sprint 2 (JSON-LD on `/rooms`).**
+
+---
+
+*Last updated: 2026-05-21. Updated whenever a binding decision is made or a sprint completes.*

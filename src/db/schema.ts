@@ -137,6 +137,11 @@ export const roomTypes = pgTable(
     baseOccupancy: integer("base_occupancy"),
     amenities: jsonb("amenities"),
     sortOrder: integer("sort_order").default(0),
+    // Admin-controlled visibility in the booking engine. Our own config
+    // (Cloudbeds doesn't expose it), so the inventory sync never writes it —
+    // re-syncs preserve the admin's choice. Use to hide e.g. virtual/staff
+    // room types that exist in Cloudbeds but shouldn't be sold online.
+    hiddenFromBooking: boolean("hidden_from_booking").notNull().default(false),
   },
   (table) => [
     uniqueIndex("room_types_property_ota_idx").on(

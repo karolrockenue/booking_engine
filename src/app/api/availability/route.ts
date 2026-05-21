@@ -71,7 +71,14 @@ async function computeAvailability(
   const rooms = await db
     .select()
     .from(roomTypes)
-    .where(eq(roomTypes.propertyId, propertyId));
+    .where(
+      and(
+        eq(roomTypes.propertyId, propertyId),
+        // Admin can hide room types (e.g. virtual/staff rooms) from the
+        // booking engine; never surface them in availability.
+        eq(roomTypes.hiddenFromBooking, false)
+      )
+    );
 
   const results: AvailabilityResultRow[] = [];
 

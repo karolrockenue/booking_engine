@@ -24,6 +24,7 @@ interface RoomTypeRow {
   baseOccupancy: number | null;
   amenities: unknown;
   otaRoomId: string;
+  hiddenFromBooking: boolean;
 }
 
 export default function ContentPage() {
@@ -173,7 +174,18 @@ export default function ContentPage() {
               value={draft.footer}
               onChange={(v) => patch("footer", v)}
             />
-            <RoomsCard rooms={rooms} />
+            <RoomsCard
+              rooms={rooms}
+              propertyId={propertyId}
+              token={token}
+              onToggle={(roomId, hidden) =>
+                setRooms((prev) =>
+                  prev.map((r) =>
+                    r.id === roomId ? { ...r, hiddenFromBooking: hidden } : r
+                  )
+                )
+              }
+            />
           </div>
           <div className="flex flex-col gap-4">
             <ContactCard
@@ -588,13 +600,47 @@ function parseLabelHrefRows(
     });
 }
 
-// ─── Rooms (read-only, synced from Cloudbeds) ─────────────────────
+// ─── Rooms (synced from Cloudbeds; visibility is admin-controlled) ──
 
-function RoomsCard({ rooms }: { rooms: RoomTypeRow[] }) {
+function RoomsCard({
+  rooms,
+  propertyId,
+  token,
+  onToggle,
+}: {
+  rooms: RoomTypeRow[];
+  propertyId: string;
+  token: string | null;
+  onToggle: (roomId: string, hidden: boolean) => void;
+}) {
+  const [savingId, setSavingId] = useState<string | null>(null);
+
+  async function toggle(room: RoomTypeRow) {
+    if (!token || savingId) return;
+    const next = !room.hiddenFromBooking;
+    setSavingId(room.id);
+    onToggle(room.id, next); // optimistic
+    try {
+      const res = await fetch(`/api/admin/properties/${propertyId}/rooms`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ roomId: room.id, hiddenFromBooking: next }),
+      });
+      if (!res.ok) onToggle(room.id, !next); // revert on failure
+    } catch {
+      onToggle(room.id, !next); // revert on failure
+    } finally {
+      setSavingId(null);
+    }
+  }
+
   return (
     <Card
       title="Rooms"
-      hint="synced from Cloudbeds · read-only · edit in your PMS"
+      hint="synced from Cloudbeds · toggle which room types sell in the booking engine"
     >
       {rooms.length === 0 ? (
         <div className="text-[12.5px]" style={{ color: "var(--a-muted)" }}>
@@ -616,18 +662,54 @@ function RoomsCard({ rooms }: { rooms: RoomTypeRow[] }) {
               <div
                 key={r.id}
                 className="border rounded-md p-3"
-                style={{ borderColor: "var(--a-border-soft)" }}
+                style={{
+                  borderColor: "var(--a-border-soft)",
+                  opacity: r.hiddenFromBooking ? 0.6 : 1,
+                }}
               >
-                <div className="flex items-baseline justify-between gap-2 mb-1">
-                  <div className="text-[13px] font-semibold">{r.name}</div>
-                  {occ && (
-                    <div
-                      className="text-[11px]"
-                      style={{ color: "var(--a-muted)" }}
-                    >
-                      {occ}
+                <div className="flex items-center justify-between gap-2 mb-1">
+                  <div className="flex items-baseline gap-2 min-w-0">
+                    <div className="text-[13px] font-semibold truncate">
+                      {r.name}
                     </div>
-                  )}
+                    {occ && (
+                      <div
+                        className="text-[11px] flex-shrink-0"
+                        style={{ color: "var(--a-muted)" }}
+                      >
+                        {occ}
+                      </div>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => toggle(r)}
+                    disabled={!token || savingId === r.id}
+                    title={
+                      r.hiddenFromBooking
+                        ? "Hidden from the booking engine — click to show"
+                        : "Shown in the booking engine — click to hide"
+                    }
+                    className="text-[11px] px-2 py-0.5 rounded border font-medium flex-shrink-0"
+                    style={
+                      r.hiddenFromBooking
+                        ? {
+                            borderColor: "var(--a-border)",
+                            color: "var(--a-muted)",
+                            background: "var(--a-surface-2)",
+                          }
+                        : {
+                            borderColor: "rgba(0,135,90,0.25)",
+                            color: "var(--a-green)",
+                            background: "var(--a-green-soft)",
+                          }
+                    }
+                  >
+                    {savingId === r.id
+                      ? "…"
+                      : r.hiddenFromBooking
+                        ? "Hidden"
+                        : "Shown"}
+                  </button>
                 </div>
                 {r.description && (
                   <div

@@ -38,9 +38,8 @@ export function RockenueLanding() {
       >
         <div style={{ fontSize: 18, fontWeight: 300, letterSpacing: "0.01em" }}>
           <span style={{ color: TEAL }}>(</span>
-          <span style={{ margin: "0 3px" }}>rockenue</span>
+          <span style={{ margin: "0 3px" }}>tech</span>
           <span style={{ color: GOLD }}>)</span>
-          <span style={{ color: MUTED, marginLeft: 7, fontSize: 13 }}>tech</span>
         </div>
         <a
           href="/admin"

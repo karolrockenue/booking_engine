@@ -5,8 +5,15 @@ import { eq } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { RockenueLanding } from "@/components/rockenue/Landing";
 
-// Host the admin application lives on; a bare visit there goes straight to /admin.
-const APP_HOST = (process.env.PLATFORM_APP_HOST ?? "app.rockenue.tech").toLowerCase();
+// Hosts the admin application lives on; a bare visit there goes straight to
+// /admin. Comma-separated env override; default covers the platform host
+// (tech.rockenue.com) + the legacy one during the transition.
+const APP_HOSTS = (
+  process.env.PLATFORM_APP_HOSTS ?? "tech.rockenue.com,app.rockenue.tech"
+)
+  .split(",")
+  .map((s) => s.trim().toLowerCase())
+  .filter(Boolean);
 
 // Bare "/" resolves by hostname:
 //   - A hotel's own domain → that hotel's path-scoped booking site (/<slug>).
@@ -30,7 +37,7 @@ export default async function RootPage() {
     if (hotel) redirect(`/${hotel.slug}`);
   }
 
-  if (host === APP_HOST) redirect("/admin");
+  if (APP_HOSTS.includes(host)) redirect("/admin");
 
   return <RockenueLanding />;
 }

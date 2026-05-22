@@ -15,6 +15,17 @@ export function proxy(req: NextRequest) {
   const { pathname, searchParams } = req.nextUrl;
   const host = req.headers.get("host") ?? "";
 
+  // Retired platform domain → permanent redirect to the new home
+  // (tech.rockenue.com), preserving the path. Covers the apex + any subdomain.
+  const bareHost = host.split(":")[0].toLowerCase();
+  if (bareHost === "rockenue.tech" || bareHost.endsWith(".rockenue.tech")) {
+    const url = new URL(req.nextUrl);
+    url.host = "tech.rockenue.com";
+    url.protocol = "https:";
+    url.port = "";
+    return NextResponse.redirect(url, 308);
+  }
+
   // Dev mockup pages are not part of the production booking flow. 404 them in
   // production rather than relying on people remembering to delete the
   // directories.

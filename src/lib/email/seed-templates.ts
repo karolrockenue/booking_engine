@@ -27,11 +27,11 @@ export async function seedEmailTemplatesForProperty(
     throw new Error(`property_not_found:${propertyId}`);
   }
 
-  // If this Railway deployment runs the Portico theme, use the brand stack
+  // If this property is on the Portico template, use the brand stack
   // regardless of what `properties.theme.typography` says (admin may have
-  // overridden it to something off-brand). For other themes, pull from the
-  // theme tokens.
-  const isPortico = process.env.THEME === "portico-ivory";
+  // overridden it to something off-brand). For other templates, pull from
+  // the per-property theme tokens.
+  const isPortico = property.templateSlug === "portico-ivory";
   const fonts = isPortico ? PORTICO_FONTS : resolveEmailFonts(parseTheme(property.theme));
 
   const defs = buildDefaultTemplates(fonts);

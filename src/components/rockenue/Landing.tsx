@@ -3,6 +3,8 @@
 // light. Theme-agnostic (rendered directly, not via the hotel themes). The
 // Admin button (top-right) is the entry to the webmaster admin area.
 
+import { Wordmark } from "./Wordmark";
+
 const BG = "#14181D";
 const INK = "#F4F2EC";
 const MUTED = "#8A9099";
@@ -36,11 +38,7 @@ export function RockenueLanding() {
           padding: "20px clamp(20px, 5vw, 56px)",
         }}
       >
-        <div style={{ fontSize: 18, fontWeight: 300, letterSpacing: "0.01em" }}>
-          <span style={{ color: TEAL }}>(</span>
-          <span style={{ margin: "0 3px" }}>tech</span>
-          <span style={{ color: GOLD }}>)</span>
-        </div>
+        <Wordmark variant="dark" size="md" />
         <a
           href="/admin"
           style={{
@@ -147,10 +145,9 @@ export function RockenueLanding() {
           borderTop: `1px solid ${HAIR}`,
         }}
       >
-        <span>
-          <span style={{ color: TEAL }}>(</span>
-          <span style={{ color: GOLD }}>)</span>
-          &nbsp;&nbsp;Rockenue Tech sp. z o.o.
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 10 }}>
+          <Wordmark variant="dark" size="sm" />
+          <span>sp. z o.o.</span>
         </span>
         <span style={{ marginLeft: "auto" }}>© {new Date().getFullYear()}</span>
       </footer>

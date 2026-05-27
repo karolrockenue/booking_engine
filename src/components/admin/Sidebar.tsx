@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { Wordmark } from "@/components/rockenue/Wordmark";
 
 interface SidebarProps {
   propertyId: string;
@@ -18,6 +19,7 @@ interface SidebarProps {
     | "extras"
     | "emails"
     | "alerts"
+    | "design"
     | "cloudbeds"
     | "stripe"
     | "domain";
@@ -30,7 +32,7 @@ interface SidebarProps {
   onLogout?: () => void;
 }
 
-type PropertyItemId = "overview" | "bookings" | "content" | "media" | "rooms" | "rates" | "extras" | "emails" | "alerts";
+type PropertyItemId = "overview" | "bookings" | "content" | "media" | "rooms" | "rates" | "extras" | "emails" | "alerts" | "design";
 
 const PROPERTY_ITEMS: Array<{
   id: PropertyItemId;
@@ -47,6 +49,7 @@ const PROPERTY_ITEMS: Array<{
   { id: "extras", icon: "✦", label: "Extras" },
   { id: "emails", icon: "✉", label: "Emails", countKey: "emailsCount" },
   { id: "alerts", icon: "⇄", label: "Alerts", countKey: "alertsCount" },
+  { id: "design", icon: "◇", label: "Design" },
 ];
 
 const INTEGRATION_ITEMS = [
@@ -83,6 +86,9 @@ export function Sidebar({
     <aside className="border-r flex flex-col sticky top-0 h-screen overflow-y-auto p-3"
       style={{ background: "var(--a-side)", borderColor: "var(--a-border)", width: 240 }}
     >
+      <div className="px-1.5 pt-1 pb-3">
+        <Wordmark variant="light" size="sm" />
+      </div>
       <button
         onClick={() => router.push("/admin")}
         title="Switch hotel — back to dashboard"

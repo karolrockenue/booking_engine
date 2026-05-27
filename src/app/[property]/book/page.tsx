@@ -9,14 +9,14 @@ export default async function BookPage({
   params: Promise<{ property: string }>;
 }) {
   const { property: slug } = await params;
-  const portico = await activePorticoTokens();
+  const property = await resolvePropertyBySlug(slug);
+  if (!property) notFound();
+
+  const portico = await activePorticoTokens(property.templateSlug);
   if (!portico) {
     // Default theme: booking widget lives on the homepage.
     redirect(`/${slug}`);
   }
-
-  const property = await resolvePropertyBySlug(slug);
-  if (!property) notFound();
 
   return <PorticoDates t={portico} currency={property.currency ?? "GBP"} />;
 }

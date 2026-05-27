@@ -15,6 +15,7 @@ export type ResolvedProperty = {
   currency: string | null;
   timezone: string | null;
   theme: PropertyTheme;
+  templateSlug: string;
   status: string | null;
 };
 
@@ -87,6 +88,7 @@ function toResolved(property: PropertyRow): ResolvedProperty {
     currency: property.currency,
     timezone: property.timezone,
     theme: parseTheme(property.theme),
+    templateSlug: property.templateSlug,
     status: property.status,
   };
 }

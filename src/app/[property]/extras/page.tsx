@@ -9,14 +9,14 @@ export default async function ExtrasPage({
   params: Promise<{ property: string }>;
 }) {
   const { property: slug } = await params;
-  const portico = await activePorticoTokens();
+  const property = await resolvePropertyBySlug(slug);
+  if (!property) notFound();
+
+  const portico = await activePorticoTokens(property.templateSlug);
   if (!portico) {
     // Default theme handles extras inline on /rooms — no dedicated page.
     redirect(`/${slug}`);
   }
-
-  const property = await resolvePropertyBySlug(slug);
-  if (!property) notFound();
 
   return <PorticoExtras t={portico} property={property} />;
 }

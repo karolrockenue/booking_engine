@@ -1,12 +1,41 @@
 # **Booking Engine — Blueprint**
 
-**Last updated:** 2026-05-21 **Status:** Phases 1–5 \+ 6.5 \+ 6.6 \+ 7.1 shipped. Stripe Connect live on UAE sandbox (Polish entity migration scheduled post-19 May). Flex auto-charge \+ PMS retry recovery live on production. **Guest comms (Phase 7.1) shipped end-to-end — Unlayer composer + R2 image pipeline + scheduler + send log. Maily.to replaced 2026-05-12 (no font control); Unlayer integrates uploads into the Media library and supports brand fonts. See §13.** Welcome Pickups partnership in motion. **✅ Cloudbeds Marketplace CERTIFIED 2026-05-20** — passed via the live Marketplace "Connect app" flow. The retry-day fixes that closed it: the OAuth callback now accepts **Cloudbeds-initiated** installs (unsigned state → fresh property, `63d5745`); the admin "Open site" button uses the `/<slug>` path, not the retired `?property=` shim (`8c4079b`); and the Cloudbeds console's **Login URL** (a stale `market-pulse.io` value) was repointed to `/api/install`. Full chain verified end-to-end: OAuth → auto-create hotel → inventory/rates/extras/hotel-details sync → webhooks → Stripe auto-attach → real NR + Flex bookings with per-morning breakfast folio + cancel. **us2 needs no special handling** — OAuth authorize is the standard `hotels.cloudbeds.com/api/v1.3/oauth` (not `us2`/`v1.1`); the cluster resolves internally. See the **2026-05-20 session log** immediately below + §7 chronicle. **Post-cert cleanup pending: DROP the `cert_attach_test_stripe` trigger + delete the throwaway test properties.** **2026-05-21 (post-cert):** platform domain **`app.rockenue.tech`** is live (Hostinger DNS → Railway) with a Rockenue Tech landing page; admin gained **room-type visibility** + a dedicated **Rooms** page, and **Rate plans** now show logical (deduped) plans with per-plan visibility + a booking-engine display-name override. **Google Hotel Center integration Sprints 1–4 + Sprint 5 foundation shipped** (separate work stream — see `Google Hotel Center — Blueprint.md`). See the **2026-05-21 session log** below.
+**Last updated:** 2026-05-26 **Status:** Phases 1–5 \+ 6.5 \+ 6.6 \+ 7.1 shipped. Stripe Connect live on UAE sandbox (Polish entity migration scheduled post-19 May). Flex auto-charge \+ PMS retry recovery live on production. **Guest comms (Phase 7.1) shipped end-to-end — Unlayer composer + R2 image pipeline + scheduler + send log. Maily.to replaced 2026-05-12 (no font control); Unlayer integrates uploads into the Media library and supports brand fonts. See §13.** Welcome Pickups partnership in motion. **✅ Cloudbeds Marketplace CERTIFIED 2026-05-20** — passed via the live Marketplace "Connect app" flow. The retry-day fixes that closed it: the OAuth callback now accepts **Cloudbeds-initiated** installs (unsigned state → fresh property, `63d5745`); the admin "Open site" button uses the `/<slug>` path, not the retired `?property=` shim (`8c4079b`); and the Cloudbeds console's **Login URL** (a stale `market-pulse.io` value) was repointed to `/api/install`. Full chain verified end-to-end: OAuth → auto-create hotel → inventory/rates/extras/hotel-details sync → webhooks → Stripe auto-attach → real NR + Flex bookings with per-morning breakfast folio + cancel. **us2 needs no special handling** — OAuth authorize is the standard `hotels.cloudbeds.com/api/v1.3/oauth` (not `us2`/`v1.1`); the cluster resolves internally. See the **2026-05-20 session log** immediately below + §7 chronicle. **Post-cert cleanup pending: DROP the `cert_attach_test_stripe` trigger + delete the throwaway test properties.** **2026-05-21 (post-cert):** platform domain **`app.rockenue.tech`** is live (Hostinger DNS → Railway) with a Rockenue Tech landing page; admin gained **room-type visibility** + a dedicated **Rooms** page, and **Rate plans** now show logical (deduped) plans with per-plan visibility + a booking-engine display-name override. **Google Hotel Center integration Sprints 1–4 + Sprint 5 foundation shipped** (separate work stream — see `Google Hotel Center — Blueprint.md`). See the **2026-05-21 session log** below.
 
 Multi-tenant hotel website \+ booking engine platform. Each hotel runs on its own custom domain with a bespoke website and an integrated booking flow connected to Cloudbeds. Built and managed by Rockenue as the webmaster across all properties (≈40 independent hotels, luxury → near-hostel spectrum).
 
 This document is the single source of truth. It replaces `README.md`, `hotel-platform-build-plan.md`, `THEMES.md`, and `TODO.md`. AI agent rules continue to live in `AGENTS.md` / `CLAUDE.md`.
 
 > **Companion blueprint — Google Hotel Center.** The Google integration work stream (Free Booking Links / Hotel Ads — Hotel List XML feed, ARI Push, Landing Pages XML, JSON-LD hotel-price data, Connectivity Partner application) lives in its **own** document: **`Google Hotel Center — Blueprint.md`** in the repo root. If a task touches Google feeds, Hotel Center, FBL/Hotel Ads, or hotel-price structured data, read that file — it's the source of truth for that work stream. This document stays focused on the IBE (booking engine, Cloudbeds, Stripe, admin, themes, email).
+
+---
+
+## **2026-05-26 session log — per-property templates + Design tab**
+
+Themes go from one-per-Railway-service to **one-per-hotel**. Same backend, same data, same deployment — each hotel renders whichever template is assigned to it in the DB. Adds an admin **Design** tab with live previews. Lays the groundwork for a growing template library that the platform team authors in code.
+
+### Per-property template assignment (replaces `THEME` env var)
+- **Schema:** `properties.template_slug text NOT NULL DEFAULT 'default'`. Lancaster Court Hotel migrated to `portico-ivory`; everyone else stays on `default`.
+- **Resolver (`src/lib/active-theme.ts`):** new `getPropertyTheme(slug)` resolves in this order — dev cookie (preview) → `property.templateSlug` → legacy `THEME` env → `default`. Old `getActiveTheme()` retained for `/dev/themes` only.
+- **Storefront pages:** all six `[property]/*/page.tsx` files now call `activePorticoTokens(property.templateSlug)` instead of the env-bound version. `book/` and `extras/` restructured to load the property before resolving the template. `seed-templates.ts` flipped from `process.env.THEME` to `property.templateSlug` for the per-hotel email font stack.
+- One Railway service can now serve every hotel on every template. The `THEME` env var stays in place as a final fallback so existing services keep working mid-rollout.
+
+### Admin → Design tab (per-hotel template picker)
+- New `/admin/[propertyId]/design` page with a 2-up card grid, one per available template. **Active** badge on the current one; **Use this** button assigns it. Sidebar gains a "Design" item (◇).
+- **Live previews via iframe** — each card iframes `/<property-slug>?_template=<tpl-slug>` and scales it down with a `ResizeObserver` so it always fills the card width. The override accepts only known template slugs and adds `noindex, nofollow` so previews never leak to search.
+- **API:** PATCH `/api/admin/properties/[id]` accepts `templateSlug`, validated against `isValidTheme()`; unknown slugs return 400.
+
+### Brand mark — `(ROCKENUE TECH)` wordmark applied
+- New `src/components/rockenue/Wordmark.tsx` — reusable mark with `variant: "dark" | "light"` and `size: "sm" | "md"`. Same proportions as rockenue.com (teal `(`, ivory/dark wordmark, gold `)`).
+- Wired into: Rockenue Tech landing header + footer, admin **login page** (which was restyled to a dark Rockenue gateway — underlined token input, ghost "Sign in →" button), and per-hotel admin sidebar top.
+
+### How to add a future template (no admin work needed)
+1. Drop the template under `src/themes/<slug>/` with its `tokens.ts` + screens, mirroring the Portico structure.
+2. Append the slug to `PORTICO_THEMES` (or extend the union) and `VALID_THEMES` in `src/lib/active-theme.ts`.
+3. Add a row to the `TEMPLATES` array in `src/app/admin/[propertyId]/design/page.tsx` (label + description).
+4. Assign it to any hotel via the Design tab — per-hotel content (photos in R2, copy in `content_blocks`) automatically slots into the new template because templates read the same `getPropertyPhotos` / `getPropertyContent` API.
+
+Templates stay **code-only** by design — no visual editor planned. Karol authors HTML concepts in free time; we port them into `src/themes/<slug>/` and they land in the picker.
 
 ---
 
@@ -231,48 +260,61 @@ The old `?property=<slug>` shim is **retired** — the path replaces it. (It was
 
 ## **5\. Themes system**
 
-The booking engine ships **one codebase, many designs**. The look/layout of the public-facing flow is selected per Railway service via the `THEME` env var. Backend, database, Cloudbeds, Stripe, and email are identical across every deployment.
+The booking engine ships **one codebase, many templates**. Each hotel is assigned a template in the DB (`properties.template_slug`) and the storefront renders that template's screens. Same backend, same database, same deployment for every hotel.
 
-| `THEME` | Design | Status |
+| `template_slug` | Design | Status |
 | ----- | ----- | ----- |
-| `default` (unset) | Original live design | shipped |
-| `portico-ivory` | The Portico Hotel — Editorial Ivory | testing |
+| `default` | Original live design | shipped |
+| `portico-ivory` | The Portico Hotel — Editorial Ivory | shipped |
 
-Theme components are token-driven (`src/themes/<theme>/tokens.ts`), so adding a future palette variant is a token-only change.
+Template components are token-driven (`src/themes/<slug>/tokens.ts`). Per-hotel content (photos in R2, copy in `content_blocks`) flows into any template via the shared `getPropertyPhotos` / `getPropertyContent` API — the same hotel data renders identically across templates, only the styling/layout changes.
 
-### **Per-deployment setup on Railway**
+### **Template resolution**
 
-For each new design link:
+`getPropertyTheme(propertyTemplateSlug)` in `src/lib/active-theme.ts` resolves the active template for a request in this order:
 
-1. Create a new Railway service (or add the env var to an existing one) pointing at the same GitHub repo.  
-2. Reuse all existing env vars (`DATABASE_URL`, `CLOUDBEDS_*`, `STRIPE_*`, `SENDGRID_*`, etc.). Same backend, same data.  
-3. Add one extra env var: `THEME=portico-ivory`.  
-4. Map a domain (Railway-provided `*.up.railway.app` is fine for testing).  
-5. Set `properties.domain` for the property you want this URL to resolve to.  
-6. Deploy.
+1. **Dev cookie** (`dev-theme`) set by `/dev/themes` — non-prod only, lets you preview any template on any hotel without touching the DB.  
+2. **`?_template=<slug>`** URL param — preview-only override used by the admin Design tab's iframes. Always emits `noindex, nofollow` so previews don't leak to search. Validated against the template registry. *(Wired at each `[property]/page.tsx` rather than in the resolver, since `getPropertyTheme` has no access to search params.)*  
+3. **`property.templateSlug`** — the assigned template for that hotel. **This is the source of truth.**  
+4. **`THEME` env var** — legacy deployment-wide fallback. Kept so existing Railway services don't break mid-rollout; will be removed once every hotel has a `template_slug`.  
+5. **`default`**.
 
-The active theme is read at request time from `process.env.THEME` (see `src/lib/active-theme.ts`). Restart the Railway service after changing it. Admin/internal routes remain identical across every deployment — they don't fork on theme.
+### **Assigning a template to a hotel**
 
-### **Local preview — flipping themes without restarting**
+**Admin UI:** open the hotel in `/admin`, click the **Design** tab (◇). Each available template shows as a card with a live iframe preview of that hotel's homepage rendered through the template. Click **Use this** to assign; it PATCHes `templateSlug` on the property and the storefront immediately renders the new template.
 
-Run `npm run dev` once. Visit `http://localhost:3000/dev/themes` and pick a theme — sets a session cookie and reloads the homepage in that design. Every themed screen also has a small floating badge in the bottom-right that links back to `/dev/themes`. Cookie persists for 30 days; clear with the link on `/dev/themes` or by deleting cookies for `localhost`.
+**SQL** (rare, e.g. bulk assignment): `UPDATE properties SET template_slug = 'portico-ivory' WHERE slug = '<hotel-slug>';`
 
-The dev cookie has **no effect in production**: on Railway the env var is the only source of truth.
+### **Adding a new template**
+
+Templates are **code-only** — no visual editor. Karol authors HTML concepts in free time; we port them into `src/themes/<slug>/`.
+
+1. Create `src/themes/<slug>/` mirroring the Portico structure (`tokens.ts`, `screens/`, `components/`, `index.ts` barrel export).  
+2. Append the slug to `PORTICO_THEMES` (or extend the union if not Portico-family) and to `VALID_THEMES` in `src/lib/active-theme.ts`.  
+3. Add a row to the `TEMPLATES` array in `src/app/admin/[propertyId]/design/page.tsx` (label + description) so it appears in the picker.  
+4. Drop default photography under `public/<slug>/` if the template uses fallbacks; per-hotel R2 photos override these.  
+5. Assign to any hotel via the Design tab.
+
+No env var changes, no Railway service to spin up, no deploy gating.
+
+### **Local preview — `/dev/themes`**
+
+Visit `http://localhost:3000/dev/themes` and pick a template — sets a session cookie that overrides every hotel's assigned template for the dev session. Every themed screen has a small floating badge linking back. Cookie persists 30 days; clear with the link on `/dev/themes`. **Cookie is dev-only and never reads in production.**
 
 ### **Themed vs shared**
 
-**Themed (changes per deployment):**
+**Themed (per template):**
 
 * Public marketing & booking flow: `/`, `/book`, `/rooms`, `/extras`, `/checkout`, `/confirmation`  
-* Photography in `public/<theme>/*`  
-* Logo assets
+* Template-specific photography fallbacks in `public/<slug>/`  
+* Template-specific logo, fonts, Stripe Element appearance, email font stack
 
-**Shared (identical everywhere):**
+**Shared (identical for every hotel, every template):**
 
 * All API routes (`src/app/api/*`)  
-* Database schema, Cloudbeds sync, Stripe Connect, webhooks, email  
+* Database schema, Cloudbeds sync, Stripe Connect, webhooks, email engine  
 * Headless booking hooks (`useAvailability`, `useBookingDraft`, `useExtras`, `usePersistedDraft`, `submitBooking`)  
-* Admin dashboard (`/admin`)  
+* Admin (`/admin`) — never forks on template  
 * Internal/dev routes
 
 ### **Portico Ivory flow**
@@ -315,7 +357,7 @@ Live on Neon. Push schema changes via `npx drizzle-kit push` (no migrations dir)
 
 **`properties`** — multi-tenant config
 
-* Core: `id`, `slug`, `name`, `domain`, `currency`, `timezone`, `theme` (JSONB)  
+* Core: `id`, `slug`, `name`, `domain`, `currency`, `timezone`, `theme` (JSONB — per-hotel brand tokens used by the default template), `templateSlug` (text, NOT NULL, default `'default'` — which template renders for this hotel; see §5)  
 * Cloudbeds: `cloudbedsPropertyId`, `cloudbedsAccessToken` (encrypted), `cloudbedsRefreshToken` (encrypted), `cloudbedsTokenExpiresAt`  
 * Stripe Connect: `stripeAccountId`, `stripeAccountStatus` (`pending` | `active` | `restricted`), `stripeAccountCurrency`, `platformFeePercent` (default `3.00`), `payoutSchedule` (default `weekly`)
 

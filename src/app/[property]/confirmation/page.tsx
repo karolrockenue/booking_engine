@@ -13,7 +13,7 @@ export default async function ConfirmationPage({
   const property = await resolvePropertyBySlug(slug);
   if (!property) notFound();
 
-  const portico = await activePorticoTokens();
+  const portico = await activePorticoTokens(property.templateSlug);
   if (portico) return <PorticoConfirmation t={portico} property={property} />;
 
   return <ConfirmationClient property={property} />;

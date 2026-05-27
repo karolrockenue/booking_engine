@@ -12,6 +12,7 @@ import {
   bookings,
 } from "@/db/schema";
 import { eq } from "drizzle-orm";
+import { isValidTheme } from "@/lib/active-theme";
 
 // GET — get a single property with all related data
 export async function GET(
@@ -93,6 +94,17 @@ export async function PATCH(
     if (body[field] !== undefined) {
       allowed[field] = body[field];
     }
+  }
+
+  // templateSlug — validate against the known template registry before allowing.
+  if (body.templateSlug !== undefined) {
+    if (typeof body.templateSlug !== "string" || !isValidTheme(body.templateSlug)) {
+      return NextResponse.json(
+        { error: `Unknown template: ${body.templateSlug}` },
+        { status: 400 }
+      );
+    }
+    allowed.templateSlug = body.templateSlug;
   }
 
   if (Object.keys(allowed).length === 0) {

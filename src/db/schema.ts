@@ -23,6 +23,7 @@ export const properties = pgTable("properties", {
   currency: text("currency").default("GBP"),
   timezone: text("timezone").default("Europe/London"),
   theme: jsonb("theme").notNull(),
+  templateSlug: text("template_slug").notNull().default("default"),
   status: text("status").default("draft"),
 
   // Cloudbeds OAuth (tokens stored encrypted at app layer — see lib/crypto.ts)

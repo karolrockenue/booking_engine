@@ -22,7 +22,7 @@ export default async function RoomsPage({
   const adults = parseInt(pickStr(sp.adults) ?? "2", 10) || 2;
   const children = parseInt(pickStr(sp.children) ?? "0", 10) || 0;
 
-  const portico = await activePorticoTokens();
+  const portico = await activePorticoTokens(property.templateSlug);
   if (portico) {
     if (!checkIn || !checkOut) redirect(`/${slug}/book`);
     const [photos, jsonLd] = await Promise.all([

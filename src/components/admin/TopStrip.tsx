@@ -60,7 +60,7 @@ export function TopStrip({ title, subtitle, badge, actions }: TopStripProps) {
   );
 }
 
-function Badge({ text, tone = "green" }: { text: string; tone?: "green" | "amber" | "red" | "blue" }) {
+export function Badge({ text, tone = "green" }: { text: string; tone?: "green" | "amber" | "red" | "blue" }) {
   const t = BADGE_TONES[tone];
   return (
     <span

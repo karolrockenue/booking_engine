@@ -7,6 +7,8 @@ import { notFound } from "next/navigation";
 import { HomeClient } from "./home-client";
 import { activePorticoTokens } from "@/themes/portico";
 import { PorticoHome } from "@/themes/portico/screens/Home";
+import { activeStreetTokens } from "@/themes/street";
+import { StreetHome } from "@/themes/street/screens/Home";
 import { isValidTheme } from "@/lib/active-theme";
 import type { Metadata } from "next";
 
@@ -52,6 +54,23 @@ export default async function HomePage({ params, searchParams }: HomePageProps) 
     ]);
     return (
       <PorticoHome t={portico} slug={slug} photos={photos} content={content} />
+    );
+  }
+
+  const street = await activeStreetTokens(effectiveSlug);
+  if (street) {
+    const [photos, content] = await Promise.all([
+      getPropertyPhotos(property.id),
+      getPropertyContent(property.id),
+    ]);
+    return (
+      <StreetHome
+        t={street}
+        slug={slug}
+        name={property.name}
+        photos={photos}
+        content={content}
+      />
     );
   }
 

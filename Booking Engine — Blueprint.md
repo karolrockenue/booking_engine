@@ -1,12 +1,44 @@
 # **Booking Engine — Blueprint**
 
-**Last updated:** 2026-05-26 **Status:** Phases 1–5 \+ 6.5 \+ 6.6 \+ 7.1 shipped. Stripe Connect live on UAE sandbox (Polish entity migration scheduled post-19 May). Flex auto-charge \+ PMS retry recovery live on production. **Guest comms (Phase 7.1) shipped end-to-end — Unlayer composer + R2 image pipeline + scheduler + send log. Maily.to replaced 2026-05-12 (no font control); Unlayer integrates uploads into the Media library and supports brand fonts. See §13.** Welcome Pickups partnership in motion. **✅ Cloudbeds Marketplace CERTIFIED 2026-05-20** — passed via the live Marketplace "Connect app" flow. The retry-day fixes that closed it: the OAuth callback now accepts **Cloudbeds-initiated** installs (unsigned state → fresh property, `63d5745`); the admin "Open site" button uses the `/<slug>` path, not the retired `?property=` shim (`8c4079b`); and the Cloudbeds console's **Login URL** (a stale `market-pulse.io` value) was repointed to `/api/install`. Full chain verified end-to-end: OAuth → auto-create hotel → inventory/rates/extras/hotel-details sync → webhooks → Stripe auto-attach → real NR + Flex bookings with per-morning breakfast folio + cancel. **us2 needs no special handling** — OAuth authorize is the standard `hotels.cloudbeds.com/api/v1.3/oauth` (not `us2`/`v1.1`); the cluster resolves internally. See the **2026-05-20 session log** immediately below + §7 chronicle. **Post-cert cleanup pending: DROP the `cert_attach_test_stripe` trigger + delete the throwaway test properties.** **2026-05-21 (post-cert):** platform domain **`app.rockenue.tech`** is live (Hostinger DNS → Railway) with a Rockenue Tech landing page; admin gained **room-type visibility** + a dedicated **Rooms** page, and **Rate plans** now show logical (deduped) plans with per-plan visibility + a booking-engine display-name override. **Google Hotel Center integration Sprints 1–4 + Sprint 5 foundation shipped** (separate work stream — see `Google Hotel Center — Blueprint.md`). See the **2026-05-21 session log** below.
+**Last updated:** 2026-05-28 **Status:** Phases 1–5 \+ 6.5 \+ 6.6 \+ 7.1 shipped. **Second storefront template — `street-ivory` (Street · Ivory) — ✅ END-TO-END 2026-06-04 (home + rooms + extras + checkout + confirmation all in Street; booking logic reused, only the skin differs — see the 2026-06-04 + 2026-05-27 session logs). Admin Media / Content / Design tabs are now template-aware via per-template content schemas.** Stripe Connect live on UAE sandbox (Polish entity migration scheduled post-19 May). Flex auto-charge \+ PMS retry recovery live on production. **Guest comms (Phase 7.1) shipped end-to-end — Unlayer composer + R2 image pipeline + scheduler + send log. Maily.to replaced 2026-05-12 (no font control); Unlayer integrates uploads into the Media library and supports brand fonts. See §13.** Welcome Pickups partnership in motion. **✅ Cloudbeds Marketplace CERTIFIED 2026-05-20** — passed via the live Marketplace "Connect app" flow. The retry-day fixes that closed it: the OAuth callback now accepts **Cloudbeds-initiated** installs (unsigned state → fresh property, `63d5745`); the admin "Open site" button uses the `/<slug>` path, not the retired `?property=` shim (`8c4079b`); and the Cloudbeds console's **Login URL** (a stale `market-pulse.io` value) was repointed to `/api/install`. Full chain verified end-to-end: OAuth → auto-create hotel → inventory/rates/extras/hotel-details sync → webhooks → Stripe auto-attach → real NR + Flex bookings with per-morning breakfast folio + cancel. **us2 needs no special handling** — OAuth authorize is the standard `hotels.cloudbeds.com/api/v1.3/oauth` (not `us2`/`v1.1`); the cluster resolves internally. See the **2026-05-20 session log** immediately below + §7 chronicle. **Post-cert cleanup DONE 2026-06-04: dropped the `cert_attach_test_stripe` trigger + function and deleted the dead duplicate test property — kept one test hotel (`rockenue-partner-account-15cece68`, live token) + Lancaster Court. Only the "already connected?" install guard remains.** **2026-05-21 (post-cert):** platform domain **`app.rockenue.tech`** is live (Hostinger DNS → Railway) with a Rockenue Tech landing page; admin gained **room-type visibility** + a dedicated **Rooms** page, and **Rate plans** now show logical (deduped) plans with per-plan visibility + a booking-engine display-name override. **Google Hotel Center integration Sprints 1–4 + Sprint 5 foundation shipped** (separate work stream — see `Google Hotel Center — Blueprint.md`). See the **2026-05-21 session log** below.
 
 Multi-tenant hotel website \+ booking engine platform. Each hotel runs on its own custom domain with a bespoke website and an integrated booking flow connected to Cloudbeds. Built and managed by Rockenue as the webmaster across all properties (≈40 independent hotels, luxury → near-hostel spectrum).
 
 This document is the single source of truth. It replaces `README.md`, `hotel-platform-build-plan.md`, `THEMES.md`, and `TODO.md`. AI agent rules continue to live in `AGENTS.md` / `CLAUDE.md`.
 
 > **Companion blueprint — Google Hotel Center.** The Google integration work stream (Free Booking Links / Hotel Ads — Hotel List XML feed, ARI Push, Landing Pages XML, JSON-LD hotel-price data, Connectivity Partner application) lives in its **own** document: **`Google Hotel Center — Blueprint.md`** in the repo root. If a task touches Google feeds, Hotel Center, FBL/Hotel Ads, or hotel-price structured data, read that file — it's the source of truth for that work stream. This document stays focused on the IBE (booking engine, Cloudbeds, Stripe, admin, themes, email).
+
+---
+
+## **2026-05-27 session log — second template (Street · Ivory) + template-aware admin**
+
+Building the **second storefront template** end-to-end and making the admin content tabs adapt to whichever template a hotel is on. The template direction was chosen from HTML mockups first (see `public/mockups/budget-template-home-concepts.html` and `public/mockups/street-datepicker-concepts.html`), then ported to code. **In progress** — homepage + rooms list are live in the new template; extras / checkout / confirmation still render in Portico/default until ported.
+
+### Street · Ivory (`street-ivory`) — a "cinematic-light" template for limited-service hotels
+- A second template **family** alongside Portico — same warm ivory ground (`#faf8f3`) but a different layout DNA: full-bleed photo band, italic-accent serif headline (**Fraunces** via next/font), borderless underline inputs, ghost-bordered buttons, single warm gold accent (`#b08a3e`). Aimed at budget / limited-service hotels where the photo carries the page.
+- **Files:** `src/themes/street/` mirrors Portico — `tokens.ts`, `fonts.ts`, `schema.ts`, `stripe-appearance.ts`, `index.ts` (barrel + `activeStreetTokens()`), `StreetShell.tsx`, `components/` (`Nav`, `Logo`, `primitives`, `Gallery`, `Map`, `emphasis`, `DatePicker`, `SearchBar`), `screens/` (`Home`, `RoomSelect`).
+- **Functional date picker** — the homepage search bar collapses check-in/check-out into a single **Dates** field (Booking.com pattern). Clicking opens a two-month range popover (`DatePicker.tsx`): first click = check-in, second = check-out, hover previews the range, ESC / outside-click closes. Adults/children get small `+/-` stepper popovers. "Find rooms" routes to `/<slug>/rooms?checkIn=&checkOut=&adults=&children=`. Same `StreetSearchBar` repeats on `/rooms`, prefilled, so dates can be changed without leaving the page.
+- **Rooms list** (`StreetRoomSelect`) consumes the shared booking hooks (`useAvailability` / `useBookingDraft` / `useExtras` / `usePersistedDraft`) — same data contract as Portico. Rows: room photo · name + facts + cancellation perk · nightly price + total + ghost "Choose →". Choose sets the draft and routes to `/extras`.
+- **Dispatch:** `[property]/page.tsx` and `[property]/rooms/page.tsx` gained a `street` branch after the `portico` branch (`activeStreetTokens(slug)` → render Street screen). **Still TODO:** `/extras`, `/checkout`, `/confirmation` Street screens (they currently fall through to Portico/default for street hotels).
+
+### Template-aware admin — per-template content schemas
+- New **`src/lib/template-schema.ts`** — each template declares the photo slots + content blocks it actually renders (`TemplateSchema`). `getTemplateSchema(slug)` resolves it; `readinessFor(spec, count)` computes whether a slot is filled. Portico and Street each export a `schema.ts`; the legacy `default` template declares `ignoresUploads: true` (it hardcodes its imagery — surfaced honestly in the UI).
+- **Media tab** now labels sections per the active template ("Homepage hero", "Inside gallery"), shows `ready` / `needed` pills + `N/min` counts, fallback hints when a slot is empty, and an amber banner when the template ignores uploads.
+- **Content tab** marks blocks the active template doesn't render with a muted "not used" chip (edits still save) + the same ignore banner.
+- **Design tab** each template card gained a **readiness line** (`Hero ✓ · Gallery 0/3 · Rooms 0/5`) computed from the schema + actual photo counts. Card visuals polished (active inset ring, hover lift), copy de-jargoned, preview viewport 1280→1100 for sharper iframes, active card's "Open ↗" goes to the live URL (others to the `?_template=` preview). `Badge` promoted to a shared export from `TopStrip`.
+
+### Bug fix — dev cookie shadowed every template
+- `getPropertyTheme()` used to check the `/dev/themes` **dev cookie first**, so a stale `dev-theme=portico-ivory` cookie made every hotel (and every Design-tab `?_template=` iframe) render Portico regardless of the saved template. Fixed: `getPropertyTheme` now resolves **property slug → `THEME` env → `default`** and no longer reads the cookie. The cookie is honoured only by `getActiveTheme` (the `/dev/themes` deployment-wide helper).
+
+### Default photography
+- Bundled `public/street/hero-default.jpg` (a London street — Regent Street, Unsplash) as the Street hero/gallery fallback when a hotel has no uploads. Per-hotel R2 uploads override it.
+
+### ✅ Street end-to-end — DONE 2026-06-04
+- Built `src/themes/street/screens/Extras`, `Checkout`, `Confirmation` + `components/BookingNav.tsx` (4-step Dates·Room·Extras·Checkout stepper). All booking logic (hooks, Stripe setup/payment intent, `submitBooking`, persisted draft) reused verbatim from `@/lib/booking` + `StripePaymentSection` — only the skin is new. Checkout uses `streetStripeAppearance`.
+- **Extras** = Concept B (split cinematic — photo panel left, list right; see `public/mockups/street-extras-concepts.html`). Includes a Street-native breakfast picker (per_guest_per_night: guest stepper + per-morning chips + customise) mirroring the Portico `BreakfastPicker` contract.
+- Wired the `street` branch into `[property]/extras|checkout|confirmation/page.tsx` (extras + confirmation also fetch `getPropertyPhotos`). Exported from the `index.ts` barrel.
+- Verified: `tsc --noEmit` clean project-wide; all four Street routes 200 on Lancaster (`lancaster-court-hotel-a740c31e`, the only `street-ivory` hotel).
+- **Remaining polish (not blocking):** click-through a real Street booking on Lancaster end-to-end (test card `4242` — note Lancaster carries the shared test Stripe account); mobile pass; the Extras left photo uses gallery slot 2 → hero → fallback.
 
 ---
 
@@ -82,7 +114,7 @@ A large batch shipped + verified live against `demo` (Cloudbeds `302817`, us1). 
 - **us2 / version learning:** OAuth must use **`hotels.cloudbeds.com/api/v1.3/oauth`** — NOT `us2.cloudbeds.com` or `/api/v1.1`. Authorize + token exchange must match host+version (our token endpoint is `hotels.cloudbeds.com/api/v1.3/access_token`). The cluster resolves internally; us2 needs no special host.
 - **Clean-slate rehearsal:** wiped all properties (snapshot → `backups/`), re-OAuthed the Rockenue partner account via the exact Cloudbeds-initiated path → fresh property created + synced (3 rooms · 8 rates · 686 inventory rows · 3 extras · 8 webhooks · currency USD), Stripe auto-attached (`acct_1TSCLV1ZjN2BG9vB`, `charges_enabled`), and **two real bookings** (NR `1474805519554` + Flex `5256302014941`) with per-morning breakfast folio (`postCustomItem` ✓) + cancel.
 - **`cert_attach_test_stripe` trigger made self-contained** — now copies a literal test-account id instead of reading the (deletable) `demo` row, so any fresh install still gets test Stripe.
-- **Post-cert cleanup pending:** DROP `cert_attach_test_stripe` trigger + function; delete throwaway test properties; (optional) add an "already connected?" guard so the `/api/install` Login URL doesn't create a duplicate row when an installed hotel re-opens the app.
+- **Post-cert cleanup DONE 2026-06-04:** dropped `cert_attach_test_stripe` trigger + function; deleted the dead duplicate (`rockenue-partner-account-499def89`, expired token) + its children. Kept `rockenue-partner-account-15cece68` (live token, cb 302817) as the test hotel + Lancaster Court. **Still open:** the "already connected?" guard so the `/api/install` Login URL doesn't create a duplicate row when an installed hotel re-opens the app.
 
 ### Path-based per-property routing (`a755baf`)
 - Customer site moved under a **`[property]` dynamic segment**: `/<slug>`, `/<slug>/rooms`, `/<slug>/book`, `/<slug>/extras`, `/<slug>/checkout`, `/<slug>/confirmation`. Resolved from the **path** (`resolvePropertyBySlug`), not the Host header. Bare `/` resolves by domain → redirects to `/<slug>`. See §4 (rewritten).
@@ -264,20 +296,27 @@ The booking engine ships **one codebase, many templates**. Each hotel is assigne
 
 | `template_slug` | Design | Status |
 | ----- | ----- | ----- |
-| `default` | Original live design | shipped |
-| `portico-ivory` | The Portico Hotel — Editorial Ivory | shipped |
+| `default` | Original live design (hardcoded imagery — ignores uploads) | shipped |
+| `portico-ivory` | The Portico Hotel — Editorial Ivory (luxury / photo-heavy) | shipped |
+| `street-ivory` | Street · Ivory — cinematic-light for limited-service hotels | ✅ end-to-end (home·rooms·extras·checkout·confirmation) — 2026-06-04 |
 
 Template components are token-driven (`src/themes/<slug>/tokens.ts`). Per-hotel content (photos in R2, copy in `content_blocks`) flows into any template via the shared `getPropertyPhotos` / `getPropertyContent` API — the same hotel data renders identically across templates, only the styling/layout changes.
+
+Each template also declares a **content schema** (`src/themes/<slug>/schema.ts`, registered in `src/lib/template-schema.ts`) listing the photo slots + content blocks it renders. The admin Media / Content / Design tabs read this to show template-specific labels, required-fill counts (`Hero ✓ · Gallery 0/3`), and "not used" / "ignores uploads" hints. See the 2026-05-27 session log.
 
 ### **Template resolution**
 
 `getPropertyTheme(propertyTemplateSlug)` in `src/lib/active-theme.ts` resolves the active template for a request in this order:
 
-1. **Dev cookie** (`dev-theme`) set by `/dev/themes` — non-prod only, lets you preview any template on any hotel without touching the DB.  
-2. **`?_template=<slug>`** URL param — preview-only override used by the admin Design tab's iframes. Always emits `noindex, nofollow` so previews don't leak to search. Validated against the template registry. *(Wired at each `[property]/page.tsx` rather than in the resolver, since `getPropertyTheme` has no access to search params.)*  
-3. **`property.templateSlug`** — the assigned template for that hotel. **This is the source of truth.**  
-4. **`THEME` env var** — legacy deployment-wide fallback. Kept so existing Railway services don't break mid-rollout; will be removed once every hotel has a `template_slug`.  
-5. **`default`**.
+1. **`property.templateSlug`** — the assigned template for that hotel. **This is the source of truth.**  
+2. **`THEME` env var** — legacy deployment-wide fallback. Kept so existing Railway services don't break mid-rollout; will be removed once every hotel has a `template_slug`.  
+3. **`default`**.
+
+The **`?_template=<slug>`** URL param is a separate preview-only override used by the admin Design tab's iframes — wired at each `[property]/page.tsx` (not in the resolver, which has no search-param access). It always emits `noindex, nofollow` and is validated against `isValidTheme()`.
+
+⚠️ **The `/dev/themes` dev cookie is NOT honoured by `getPropertyTheme`** — only by `getActiveTheme` (the deployment-wide `/dev/themes` helper). It used to be checked first here, which let a stale `dev-theme` cookie shadow every hotel's saved template and break the Design-tab previews. Fixed 2026-05-27.
+
+**Per-family dispatch:** each template family has its own `active<Family>Tokens(slug)` resolver (`activePorticoTokens`, `activeStreetTokens`) that returns tokens only when the resolved theme belongs to that family, else `null`. Storefront pages try each family in turn (`if (portico) … if (street) … else default`).
 
 ### **Assigning a template to a hotel**
 
@@ -289,17 +328,19 @@ Template components are token-driven (`src/themes/<slug>/tokens.ts`). Per-hotel 
 
 Templates are **code-only** — no visual editor. Karol authors HTML concepts in free time; we port them into `src/themes/<slug>/`.
 
-1. Create `src/themes/<slug>/` mirroring the Portico structure (`tokens.ts`, `screens/`, `components/`, `index.ts` barrel export).  
-2. Append the slug to `PORTICO_THEMES` (or extend the union if not Portico-family) and to `VALID_THEMES` in `src/lib/active-theme.ts`.  
-3. Add a row to the `TEMPLATES` array in `src/app/admin/[propertyId]/design/page.tsx` (label + description) so it appears in the picker.  
-4. Drop default photography under `public/<slug>/` if the template uses fallbacks; per-hotel R2 photos override these.  
-5. Assign to any hotel via the Design tab.
+1. Create `src/themes/<slug>/` mirroring the Portico/Street structure (`tokens.ts`, `fonts.ts`, `schema.ts`, `index.ts` barrel with an `active<Family>Tokens()` resolver, `<Family>Shell.tsx`, `components/`, `screens/`).  
+2. Register the family in `src/lib/active-theme.ts`: add a `<FAMILY>_THEMES` const + type, extend the `ActiveTheme` union, add the slug(s) to `VALID_THEMES`, and add an `is<Family>()` predicate. (Portico-palette variants can just join `PORTICO_THEMES`.)  
+3. Register the content schema: export `schema.ts` from the theme folder and add it to the `SCHEMAS` map in `src/lib/template-schema.ts`.  
+4. Add a row to the `TEMPLATES` array in `src/app/admin/[propertyId]/design/page.tsx` (label + description) so it appears in the picker.  
+5. Add an `if (await active<Family>Tokens(slug))` dispatch branch to each storefront page (`[property]/page.tsx`, `/rooms`, `/extras`, `/checkout`, `/confirmation`).  
+6. Drop default photography under `public/<slug>/` if the template uses fallbacks; per-hotel R2 photos override these.  
+7. Assign to any hotel via the Design tab.
 
 No env var changes, no Railway service to spin up, no deploy gating.
 
-### **Local preview — `/dev/themes`**
+### **Local preview**
 
-Visit `http://localhost:3000/dev/themes` and pick a template — sets a session cookie that overrides every hotel's assigned template for the dev session. Every themed screen has a small floating badge linking back. Cookie persists 30 days; clear with the link on `/dev/themes`. **Cookie is dev-only and never reads in production.**
+To preview a template against a real hotel's data without changing its saved template, use the admin **Design tab** (its cards iframe `/<slug>?_template=<tpl>`), or hit `/<slug>?_template=<tpl>` directly. The legacy `/dev/themes` cookie still exists but is **only** read by `getActiveTheme` (the deployment-wide helper) — it no longer overrides per-hotel storefront rendering (see the resolution note above). Cookie is dev-only and never reads in production.
 
 ### **Themed vs shared**
 
@@ -525,9 +566,9 @@ DROP FUNCTION IF EXISTS cert_attach_test_stripe();
 
 #### Post-cert cleanup (do before real multi-tenant onboarding)
 
-* **DROP the cert Stripe trigger** — `DROP TRIGGER IF EXISTS cert_attach_test_stripe_trg ON properties; DROP FUNCTION IF EXISTS cert_attach_test_stripe();`. It now attaches a literal **test** account (`acct_1TSCLV1ZjN2BG9vB`) to every fresh install — must go before live hotels onboard.
-* **Delete the throwaway test properties** created during cert rehearsals (e.g. `rockenue-partner-account-*`). Snapshot of the pre-wipe state is in `backups/prod-snapshot-*.json`.
-* **`/api/install` Login URL creates a duplicate row on app re-open** — add an "already connected for this Cloudbeds property?" guard before wider rollout.
+* ✅ **DONE 2026-06-04 — Dropped the cert Stripe trigger** (`DROP TRIGGER IF EXISTS cert_attach_test_stripe_trg ON properties; DROP FUNCTION IF EXISTS cert_attach_test_stripe();`). Fresh installs no longer get the literal **test** account (`acct_1TSCLV1ZjN2BG9vB`) stamped on. Existing rows keep whatever Stripe they already had.
+* ✅ **DONE 2026-06-04 — Deleted the throwaway duplicate** `rockenue-partner-account-499def89` (expired token, cb 302817) + all its children, in one transaction. Kept `rockenue-partner-account-15cece68` (live token, same cb hotel) as the test property + Lancaster Court. Snapshot of the pre-wipe state in `backups/prod-snapshot-*.json`.
+* 🟡 **STILL OPEN — `/api/install` Login URL creates a duplicate row on app re-open** — add an "already connected for this Cloudbeds property?" guard before wider rollout. (This is the root cause of the 499def89/15cece68 dup we just cleaned.)
 * **Cloudbeds-side (was the first-attempt killer):** a hotel must have **non-virtual, bookable rooms** — Cloudbeds refuses to book `isVirtual:true` rooms (proven not our bug).
 
 #### Still open (not cert blockers)

@@ -1,7 +1,9 @@
 import { redirect, notFound } from "next/navigation";
-import { resolvePropertyBySlug } from "@/lib/get-property";
+import { resolvePropertyBySlug, getPropertyPhotos } from "@/lib/get-property";
 import { activePorticoTokens } from "@/themes/portico";
 import { PorticoExtras } from "@/themes/portico/screens/Extras";
+import { activeStreetTokens } from "@/themes/street";
+import { StreetExtras } from "@/themes/street/screens/Extras";
 
 export default async function ExtrasPage({
   params,
@@ -13,10 +15,14 @@ export default async function ExtrasPage({
   if (!property) notFound();
 
   const portico = await activePorticoTokens(property.templateSlug);
-  if (!portico) {
-    // Default theme handles extras inline on /rooms — no dedicated page.
-    redirect(`/${slug}`);
+  if (portico) return <PorticoExtras t={portico} property={property} />;
+
+  const street = await activeStreetTokens(property.templateSlug);
+  if (street) {
+    const photos = await getPropertyPhotos(property.id);
+    return <StreetExtras t={street} property={property} photos={photos} />;
   }
 
-  return <PorticoExtras t={portico} property={property} />;
+  // Default theme handles extras inline on /rooms — no dedicated page.
+  redirect(`/${slug}`);
 }

@@ -2,14 +2,18 @@
 // the per-property `template_slug` column on `properties`. Templates live in
 // src/themes/<slug>/ — code-only, authored by the platform team.
 //
-// Resolution order (per request):
-//   1. Dev cookie override (set by /dev/themes) — non-prod only, lets you
-//      preview any template on any hotel without touching the DB.
-//   2. property.templateSlug — the assigned template for that hotel.
-//   3. THEME env var — legacy deployment-wide fallback (kept so existing
+// Resolution order for getPropertyTheme (used by every storefront page):
+//   1. property.templateSlug — the assigned template for that hotel.
+//   2. THEME env var — legacy deployment-wide fallback (kept so existing
 //      Railway services don't break mid-rollout; will be removed once every
 //      hotel has a template_slug set).
-//   4. "default".
+//   3. "default".
+//
+// The dev-theme cookie set by /dev/themes is intentionally NOT honoured here.
+// It only applies via getActiveTheme (the deployment-wide preview helper used
+// by /dev/themes itself). Otherwise a stale cookie would shadow the saved
+// template and break the Design-tab preview (each ?_template= iframe would
+// resolve to the cookie value instead of the slug being previewed).
 //
 // Adding a new template:
 //   1. Append the slug to PORTICO_THEMES (or extend the union if not Portico).
@@ -21,37 +25,34 @@ import { cookies } from "next/headers";
 
 export const PORTICO_THEMES = ["portico-ivory"] as const;
 export type PorticoTheme = (typeof PORTICO_THEMES)[number];
-export type ActiveTheme = "default" | PorticoTheme;
+
+export const STREET_THEMES = ["street-ivory"] as const;
+export type StreetTheme = (typeof STREET_THEMES)[number];
+
+export type ActiveTheme = "default" | PorticoTheme | StreetTheme;
 
 export const DEV_THEME_COOKIE = "dev-theme";
 
-const VALID_THEMES = new Set<ActiveTheme>(["default", "portico-ivory"]);
+const VALID_THEMES = new Set<ActiveTheme>([
+  "default",
+  "portico-ivory",
+  "street-ivory",
+]);
 
 // Per-property resolver. Pass the property's `template_slug` (from the DB)
 // and this returns the template to render for the current request.
 export async function getPropertyTheme(
   propertyTemplateSlug: string | null | undefined
 ): Promise<ActiveTheme> {
-  // 1. Dev cookie override (non-prod only).
-  if (process.env.NODE_ENV !== "production") {
-    try {
-      const jar = await cookies();
-      const v = jar.get(DEV_THEME_COOKIE)?.value?.toLowerCase().trim();
-      if (v && VALID_THEMES.has(v as ActiveTheme)) return v as ActiveTheme;
-    } catch {
-      // Outside a request scope (e.g. during build prerender). Fall through.
-    }
-  }
-
-  // 2. Per-property setting.
+  // 1. Per-property setting (source of truth).
   const slug = propertyTemplateSlug?.toLowerCase().trim();
   if (slug && VALID_THEMES.has(slug as ActiveTheme)) return slug as ActiveTheme;
 
-  // 3. Legacy env var fallback.
+  // 2. Legacy env var fallback.
   const raw = process.env.THEME?.toLowerCase().trim();
-  if (raw === "portico-ivory") return raw;
+  if (raw && VALID_THEMES.has(raw as ActiveTheme)) return raw as ActiveTheme;
 
-  // 4. Default.
+  // 3. Default.
   return "default";
 }
 
@@ -69,12 +70,16 @@ export async function getActiveTheme(): Promise<ActiveTheme> {
     }
   }
   const raw = process.env.THEME?.toLowerCase().trim();
-  if (raw === "portico-ivory") return raw;
+  if (raw && VALID_THEMES.has(raw as ActiveTheme)) return raw as ActiveTheme;
   return "default";
 }
 
 export function isPortico(theme: ActiveTheme): theme is PorticoTheme {
-  return theme === "portico-ivory";
+  return (PORTICO_THEMES as readonly string[]).includes(theme);
+}
+
+export function isStreet(theme: ActiveTheme): theme is StreetTheme {
+  return (STREET_THEMES as readonly string[]).includes(theme);
 }
 
 export function isValidTheme(s: string): s is ActiveTheme {

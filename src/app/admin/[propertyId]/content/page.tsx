@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { TopStrip, Btn } from "@/components/admin/TopStrip";
 import { useAdminToken } from "../../layout";
@@ -10,6 +10,7 @@ import {
   type ContentKey,
   CONTENT_KEYS,
 } from "@/lib/content-defaults";
+import { getTemplateSchema } from "@/lib/template-schema";
 
 interface ContentBlock {
   key: string;
@@ -22,6 +23,7 @@ export default function ContentPage() {
 
   const [draft, setDraft] = useState<PropertyContent>(defaultContent);
   const [original, setOriginal] = useState<PropertyContent>(defaultContent);
+  const [templateSlug, setTemplateSlug] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -32,21 +34,31 @@ export default function ContentPage() {
     setLoading(true);
     setError(null);
     try {
-      const contentRes = await fetch(
-        `/api/admin/properties/${propertyId}/content`,
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
+      const [contentRes, propertyRes] = await Promise.all([
+        fetch(`/api/admin/properties/${propertyId}/content`, {
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+        fetch(`/api/admin/properties/${propertyId}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+      ]);
       if (!contentRes.ok) throw new Error(`HTTP ${contentRes.status}`);
       const blocks = (await contentRes.json()) as ContentBlock[];
       const merged = mergeBlocks(blocks);
       setDraft(merged);
       setOriginal(merged);
+      if (propertyRes.ok) {
+        const p = await propertyRes.json();
+        setTemplateSlug(p?.templateSlug ?? null);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "failed to load");
     } finally {
       setLoading(false);
     }
   }
+
+  const schema = useMemo(() => getTemplateSchema(templateSlug), [templateSlug]);
 
   useEffect(() => {
     load();
@@ -136,6 +148,22 @@ export default function ContentPage() {
         </div>
       )}
 
+      {!loading && schema.ignoresUploads && (
+        <div
+          className="border-l-4 px-3 py-2 mb-4 text-[12.5px] rounded-r"
+          style={{
+            borderColor: "var(--a-amber)",
+            background: "var(--a-amber-soft)",
+            color: "var(--a-ink)",
+          }}
+        >
+          <strong>Current template doesn&apos;t render custom copy.</strong>{" "}
+          <span style={{ color: "var(--a-muted)" }}>
+            Edits save fine but won&apos;t show on the live site until you switch to a template that consumes them.
+          </span>
+        </div>
+      )}
+
       {loading && !draft ? (
         <div className="text-[13px]" style={{ color: "var(--a-muted)" }}>
           Loading…
@@ -143,22 +171,26 @@ export default function ContentPage() {
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-[1.6fr_1fr] gap-4">
           <div className="flex flex-col gap-4">
-            <HeroCard value={draft.hero} onChange={(v) => patch("hero", v)} />
+            <HeroCard used={!!schema.content.hero} value={draft.hero} onChange={(v) => patch("hero", v)} />
             <NeighbourhoodCard
+              used={!!schema.content.neighbourhood}
               value={draft.neighbourhood}
               onChange={(v) => patch("neighbourhood", v)}
             />
             <GoodToKnowCard
+              used={!!schema.content.goodToKnow}
               value={draft.goodToKnow}
               onChange={(v) => patch("goodToKnow", v)}
             />
             <FooterCard
+              used={!!schema.content.footer}
               value={draft.footer}
               onChange={(v) => patch("footer", v)}
             />
           </div>
           <div className="flex flex-col gap-4">
             <ContactCard
+              used={!!schema.content.contact}
               value={draft.contact}
               onChange={(v) => patch("contact", v)}
             />
@@ -188,10 +220,12 @@ function mergeBlocks(blocks: ContentBlock[]): PropertyContent {
 function Card({
   title,
   hint,
+  used = true,
   children,
 }: {
   title: string;
   hint?: string;
+  used?: boolean;
   children: React.ReactNode;
 }) {
   return (
@@ -200,13 +234,26 @@ function Card({
       style={{ borderColor: "var(--a-border)", background: "var(--a-surface)" }}
     >
       <div
-        className="px-4 py-3 flex items-center gap-3 border-b"
+        className="px-4 py-3 flex items-center gap-3 border-b flex-wrap"
         style={{ borderColor: "var(--a-border-soft)" }}
       >
         <h2 className="text-[12.5px] font-semibold">{title}</h2>
         {hint && (
           <span className="text-[11px]" style={{ color: "var(--a-muted)" }}>
             {hint}
+          </span>
+        )}
+        {!used && (
+          <span
+            className="ml-auto inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium border font-jbm"
+            style={{
+              color: "var(--a-muted)",
+              background: "var(--a-surface-2)",
+              borderColor: "var(--a-border)",
+            }}
+            title="The current template doesn't render this block. Edits still save."
+          >
+            not used
           </span>
         )}
       </div>
@@ -272,14 +319,16 @@ function Textarea(props: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
 // ─── Hero ─────────────────────────────────────────────────────────
 
 function HeroCard({
+  used,
   value,
   onChange,
 }: {
+  used: boolean;
   value: PropertyContent["hero"];
   onChange: (v: PropertyContent["hero"]) => void;
 }) {
   return (
-    <Card title="Hero" hint="shown above the fold on /">
+    <Card title="Hero" hint="shown above the fold on /" used={used}>
       <Field label="Eyebrow">
         <Input
           value={value.eyebrow}
@@ -323,14 +372,16 @@ function HeroCard({
 // ─── Neighbourhood ────────────────────────────────────────────────
 
 function NeighbourhoodCard({
+  used,
   value,
   onChange,
 }: {
+  used: boolean;
   value: PropertyContent["neighbourhood"];
   onChange: (v: PropertyContent["neighbourhood"]) => void;
 }) {
   return (
-    <Card title="Neighbourhood" hint="01 section + map">
+    <Card title="Neighbourhood" hint="01 section + map" used={used}>
       <div className="grid grid-cols-2 gap-3">
         <Field label="Eyebrow">
           <Input
@@ -404,14 +455,16 @@ function parseNearby(raw: string): Array<{ place: string; dist: string }> {
 // ─── Good to know ─────────────────────────────────────────────────
 
 function GoodToKnowCard({
+  used,
   value,
   onChange,
 }: {
+  used: boolean;
   value: PropertyContent["goodToKnow"];
   onChange: (v: PropertyContent["goodToKnow"]) => void;
 }) {
   return (
-    <Card title="Good to know" hint="03 section · check-in/out, wifi, parking, etc.">
+    <Card title="Good to know" hint="03 section · check-in/out, wifi, parking, etc." used={used}>
       <div className="grid grid-cols-2 gap-3">
         <Field label="Eyebrow">
           <Input
@@ -458,9 +511,11 @@ function parseLabelValueRows(
 // ─── Contact ──────────────────────────────────────────────────────
 
 function ContactCard({
+  used,
   value,
   onChange,
 }: {
+  used: boolean;
   value: PropertyContent["contact"];
   onChange: (v: PropertyContent["contact"]) => void;
 }) {
@@ -468,6 +523,7 @@ function ContactCard({
     <Card
       title="Contact"
       hint="footer · confirmation emails · auto-fills from Cloudbeds, edits override"
+      used={used}
     >
       <Field
         label="Address"
@@ -521,14 +577,16 @@ function ContactCard({
 // ─── Footer ───────────────────────────────────────────────────────
 
 function FooterCard({
+  used,
   value,
   onChange,
 }: {
+  used: boolean;
   value: PropertyContent["footer"];
   onChange: (v: PropertyContent["footer"]) => void;
 }) {
   return (
-    <Card title="Footer" hint="brand line · fine-print legal links">
+    <Card title="Footer" hint="brand line · fine-print legal links" used={used}>
       <Field label="Brand tagline" hint="shown italic in the footer">
         <Textarea
           rows={2}

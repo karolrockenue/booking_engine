@@ -4,6 +4,11 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { TopStrip, Btn } from "@/components/admin/TopStrip";
 import { useAdminToken } from "../../layout";
+import {
+  getTemplateSchema,
+  readinessFor,
+  type PhotoSlotSpec,
+} from "@/lib/template-schema";
 
 // Slot tags photos by where they appear on the site.
 //   hero          → above-the-fold hero on /
@@ -54,6 +59,7 @@ export default function PhotosPage() {
   const token = useAdminToken();
 
   const [data, setData] = useState<PhotosResponse | null>(null);
+  const [templateSlug, setTemplateSlug] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -62,11 +68,20 @@ export default function PhotosPage() {
     setLoading(true);
     setError(null);
     try {
-      const r = await fetch(`/api/admin/properties/${propertyId}/photos`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      setData(await r.json());
+      const [photosRes, propertyRes] = await Promise.all([
+        fetch(`/api/admin/properties/${propertyId}/photos`, {
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+        fetch(`/api/admin/properties/${propertyId}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+      ]);
+      if (!photosRes.ok) throw new Error(`HTTP ${photosRes.status}`);
+      setData(await photosRes.json());
+      if (propertyRes.ok) {
+        const p = await propertyRes.json();
+        setTemplateSlug(p?.templateSlug ?? null);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "failed to load");
     } finally {
@@ -78,6 +93,8 @@ export default function PhotosPage() {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, propertyId]);
+
+  const schema = useMemo(() => getTemplateSchema(templateSlug), [templateSlug]);
 
   const photos = data?.photos ?? [];
   const rooms = data?.rooms ?? [];
@@ -125,9 +142,14 @@ export default function PhotosPage() {
         </div>
       )}
 
+      {schema.ignoresUploads && !loading && (
+        <IgnoresUploadsBanner />
+      )}
+
       <Section
-        title="Hero"
-        sub="shown on /"
+        title={schema.photos.hero?.label ?? "Hero"}
+        sub={schema.photos.hero?.hint ?? "shown on /"}
+        spec={schema.photos.hero}
         propertyId={propertyId}
         token={token}
         slot="hero"
@@ -137,8 +159,9 @@ export default function PhotosPage() {
       />
 
       <Section
-        title="Gallery"
-        sub="below-fold gallery section"
+        title={schema.photos.gallery?.label ?? "Gallery"}
+        sub={schema.photos.gallery?.hint ?? "below-fold gallery section"}
+        spec={schema.photos.gallery}
         propertyId={propertyId}
         token={token}
         slot="gallery"
@@ -148,8 +171,9 @@ export default function PhotosPage() {
       />
 
       <Section
-        title="Neighbourhood"
-        sub="optional · neighbourhood / map context"
+        title={schema.photos.neighbourhood?.label ?? "Neighbourhood"}
+        sub={schema.photos.neighbourhood?.hint ?? "optional · neighbourhood / map context"}
+        spec={schema.photos.neighbourhood}
         propertyId={propertyId}
         token={token}
         slot="neighbourhood"
@@ -161,6 +185,7 @@ export default function PhotosPage() {
       <Section
         title="Marketing"
         sub="logos, brand assets · never auto-displayed on the public site · available in emails and the photo picker"
+        spec={undefined}
         propertyId={propertyId}
         token={token}
         slot="marketing"
@@ -171,17 +196,22 @@ export default function PhotosPage() {
 
       {/* Per-room galleries */}
       <div className="mt-6">
-        <h2
-          className="text-[12.5px] font-semibold mb-2"
-          style={{ color: "var(--a-ink)" }}
-        >
-          Per-room galleries
-        </h2>
+        <div className="flex items-baseline gap-2 mb-2">
+          <h2
+            className="text-[12.5px] font-semibold"
+            style={{ color: "var(--a-ink)" }}
+          >
+            {schema.photos.room?.label ?? "Per-room galleries"}
+          </h2>
+          {schema.photos.room && (
+            <SlotPills spec={schema.photos.room} count={rooms.length === 0 ? 0 : 1} />
+          )}
+        </div>
         <p
           className="text-[11.5px] mb-3"
           style={{ color: "var(--a-muted)" }}
         >
-          Assign photos to specific room types.
+          {schema.photos.room?.hint ?? "Assign photos to specific room types."}
         </p>
         {rooms.length === 0 ? (
           <Empty>No room types yet. Sync from Cloudbeds first.</Empty>
@@ -221,6 +251,7 @@ export default function PhotosPage() {
 function Section({
   title,
   sub,
+  spec,
   propertyId,
   token,
   slot,
@@ -230,6 +261,7 @@ function Section({
 }: {
   title: string;
   sub?: string;
+  spec: PhotoSlotSpec | undefined;
   propertyId: string;
   token: string;
   slot: Slot;
@@ -239,7 +271,7 @@ function Section({
 }) {
   return (
     <div className="mt-5">
-      <div className="flex items-baseline gap-2 mb-2">
+      <div className="flex items-baseline gap-2 mb-2 flex-wrap">
         <h2
           className="text-[12.5px] font-semibold"
           style={{ color: "var(--a-ink)" }}
@@ -254,6 +286,7 @@ function Section({
             · {sub}
           </span>
         )}
+        {spec && <SlotPills spec={spec} count={photos.length} />}
         <span
           className="ml-auto font-jbm text-[11px]"
           style={{ color: "var(--a-muted)" }}
@@ -261,6 +294,11 @@ function Section({
           {photos.length} photo{photos.length === 1 ? "" : "s"}
         </span>
       </div>
+      {spec?.fallback && photos.length === 0 && (
+        <p className="text-[11px] mb-2" style={{ color: "var(--a-muted)" }}>
+          {spec.fallback}
+        </p>
+      )}
       <PhotoGrid
         photos={photos}
         rooms={rooms}
@@ -269,6 +307,55 @@ function Section({
         emptySlot={slot}
         onChanged={onChanged}
       />
+    </div>
+  );
+}
+
+function SlotPills({ spec, count }: { spec: PhotoSlotSpec; count: number }) {
+  const r = readinessFor(spec, count);
+  const required = spec.required;
+  const showMin = spec.min !== undefined && spec.min > 0;
+
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      {required && (
+        <span
+          className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium border"
+          style={
+            r.ok
+              ? { color: "var(--a-green)", background: "var(--a-green-soft)", borderColor: "rgba(0,135,90,0.18)" }
+              : { color: "var(--a-amber)", background: "var(--a-amber-soft)", borderColor: "rgba(180,83,9,0.18)" }
+          }
+        >
+          {r.ok ? "ready" : "needed"}
+        </span>
+      )}
+      {showMin && (
+        <span
+          className="font-jbm text-[10.5px]"
+          style={{ color: r.ok ? "var(--a-muted)" : "var(--a-amber)" }}
+        >
+          {count}/{spec.min}
+        </span>
+      )}
+    </span>
+  );
+}
+
+function IgnoresUploadsBanner() {
+  return (
+    <div
+      className="border-l-4 px-3 py-2 mb-4 text-[12.5px] rounded-r"
+      style={{
+        borderColor: "var(--a-amber)",
+        background: "var(--a-amber-soft)",
+        color: "var(--a-ink)",
+      }}
+    >
+      <strong>Current template doesn&apos;t render uploaded photos.</strong>{" "}
+      <span style={{ color: "var(--a-muted)" }}>
+        Photos uploaded here won&apos;t show on the live site until you switch to a template that consumes them (e.g. Portico · Ivory). You can still upload — they&apos;ll be ready when you switch.
+      </span>
     </div>
   );
 }

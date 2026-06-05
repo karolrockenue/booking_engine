@@ -162,6 +162,7 @@ export async function chargeBooking(
         amount: grandTotalNum,
         type: "credit",
         description: `Stripe ${pi.id} (auto-charge)`,
+        externalIdentifier: pi.id,
       });
     } catch (payErr) {
       console.error(
@@ -268,7 +269,9 @@ async function autoCancelAfterGrace(
     .from(properties)
     .where(eq(properties.id, booking.propertyId))
     .limit(1);
-  if (!property?.cloudbedsPropertyId) {
+  // Cloudbeds needs a resolved property id to act; Mews acts via its stored
+  // credentials (no cloudbedsPropertyId). Only block the Cloudbeds case.
+  if (property?.pmsType !== "mews" && !property?.cloudbedsPropertyId) {
     return {
       bookingId: booking.id,
       outcome: "grace_expired",

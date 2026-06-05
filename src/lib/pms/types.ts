@@ -35,6 +35,10 @@ export interface CreateReservationParams {
   roomSubtotal: number; // major units, room only (extras posted separately)
   orderId: string; // our order id, passed to the PMS as its third-party id
   paymentMethod?: string;
+  // Exact per-night room prices charged via Stripe, in stay order. Cloudbeds
+  // ignores this (it prices the room itself); Mews requires it to build
+  // TimeUnitPrices so the PMS folio matches Stripe to the cent.
+  nightlyRates?: Array<{ date: string; rate: number }>;
 }
 export interface CreateReservationResult {
   pmsReservationId: string;
@@ -57,6 +61,9 @@ export interface RecordPaymentParams {
   amount: number; // major units
   type?: string;
   description?: string; // e.g. "Stripe pi_..." for reconciliation
+  // Stripe PaymentIntent id. Cloudbeds folds it into the description; Mews uses
+  // it as the external payment's ExternalIdentifier for reconciliation.
+  externalIdentifier?: string;
 }
 export interface RecordPaymentResult {
   pmsPaymentId: string;

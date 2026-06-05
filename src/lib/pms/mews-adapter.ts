@@ -22,9 +22,14 @@ import { getMewsCredentials } from "./mews/credentials";
 import { syncMewsInventoryForProperty } from "./mews/sync-inventory";
 import { syncMewsHotelDetailsForProperty } from "./mews/sync-hotel-details";
 import { computeMewsAvailability } from "./mews/availability";
+import {
+  createMewsReservation,
+  addMewsExternalPayment,
+  cancelMewsReservation,
+} from "./mews/reservations";
 
 const NOT_YET = (op: string) =>
-  new Error(`Mews ${op} is not implemented yet (Phase 4/5)`);
+  new Error(`Mews ${op} is not implemented yet (Phase 5)`);
 
 export class MewsAdapter implements PmsAdapter {
   readonly type = "mews" as const;
@@ -73,25 +78,70 @@ export class MewsAdapter implements PmsAdapter {
   // --- write path (Phase 4) ---
 
   async createReservation(
-    _params: CreateReservationParams
+    params: CreateReservationParams
   ): Promise<CreateReservationResult> {
-    throw NOT_YET("createReservation");
+    const creds = await getMewsCredentials(this.ourId);
+    // Per-night prices are required so the Mews folio matches Stripe; without
+    // them we cannot build TimeUnitPrices honestly.
+    if (!params.nightlyRates || params.nightlyRates.length === 0) {
+      throw new Error("Mews createReservation requires nightlyRates");
+    }
+    const { pmsReservationId, pmsGroupId } = await createMewsReservation(creds, {
+      orderId: params.orderId,
+      startDate: params.startDate,
+      endDate: params.endDate,
+      categoryId: params.roomTypeId,
+      rateId: params.rateId,
+      adults: params.adults,
+      guest: {
+        firstName: params.guestFirstName,
+        lastName: params.guestLastName,
+        email: params.guestEmail,
+        phone: params.guestPhone,
+        nationalityCode: params.guestCountry,
+      },
+      nightlyRates: params.nightlyRates.map((n) => n.rate),
+    });
+    return { pmsReservationId, pmsGroupId };
   }
-  async postExtra(_params: PostExtraParams): Promise<PostExtraResult> {
-    throw NOT_YET("postExtra");
-  }
+
   async recordPayment(
-    _params: RecordPaymentParams
+    params: RecordPaymentParams
   ): Promise<RecordPaymentResult> {
-    throw NOT_YET("recordPayment");
+    const creds = await getMewsCredentials(this.ourId);
+    const pmsPaymentId = await addMewsExternalPayment(creds, {
+      reservationId: params.reservationId,
+      amount: params.amount,
+      externalIdentifier: params.externalIdentifier,
+      notes: params.description,
+    });
+    return { pmsPaymentId };
   }
-  async cancelReservation(_params: CancelReservationParams): Promise<void> {
-    throw NOT_YET("cancelReservation");
+
+  async cancelReservation(params: CancelReservationParams): Promise<void> {
+    const creds = await getMewsCredentials(this.ourId);
+    await cancelMewsReservation(creds, params.reservationId, params.reason);
   }
+
+  // Folio extras + staff notes are deferred (see mews/reservations.ts): Mews
+  // posts extras on a separate product service and the per-night representation
+  // needs confirming with Mews. Both are non-fatal in the booking flow, so we
+  // log and no-op rather than throw — a room booking still completes; the extra
+  // just isn't mirrored to the Mews folio yet.
+  async postExtra(params: PostExtraParams): Promise<PostExtraResult> {
+    console.warn(
+      `[Mews] postExtra not yet implemented — "${params.name}" x${params.quantity} not posted to folio for reservation ${params.reservationId}`
+    );
+    return { pmsItemId: "" };
+  }
+
   async postReservationNote(
-    _params: ReservationNoteParams
+    params: ReservationNoteParams
   ): Promise<{ noteId: string }> {
-    throw NOT_YET("postReservationNote");
+    console.warn(
+      `[Mews] postReservationNote not yet implemented — note not posted for reservation ${params.reservationId}`
+    );
+    return { noteId: "" };
   }
 
   // --- webhooks (Phase 5) ---

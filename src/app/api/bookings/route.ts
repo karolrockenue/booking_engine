@@ -360,6 +360,12 @@ export async function POST(req: NextRequest) {
       // value is informational. Previously sent room+extras, which was wrong.)
       roomSubtotal: roomTotalNum,
       orderId: body.orderId,
+      // Per-night prices for PMSs that need them (Mews TimeUnitPrices). Cloudbeds
+      // ignores this. Falls back to undefined if the client didn't send a breakdown.
+      nightlyRates: body.nightlyRates?.map((nr) => ({
+        date: nr.date,
+        rate: nr.rate,
+      })),
     });
     cloudbedsReservationId = result.pmsReservationId;
 
@@ -494,6 +500,7 @@ export async function POST(req: NextRequest) {
           amount: grandTotalNum,
           type: "credit",
           description: `Stripe ${body.paymentIntentId}`,
+          externalIdentifier: body.paymentIntentId,
         });
       } catch (payErr) {
         console.error(

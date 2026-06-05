@@ -14,8 +14,8 @@ export type PmsType = "cloudbeds" | "mews";
 export interface PmsProperty {
   id: string;
   cloudbedsPropertyId: string | null;
-  // pmsType + Mews credentials are added in Phase 2; the factory reads pmsType.
-  pmsType?: PmsType | null;
+  // The DB column is free `text` (default "cloudbeds"); the factory narrows it.
+  pmsType?: string | null;
 }
 
 // --- write path ---------------------------------------------------------

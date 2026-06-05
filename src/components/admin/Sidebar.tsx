@@ -21,6 +21,7 @@ interface SidebarProps {
     | "alerts"
     | "design"
     | "cloudbeds"
+    | "mews"
     | "stripe"
     | "domain";
   bookingsCount?: number;
@@ -54,6 +55,7 @@ const PROPERTY_ITEMS: Array<{
 
 const INTEGRATION_ITEMS = [
   { id: "cloudbeds", icon: "●", label: "Cloudbeds" },
+  { id: "mews", icon: "◆", label: "Mews" },
   { id: "stripe", icon: "$", label: "Stripe" },
   { id: "domain", icon: "⌘", label: "Domain & deploy" },
 ] as const;

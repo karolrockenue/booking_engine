@@ -26,6 +26,16 @@ export const properties = pgTable("properties", {
   templateSlug: text("template_slug").notNull().default("default"),
   status: text("status").default("draft"),
 
+  // Which PMS this property runs on — routes the adapter factory (lib/pms).
+  pmsType: text("pms_type").notNull().default("cloudbeds"),
+  // Mews credentials + connection config. Mews has no OAuth, so this holds the
+  // enterprise AccessToken (encrypted via lib/crypto) plus the chosen service /
+  // payment / timezone. Shape:
+  //   { accessTokenEnc, serviceId, timezone, enterpriseId, taxMode,
+  //     externalPaymentType, currency }
+  // Cloudbeds keeps using the dedicated cloudbeds_* columns below.
+  pmsCredentials: jsonb("pms_credentials"),
+
   // Cloudbeds OAuth (tokens stored encrypted at app layer — see lib/crypto.ts)
   cloudbedsPropertyId: text("cloudbeds_property_id"),
   cloudbedsAccessToken: text("cloudbeds_access_token"),
@@ -211,6 +221,64 @@ export const inventory = pgTable(
   ]
 );
 
+// --- Mews-native inventory (stored in Mews's own shape, not the combined
+// `inventory` table) ---
+//
+// Mews splits what Cloudbeds returns together: availability is per
+// ResourceCategory+day, price is per Rate(+Category)+day. We store each
+// faithfully and the MewsAdapter joins them at read time (getAvailability), so
+// nothing is forced into the Cloudbeds-shaped `inventory` table.
+
+export const mewsCategoryAvailability = pgTable(
+  "mews_category_availability",
+  {
+    id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+    propertyId: uuid("property_id")
+      .references(() => properties.id)
+      .notNull(),
+    categoryId: text("category_id").notNull(), // Mews ResourceCategory Id
+    date: date("date").notNull(),
+    unitsAvailable: integer("units_available").notNull().default(0),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).default(
+      sql`NOW()`
+    ),
+  },
+  (table) => [
+    uniqueIndex("mews_cat_avail_unique_idx").on(
+      table.propertyId,
+      table.categoryId,
+      table.date
+    ),
+    index("mews_cat_avail_search_idx").on(table.propertyId, table.date),
+  ]
+);
+
+export const mewsRatePrices = pgTable(
+  "mews_rate_prices",
+  {
+    id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+    propertyId: uuid("property_id")
+      .references(() => properties.id)
+      .notNull(),
+    rateId: text("rate_id").notNull(), // Mews Rate Id
+    categoryId: text("category_id").notNull(), // Mews ResourceCategory Id
+    date: date("date").notNull(),
+    price: decimal("price", { precision: 10, scale: 2 }),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).default(
+      sql`NOW()`
+    ),
+  },
+  (table) => [
+    uniqueIndex("mews_rate_prices_unique_idx").on(
+      table.propertyId,
+      table.rateId,
+      table.categoryId,
+      table.date
+    ),
+    index("mews_rate_prices_search_idx").on(table.propertyId, table.date),
+  ]
+);
+
 // --- Property extras (Cloudbeds addons catalog, mirrored per property) ---
 
 export const propertyExtras = pgTable(
@@ -260,6 +328,10 @@ export const bookings = pgTable("bookings", {
   propertyId: uuid("property_id").references(() => properties.id),
   orderId: text("order_id").unique().notNull(),
   cloudbedsReservationId: text("cloudbeds_reservation_id"),
+  // Provider-neutral PMS ids (Mews + future PMSs). Cloudbeds keeps writing the
+  // cloudbeds_* column above; the adapter reads/writes the one for its PMS.
+  pmsReservationId: text("pms_reservation_id"),
+  pmsPaymentId: text("pms_payment_id"),
   roomTypeId: uuid("room_type_id").references(() => roomTypes.id),
   ratePlanId: uuid("rate_plan_id").references(() => ratePlans.id),
   rateType: text("rate_type"), // flex | nr
@@ -362,6 +434,7 @@ export const bookingExtras = pgTable("booking_extras", {
   id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
   bookingId: uuid("booking_id").references(() => bookings.id),
   cloudbedsItemId: text("cloudbeds_item_id"),
+  pmsItemId: text("pms_item_id"), // provider-neutral folio line id (Mews+)
   name: text("name").notNull(),
   qty: integer("qty").notNull().default(1),
   unitPrice: decimal("unit_price", { precision: 10, scale: 2 }).notNull(),

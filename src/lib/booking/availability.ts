@@ -2,6 +2,7 @@ import { db } from "@/db";
 import { properties, inventory, roomTypes, ratePlans } from "@/db/schema";
 import { eq, and, gte, lte, sql } from "drizzle-orm";
 import { syncInventoryForProperty } from "@/lib/cloudbeds/sync-inventory";
+import { computeMewsAvailability } from "@/lib/pms/mews/availability";
 
 export interface AvailabilityResultRow {
   roomType: {
@@ -42,6 +43,7 @@ export async function computeAvailability(
 
   const [coldStartCheck] = await db
     .select({
+      pmsType: properties.pmsType,
       cloudbedsPropertyId: properties.cloudbedsPropertyId,
       hasInventory: sql<boolean>`EXISTS (
         SELECT 1 FROM ${inventory}
@@ -53,6 +55,14 @@ export async function computeAvailability(
     .from(properties)
     .where(eq(properties.id, propertyId))
     .limit(1);
+
+  // Mews properties store availability/price in their own native tables and
+  // join them in the Mews adapter — dispatch there. (Cloudbeds-shaped logic
+  // below never matches a Mews property's empty `inventory` table anyway, but
+  // this keeps the read path explicit and skips the redundant cold-start probe.)
+  if (coldStartCheck?.pmsType === "mews") {
+    return computeMewsAvailability(propertyId, checkIn, checkOut, adults);
+  }
 
   if (coldStartCheck?.cloudbedsPropertyId && !coldStartCheck.hasInventory) {
     // Background sync — never await. The sync calls revalidateTag on

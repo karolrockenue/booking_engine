@@ -10,7 +10,7 @@ import {
 } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { verifyCancelToken } from "@/lib/crypto";
-import { putReservationStatus, postCustomItem } from "@/lib/cloudbeds/reservations";
+import { getPmsAdapter } from "@/lib/pms";
 import { detachPaymentMethod } from "@/lib/stripe/detach";
 import { getStripe } from "@/lib/stripe/client";
 import { sendBookingCancellationEmail } from "@/lib/email/booking-cancellation";
@@ -133,14 +133,14 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // Cancel in Cloudbeds first. If this fails, we abort — better to leave the
+  const pms = getPmsAdapter(property);
+
+  // Cancel in the PMS first. If this fails, we abort — better to leave the
   // PMS reservation live than to detach the card and end up with a held room
   // with no way to charge.
   try {
-    await putReservationStatus(booking.propertyId!, {
-      cloudbedsPropertyId: property.cloudbedsPropertyId,
-      reservationID: booking.cloudbedsReservationId,
-      status: "canceled",
+    await pms.cancelReservation({
+      reservationId: booking.cloudbedsReservationId,
       reason: "guest_self_cancel",
     });
   } catch (err) {
@@ -168,9 +168,8 @@ export async function POST(req: NextRequest) {
   for (const ex of charged) {
     if (!ex.cloudbedsItemId) continue; // never reached the folio — nothing to reverse
     try {
-      await postCustomItem(booking.propertyId!, {
-        cloudbedsPropertyId: property.cloudbedsPropertyId,
-        reservationID: booking.cloudbedsReservationId,
+      await pms.postExtra({
+        reservationId: booking.cloudbedsReservationId,
         name: `${ex.name} (cancelled)`,
         amount: -Number(ex.unitPrice),
         quantity: ex.qty,

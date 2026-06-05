@@ -19,12 +19,7 @@ import {
 import type { ExtraConfig, PricingModel } from "@/lib/booking/types";
 import { format, parseISO } from "date-fns";
 import { getStripe } from "@/lib/stripe/client";
-import {
-  postReservation,
-  postCustomItem,
-  postPayment,
-  postReservationNote,
-} from "@/lib/cloudbeds/reservations";
+import { getPmsAdapter } from "@/lib/pms";
 import { sendBookingConfirmationEmail } from "@/lib/email/booking-confirmation";
 import { signCancelToken } from "@/lib/crypto";
 import { publicOrigin } from "@/lib/stripe/client";
@@ -346,9 +341,9 @@ export async function POST(req: NextRequest) {
   // plan: land happy path; the retry/refund recovery flow lands before launch.
   let cloudbedsReservationId: string | undefined;
   let cancelUrl: string | undefined;
+  const pms = getPmsAdapter(property);
   try {
-    const result = await postReservation(body.propertyId, {
-      cloudbedsPropertyId: property.cloudbedsPropertyId,
+    const result = await pms.createReservation({
       startDate: body.checkIn,
       endDate: body.checkOut,
       guestFirstName: body.guestFirst,
@@ -356,17 +351,17 @@ export async function POST(req: NextRequest) {
       guestEmail: body.guestEmail,
       guestCountry: body.guestCountry ?? undefined,
       guestPhone: body.guestPhone ?? undefined,
-      roomTypeID: room.otaRoomId,
-      ratesID: ratePlan.otaRateId,
+      roomTypeId: room.otaRoomId,
+      rateId: ratePlan.otaRateId,
       adults: body.adults ?? 1,
       children: body.children ?? 0,
-      // Room subtotal only — extras are attached separately via postCustomItem.
+      // Room subtotal only — extras are attached separately via postExtra.
       // (Cloudbeds prices the room from roomRateID inside postReservation; this
       // value is informational. Previously sent room+extras, which was wrong.)
-      subtotal: roomTotalNum,
-      thirdPartyIdentifier: body.orderId,
+      roomSubtotal: roomTotalNum,
+      orderId: body.orderId,
     });
-    cloudbedsReservationId = result.reservationID;
+    cloudbedsReservationId = result.pmsReservationId;
 
     // Attach extras to the folio. Insert our row before the Cloudbeds call so
     // the line survives a postCustomItem failure (the retry sweep at
@@ -407,15 +402,14 @@ export async function POST(req: NextRequest) {
         const itemIds: string[] = [];
         for (const morning of mornings) {
           try {
-            const { itemID } = await postCustomItem(body.propertyId, {
-              cloudbedsPropertyId: property.cloudbedsPropertyId,
-              reservationID: cloudbedsReservationId,
+            const { pmsItemId } = await pms.postExtra({
+              reservationId: cloudbedsReservationId,
               name: extra.name,
               amount: unitMajor,
               quantity: perMorning,
               serviceDate: morning,
             });
-            if (itemID) itemIds.push(itemID);
+            if (pmsItemId) itemIds.push(pmsItemId);
           } catch (extraErr) {
             console.error(
               `postCustomItem failed for ${extra.name} (${morning}) on reservation ${cloudbedsReservationId}:`,
@@ -453,17 +447,16 @@ export async function POST(req: NextRequest) {
         .returning({ id: bookingExtras.id });
       emailExtras.push({ name: extra.name, quantity: 1, lineTotal: unitMajor });
       try {
-        const { itemID } = await postCustomItem(body.propertyId, {
-          cloudbedsPropertyId: property.cloudbedsPropertyId,
-          reservationID: cloudbedsReservationId,
+        const { pmsItemId } = await pms.postExtra({
+          reservationId: cloudbedsReservationId,
           name: extra.name,
           amount: unitMajor,
           quantity: 1,
         });
-        if (itemID) {
+        if (pmsItemId) {
           await db
             .update(bookingExtras)
-            .set({ cloudbedsItemId: itemID })
+            .set({ cloudbedsItemId: pmsItemId })
             .where(eq(bookingExtras.id, extraRow.id));
         }
       } catch (extraErr) {
@@ -478,9 +471,8 @@ export async function POST(req: NextRequest) {
     // mornings. Non-fatal — a failed note never voids the booking.
     if (noteLines.length > 0) {
       try {
-        await postReservationNote(body.propertyId, {
-          cloudbedsPropertyId: property.cloudbedsPropertyId,
-          reservationID: cloudbedsReservationId,
+        await pms.postReservationNote({
+          reservationId: cloudbedsReservationId,
           note: noteLines.join(" | "),
         });
       } catch (noteErr) {
@@ -497,9 +489,8 @@ export async function POST(req: NextRequest) {
     // line is a reconciliation problem the hotel can fix manually.
     if (rateType === "nr" && body.paymentIntentId) {
       try {
-        await postPayment(body.propertyId, {
-          cloudbedsPropertyId: property.cloudbedsPropertyId,
-          reservationID: cloudbedsReservationId,
+        await pms.recordPayment({
+          reservationId: cloudbedsReservationId,
           amount: grandTotalNum,
           type: "credit",
           description: `Stripe ${body.paymentIntentId}`,

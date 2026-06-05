@@ -3,7 +3,7 @@ import { db } from "@/db";
 import { bookingExtras, bookings, properties } from "@/db/schema";
 import { and, eq, isNotNull, isNull } from "drizzle-orm";
 import { verifyAdmin } from "@/lib/admin-auth";
-import { postCustomItem } from "@/lib/cloudbeds/reservations";
+import { getPmsAdapter } from "@/lib/pms";
 
 // Retry sweep for booking extras that were stored locally but never made it
 // to Cloudbeds. The booking flow inserts each extra into booking_extras
@@ -58,6 +58,7 @@ export async function POST(
       )
     );
 
+  const pms = getPmsAdapter(property);
   let synced = 0;
   let failed = 0;
   const errors: { extraId: string; message: string }[] = [];
@@ -65,17 +66,16 @@ export async function POST(
   for (const row of pending) {
     if (!row.cloudbedsReservationId) continue;
     try {
-      const { itemID } = await postCustomItem(propertyId, {
-        cloudbedsPropertyId: property.cloudbedsPropertyId,
-        reservationID: row.cloudbedsReservationId,
+      const { pmsItemId } = await pms.postExtra({
+        reservationId: row.cloudbedsReservationId,
         name: row.name,
         amount: Number(row.unitPrice),
         quantity: row.qty,
       });
-      if (itemID) {
+      if (pmsItemId) {
         await db
           .update(bookingExtras)
-          .set({ cloudbedsItemId: itemID })
+          .set({ cloudbedsItemId: pmsItemId })
           .where(eq(bookingExtras.id, row.extraId));
         synced++;
       } else {

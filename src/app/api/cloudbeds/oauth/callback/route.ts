@@ -4,8 +4,7 @@ import { db } from "@/db";
 import { properties } from "@/db/schema";
 import { encryptToken, verifyOauthState } from "@/lib/crypto";
 import { exchangeCodeForTokens } from "@/lib/cloudbeds/client";
-import { subscribeWebhooksForProperty } from "@/lib/cloudbeds/webhook-subscriptions";
-import { syncInventoryForProperty } from "@/lib/cloudbeds/sync-inventory";
+import { getPmsAdapter } from "@/lib/pms";
 
 interface CloudbedsHotel {
   propertyID: string;
@@ -135,10 +134,11 @@ export async function GET(req: NextRequest) {
   // install feel "complete" — without it the property has tokens but no rooms
   // and the booking flow looks broken until something else triggers a sync.
   if (cloudbedsPropertyId) {
-    void subscribeWebhooksForProperty(propertyId).catch((err) => {
+    const pms = getPmsAdapter({ id: propertyId, cloudbedsPropertyId });
+    void pms.subscribeWebhooks().catch((err) => {
       console.error("Cloudbeds webhook subscribe failed:", err);
     });
-    void syncInventoryForProperty(propertyId).catch((err) => {
+    void pms.syncInventory().catch((err) => {
       console.error("Cloudbeds initial inventory sync failed:", err);
     });
   }

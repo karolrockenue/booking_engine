@@ -10,7 +10,7 @@ import {
 import { and, eq, isNotNull, lte, sql } from "drizzle-orm";
 import { getStripe, publicOrigin } from "./client";
 import { toMinorUnits } from "./amounts";
-import { postPayment, putReservationStatus } from "@/lib/cloudbeds/reservations";
+import { getPmsAdapter } from "@/lib/pms";
 import { detachPaymentMethod } from "./detach";
 import { signPaymentUpdateToken } from "@/lib/crypto";
 import { sendPaymentUpdateEmail } from "@/lib/email/payment-update";
@@ -154,12 +154,11 @@ export async function chargeBooking(
       throw new Error(`PaymentIntent status ${pi.status}`);
     }
 
-    // Record the charge in the Cloudbeds folio. Best-effort — money is at
-    // Stripe; missing folio line is a reconciliation issue the hotel can fix.
+    // Record the charge in the PMS folio. Best-effort — money is at Stripe;
+    // missing folio line is a reconciliation issue the hotel can fix.
     try {
-      await postPayment(booking.propertyId, {
-        cloudbedsPropertyId: property.cloudbedsPropertyId,
-        reservationID: booking.cloudbedsReservationId,
+      await getPmsAdapter(property).recordPayment({
+        reservationId: booking.cloudbedsReservationId,
         amount: grandTotalNum,
         type: "credit",
         description: `Stripe ${pi.id} (auto-charge)`,
@@ -277,14 +276,12 @@ async function autoCancelAfterGrace(
     };
   }
 
-  // Cancel in CB first. If it fails we abort and let the next cron run
+  // Cancel in the PMS first. If it fails we abort and let the next cron run
   // retry — better to leave the room held than to detach the card and
   // strand the reservation.
   try {
-    await putReservationStatus(booking.propertyId, {
-      cloudbedsPropertyId: property.cloudbedsPropertyId,
-      reservationID: booking.cloudbedsReservationId,
-      status: "canceled",
+    await getPmsAdapter(property).cancelReservation({
+      reservationId: booking.cloudbedsReservationId,
       reason: "auto_cancel_grace_expired",
     });
   } catch (err) {

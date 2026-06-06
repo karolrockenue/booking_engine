@@ -105,26 +105,6 @@ export async function POST(req: NextRequest) {
   const nights =
     (checkOutDate.getTime() - checkInDate.getTime()) / (1000 * 60 * 60 * 24);
 
-  const inv = await db
-    .select()
-    .from(inventory)
-    .where(
-      and(
-        eq(inventory.propertyId, body.propertyId),
-        eq(inventory.roomTypeId, body.roomTypeId),
-        eq(inventory.ratePlanId, body.ratePlanId),
-        gte(inventory.date, body.checkIn),
-        lt(inventory.date, body.checkOut)
-      )
-    );
-
-  if (inv.length < nights || inv.some((d) => d.unitsAvailable < 1)) {
-    return NextResponse.json(
-      { error: "Room is no longer available for these dates" },
-      { status: 409 }
-    );
-  }
-
   const [property] = await db
     .select()
     .from(properties)
@@ -133,11 +113,52 @@ export async function POST(req: NextRequest) {
   if (!property) {
     return NextResponse.json({ error: "Property not found" }, { status: 404 });
   }
-  if (!property.cloudbedsPropertyId) {
-    return NextResponse.json(
-      { error: "Property is not connected to Cloudbeds" },
-      { status: 409 }
+
+  // Final availability re-check, PMS-aware. Cloudbeds keeps its direct
+  // inventory-table check; Mews stores availability in its own native tables,
+  // so we re-check through the adapter and confirm the chosen room+rate is
+  // still offered for the dates.
+  if (property.pmsType === "mews") {
+    const avail = await getPmsAdapter(property).getAvailability(
+      body.checkIn,
+      body.checkOut,
+      body.adults ?? 1
     );
+    const stillAvailable = avail.some(
+      (r) =>
+        r.roomType.id === body.roomTypeId && r.ratePlan.id === body.ratePlanId
+    );
+    if (!stillAvailable) {
+      return NextResponse.json(
+        { error: "Room is no longer available for these dates" },
+        { status: 409 }
+      );
+    }
+  } else {
+    if (!property.cloudbedsPropertyId) {
+      return NextResponse.json(
+        { error: "Property is not connected to Cloudbeds" },
+        { status: 409 }
+      );
+    }
+    const inv = await db
+      .select()
+      .from(inventory)
+      .where(
+        and(
+          eq(inventory.propertyId, body.propertyId),
+          eq(inventory.roomTypeId, body.roomTypeId),
+          eq(inventory.ratePlanId, body.ratePlanId),
+          gte(inventory.date, body.checkIn),
+          lt(inventory.date, body.checkOut)
+        )
+      );
+    if (inv.length < nights || inv.some((d) => d.unitsAvailable < 1)) {
+      return NextResponse.json(
+        { error: "Room is no longer available for these dates" },
+        { status: 409 }
+      );
+    }
   }
 
   const [room] = await db

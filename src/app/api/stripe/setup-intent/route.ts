@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { properties, ratePlans } from "@/db/schema";
 import { eq } from "drizzle-orm";
-import { getStripe } from "@/lib/stripe/client";
+import { getStripe, sanitizeEmail } from "@/lib/stripe/client";
 
 interface CreateSetupIntentBody {
   propertyId?: string;
@@ -76,7 +76,7 @@ export async function POST(req: NextRequest) {
     // account at charge time.
     const customer = await stripe.customers.create(
       {
-        email: guestEmail || undefined,
+        email: sanitizeEmail(guestEmail),
         name: [guestFirst, guestLast].filter(Boolean).join(" ") || undefined,
         metadata: { orderId, propertyId },
       },

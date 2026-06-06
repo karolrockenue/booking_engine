@@ -91,7 +91,11 @@ export async function chargeBooking(
     .from(properties)
     .where(eq(properties.id, booking.propertyId))
     .limit(1);
-  if (!property?.stripeAccountId || !property.cloudbedsPropertyId) {
+  // Cloudbeds needs a resolved property id; Mews acts via its stored creds.
+  if (
+    !property?.stripeAccountId ||
+    (property.pmsType !== "mews" && !property.cloudbedsPropertyId)
+  ) {
     return {
       bookingId: booking.id,
       outcome: "skipped",

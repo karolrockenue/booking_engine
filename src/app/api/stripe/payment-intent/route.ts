@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { properties, ratePlans } from "@/db/schema";
 import { eq } from "drizzle-orm";
-import { getStripe } from "@/lib/stripe/client";
+import { getStripe, sanitizeEmail } from "@/lib/stripe/client";
 import { toMinorUnits } from "@/lib/stripe/amounts";
 
 interface CreatePaymentIntentBody {
@@ -84,7 +84,7 @@ export async function POST(req: NextRequest) {
         // when same-region: it just makes settlement explicit.
         on_behalf_of: property.stripeAccountId,
         transfer_data: { destination: property.stripeAccountId },
-        receipt_email: guestEmail || undefined,
+        receipt_email: sanitizeEmail(guestEmail),
         automatic_payment_methods: { enabled: true },
         metadata: {
           orderId,

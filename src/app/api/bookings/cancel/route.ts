@@ -126,7 +126,8 @@ export async function POST(req: NextRequest) {
     .from(properties)
     .where(eq(properties.id, booking.propertyId!))
     .limit(1);
-  if (!property?.cloudbedsPropertyId) {
+  // Cloudbeds needs a resolved property id; Mews cancels via its stored creds.
+  if (!property || (property.pmsType !== "mews" && !property.cloudbedsPropertyId)) {
     return NextResponse.json(
       { outcome: "ineligible", reason: "no_reservation" } satisfies Outcome,
       { status: 409 }

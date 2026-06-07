@@ -28,9 +28,12 @@ Adding **Mews** as a second PMS, fully siloed from Cloudbeds. Full design + Mews
 
 - **Phase 4 (`448a41c`) — Mews writes (demo):** money path live behind the adapter — `createReservation` (`customers/add` + email dedupe → `reservations/add` with per-night `TimeUnitPrices`, `CheckRateApplicability:false`, `CheckOverbooking:true`; `TaxCodes` pulled from `rates/getPricing` so Stripe-matching prices are accepted), `recordPayment` (`payments/addExternal`, `ExternalIdentifier`=Stripe PI, Gross/Net by tax mode), `cancelReservation` (dedicated `reservations/cancel`, fee off — refunds in Stripe). Interface gained `nightlyRates` + `externalIdentifier` (Cloudbeds ignores both); `autoCancelAfterGrace` de-Cloudbeds'd. Verified e2e through `getPmsAdapter` (`scripts/mews-write-smoke.ts`). **Deferred (non-fatal, logged):** folio extras + staff notes (Mews extras live on a separate product service; needs confirming with Mews — §13.5). **Built against demo by decision; still gated to PRODUCTION on CQ-1/CQ-2.**
 
+- **Mews demo full lifecycle VERIFIED (2026-06-06/07):** real storefront booking → Mews reservation Confirmed → auto-charge → external payment recorded in Mews → guest cancel → Mews Canceled + Stripe refund. The first Mews booking exposed 5 Cloudbeds-coupled assumptions in the shared flow, all fixed (`9868baf`, `ddb5148`): availability re-check, `chargeBooking`/`autoCancelAfterGrace`/cancel-route connection guards, and a Stripe `sanitizeEmail` fix (half-typed email poisoned the idempotency key).
+
 ### Remaining
 - **Phase 5 — webhooks + availability polling; Phase 6 — certification + dedicated prod integration.**
-- **Mews follow-ups:** folio extras + staff-note posting; capture the sold-out (`CheckOverbooking`) error shape for UX.
+- **Mews follow-ups:** folio extras + staff-note posting; compensating external-payment reversal in Mews on cancel (plan §7.4 — Stripe refunds, but the recorded payment stays on the Mews folio); capture the sold-out (`CheckOverbooking`) error shape for UX.
+- **Pre-existing/unrelated:** admin Theme tab crashes on an empty `theme` jsonb (all properties; theming is template-based now) + no "Save Changes" success toast.
 - A dedicated `mews-demo-hotel` property exists in prod DB for testing (delete before launch).
 
 ---

@@ -155,13 +155,12 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // Reverse the extras. Cancelling a reservation zeroes the room in Cloudbeds
-  // but leaves posted custom items (breakfast, early check-in, …) as charges,
-  // so the folio still shows a balance due. v1.3 has no delete-item endpoint
-  // (404) and postAdjustment needs a scope we don't hold, so we offset each
-  // charged extra with a negative custom item — leaving the folio net zero
-  // using the write:item scope we already have. Non-fatal: a failed offset is a
-  // reconciliation issue, not a cancel failure.
+  // Reverse the extras. Cancelling a reservation zeroes the room but leaves
+  // posted extras (breakfast, early check-in, …) as charges, so the folio still
+  // shows a balance due. The adapter handles the PMS-specific reversal: Cloudbeds
+  // offsets each with a negative custom item; Mews cancels the product order's
+  // items (orderItems/cancel). Non-fatal: a failed reversal is a reconciliation
+  // issue, not a cancel failure.
   const charged = await db
     .select()
     .from(bookingExtras)
@@ -169,10 +168,11 @@ export async function POST(req: NextRequest) {
   for (const ex of charged) {
     if (!ex.cloudbedsItemId) continue; // never reached the folio — nothing to reverse
     try {
-      await pms.postExtra({
+      await pms.reverseExtra({
         reservationId: booking.cloudbedsReservationId,
-        name: `${ex.name} (cancelled)`,
-        amount: -Number(ex.unitPrice),
+        pmsItemId: ex.cloudbedsItemId,
+        name: ex.name,
+        unitPrice: Number(ex.unitPrice),
         quantity: ex.qty,
       });
     } catch (reverseErr) {
@@ -211,6 +211,43 @@ export async function POST(req: NextRequest) {
         status: refund.status ?? "pending",
         payload: refund as unknown as Record<string, unknown>,
       });
+
+      // §7.4: cancelling the reservation zeroes the room but leaves the recorded
+      // external payment on the PMS folio, so it still reads as paid. Post a
+      // compensating reversal so the folio reconciles to Stripe. Non-fatal: a
+      // failed reversal is a reconciliation log, not a cancel failure (Cloudbeds
+      // no-ops and returns null).
+      try {
+        const reversal = await pms.recordRefund({
+          reservationId: booking.cloudbedsReservationId,
+          amount: refundAmount,
+          externalIdentifier: refund.id,
+          description: `Stripe refund ${refund.id}`,
+        });
+        if (reversal) {
+          await db.insert(paymentEvents).values({
+            bookingId: booking.id,
+            type: "pms_refund_recorded",
+            stripeId: refund.id,
+            amount: refundAmount.toFixed(2),
+            currency: refund.currency.toUpperCase(),
+            status: "recorded",
+          });
+        }
+      } catch (reversalErr) {
+        console.error(
+          `Compensating PMS reversal failed for booking ${booking.id} (reservation ${booking.cloudbedsReservationId}):`,
+          reversalErr
+        );
+        await db.insert(paymentEvents).values({
+          bookingId: booking.id,
+          type: "pms_refund_failed",
+          stripeId: refund.id,
+          status: "pms_reversal_failed",
+          errorMessage:
+            reversalErr instanceof Error ? reversalErr.message : "Unknown",
+        });
+      }
     } catch (refundErr) {
       console.error(
         `Stripe refund failed for booking ${booking.id} (PI ${booking.stripePaymentIntentId}):`,

@@ -32,5 +32,8 @@ export async function GET(
     currency: creds.currency ?? p.currency ?? null,
     taxMode: creds.taxMode ?? null,
     externalPaymentType: creds.externalPaymentType ?? null,
+    extrasServiceCount: Array.isArray(creds.extrasServiceIds)
+      ? creds.extrasServiceIds.length
+      : 0,
   });
 }

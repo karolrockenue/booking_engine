@@ -20,6 +20,7 @@ import type { ExtraConfig, PricingModel } from "@/lib/booking/types";
 import { format, parseISO } from "date-fns";
 import { getStripe } from "@/lib/stripe/client";
 import { getPmsAdapter } from "@/lib/pms";
+import { PmsSoldOutError } from "@/lib/pms/errors";
 import { sendBookingConfirmationEmail } from "@/lib/email/booking-confirmation";
 import { signCancelToken } from "@/lib/crypto";
 import { publicOrigin } from "@/lib/stripe/client";
@@ -242,11 +243,17 @@ export async function POST(req: NextRequest) {
   // Pricing model per selected extra — looked up server-side (Cloudbeds doesn't
   // carry it, and we don't trust the client) so quantities can't be tampered.
   const extraModels = new Map<string, PricingModel>();
+  // Mews ProductOrders need the product id + its Orderable service id; looked up
+  // server-side (trusted) keyed by our extra id. Cloudbeds ignores both.
+  const extraOtaId = new Map<string, string>();
+  const extraServiceId = new Map<string, string | null>();
   if (extrasItems.length > 0) {
     const modelRows = await db
       .select({
         id: propertyExtras.id,
         pricingModel: propertyExtras.pricingModel,
+        otaExtraId: propertyExtras.otaExtraId,
+        pmsServiceId: propertyExtras.pmsServiceId,
       })
       .from(propertyExtras)
       .where(eq(propertyExtras.propertyId, body.propertyId));
@@ -255,6 +262,8 @@ export async function POST(req: NextRequest) {
         r.id,
         isPricingModel(r.pricingModel) ? r.pricingModel : "per_stay"
       );
+      extraOtaId.set(r.id, r.otaExtraId);
+      extraServiceId.set(r.id, r.pmsServiceId);
     }
   }
   const modelFor = (id: string): PricingModel => extraModels.get(id) ?? "per_stay";
@@ -435,6 +444,8 @@ export async function POST(req: NextRequest) {
               amount: unitMajor,
               quantity: perMorning,
               serviceDate: morning,
+              otaExtraId: extraOtaId.get(extra.id),
+              pmsServiceId: extraServiceId.get(extra.id) ?? undefined,
             });
             if (pmsItemId) itemIds.push(pmsItemId);
           } catch (extraErr) {
@@ -479,6 +490,8 @@ export async function POST(req: NextRequest) {
           name: extra.name,
           amount: unitMajor,
           quantity: 1,
+          otaExtraId: extraOtaId.get(extra.id),
+          pmsServiceId: extraServiceId.get(extra.id) ?? undefined,
         });
         if (pmsItemId) {
           await db
@@ -581,6 +594,24 @@ export async function POST(req: NextRequest) {
       }
     })();
   } catch (err) {
+    // Sold-out: the PMS refused to oversell (final defence after the pre-create
+    // availability re-check). Retrying won't help — tell the guest to pick
+    // another room. Distinct code + 409 so the storefront shows the right UX.
+    if (err instanceof PmsSoldOutError) {
+      console.warn(
+        `Booking ${booking.id} (${body.orderId}): room sold out at PMS create.`
+      );
+      return NextResponse.json(
+        {
+          success: false,
+          code: "room_sold_out",
+          orderId: body.orderId,
+          bookingId: booking.id,
+          error: err.message,
+        },
+        { status: 409 }
+      );
+    }
     console.error("Cloudbeds postReservation failed:", err);
     const message = err instanceof Error ? err.message : "Unknown error";
     return NextResponse.json(

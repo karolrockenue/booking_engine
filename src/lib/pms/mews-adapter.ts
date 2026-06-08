@@ -11,8 +11,11 @@ import type {
   CreateReservationResult,
   PostExtraParams,
   PostExtraResult,
+  ReverseExtraParams,
   RecordPaymentParams,
   RecordPaymentResult,
+  RecordRefundParams,
+  RecordRefundResult,
   CancelReservationParams,
   ReservationNoteParams,
   FindExistingReservationParams,
@@ -22,11 +25,15 @@ import type { AvailabilityResultRow } from "@/lib/booking/availability";
 import { fetchMewsConnectionInfo } from "./mews/config";
 import { getMewsCredentials } from "./mews/credentials";
 import { syncMewsInventoryForProperty } from "./mews/sync-inventory";
+import { syncMewsExtrasForProperty } from "./mews/sync-extras";
 import { syncMewsHotelDetailsForProperty } from "./mews/sync-hotel-details";
 import { computeMewsAvailability } from "./mews/availability";
 import {
   createMewsReservation,
   addMewsExternalPayment,
+  addMewsExternalRefund,
+  addMewsProductOrder,
+  reverseMewsExtra,
   cancelMewsReservation,
   findMewsReservation,
 } from "./mews/reservations";
@@ -56,11 +63,9 @@ export class MewsAdapter implements PmsAdapter {
   }
 
   async syncExtras(): Promise<void> {
-    // Extras land with the Phase 4 write path: the property_extras table is
-    // Cloudbeds-shaped (cloudbeds_addon_id NOT NULL), so a neutral extras model
-    // is built alongside Mews ProductOrders. No-op here so syncInventory's
-    // extras step (and any caller) is safe against a Mews property.
-    console.log(`[Mews] syncExtras skipped for ${this.ourId} (Phase 4)`);
+    // Sync the admin-selected Orderable services' products into property_extras
+    // (neutral shape). No-ops cleanly when no extras services are configured.
+    await syncMewsExtrasForProperty(this.ourId);
   }
 
   async syncHotelDetails(): Promise<void> {
@@ -131,28 +136,70 @@ export class MewsAdapter implements PmsAdapter {
     return { pmsPaymentId };
   }
 
+  // §7.4: cancelling a reservation zeroes the room but leaves the recorded
+  // external payment on the folio, so it still reads as paid. After Stripe
+  // refunds, post a compensating negative external payment so the folio nets to
+  // zero. `params.amount` is the positive refunded amount.
+  async recordRefund(
+    params: RecordRefundParams
+  ): Promise<RecordRefundResult | null> {
+    const creds = await getMewsCredentials(this.ourId);
+    const pmsRefundId = await addMewsExternalRefund(creds, {
+      reservationId: params.reservationId,
+      amount: params.amount,
+      type: params.type,
+      externalIdentifier: params.externalIdentifier,
+      notes: params.description,
+    });
+    return { pmsRefundId };
+  }
+
   async cancelReservation(params: CancelReservationParams): Promise<void> {
     const creds = await getMewsCredentials(this.ourId);
     await cancelMewsReservation(creds, params.reservationId, params.reason);
   }
 
-  // Folio extras + staff notes are deferred (see mews/reservations.ts): Mews
-  // posts extras on a separate product service and the per-night representation
-  // needs confirming with Mews. Both are non-fatal in the booking flow, so we
-  // log and no-op rather than throw — a room booking still completes; the extra
-  // just isn't mirrored to the Mews folio yet.
+  // Post an extra as a Mews ProductOrder on the product's own Orderable service
+  // (orders/add rejects the accommodation service). Needs the product id + its
+  // service id, threaded from property_extras by the booking route; without them
+  // (e.g. a stale/un-synced extra) we log and skip rather than fail the booking.
+  // The returned pmsItemId is the Mews OrderId — stored so cancel can reverse it.
   async postExtra(params: PostExtraParams): Promise<PostExtraResult> {
-    console.warn(
-      `[Mews] postExtra not yet implemented — "${params.name}" x${params.quantity} not posted to folio for reservation ${params.reservationId}`
-    );
-    return { pmsItemId: "" };
+    if (!params.otaExtraId || !params.pmsServiceId) {
+      console.warn(
+        `[Mews] postExtra: missing product/service id for "${params.name}" — not posted for reservation ${params.reservationId}`
+      );
+      return { pmsItemId: "" };
+    }
+    const creds = await getMewsCredentials(this.ourId);
+    const orderId = await addMewsProductOrder(creds, {
+      reservationId: params.reservationId,
+      productId: params.otaExtraId,
+      serviceId: params.pmsServiceId,
+      count: params.quantity,
+    });
+    return { pmsItemId: orderId };
   }
 
+  async reverseExtra(params: ReverseExtraParams): Promise<void> {
+    if (!params.pmsItemId) return;
+    const creds = await getMewsCredentials(this.ourId);
+    // pmsItemId is one or more OrderIds (per-morning posts are comma-joined).
+    await reverseMewsExtra(creds, params.pmsItemId.split(",").filter(Boolean));
+  }
+
+  // Mews Connector has NO post-creation note operation — `Notes` exists only on
+  // reservations/add (verified against the docs), and the booking flow posts its
+  // note (the extras breakdown) AFTER creating the reservation + extras. So there
+  // is nowhere to put it on Mews; instead the breakdown is visible on the folio
+  // as the named ProductOrder lines (one per morning for per-night extras). This
+  // is a documented no-op, not a stub. (Folding the summary into the creation
+  // Notes would mean reordering the certified shared booking path — deferred.)
   async postReservationNote(
     params: ReservationNoteParams
   ): Promise<{ noteId: string }> {
-    console.warn(
-      `[Mews] postReservationNote not yet implemented — note not posted for reservation ${params.reservationId}`
+    console.log(
+      `[Mews] postReservationNote is a no-op (Connector has no post-create note op) — extras show as folio lines for reservation ${params.reservationId}`
     );
     return { noteId: "" };
   }

@@ -11,6 +11,7 @@
 import { mews, mewsPaginated } from "./client";
 import { toMewsUtc } from "./timezone";
 import type { MewsCredentials } from "./credentials";
+import { PmsSoldOutError, isMewsSoldOut } from "../errors";
 
 // 0-based local nights between check-in and check-out (excludes departure day).
 function nights(checkIn: string, checkOut: string): string[] {
@@ -207,30 +208,41 @@ export async function createMewsReservation(
     },
   }));
 
-  const resp = await mews<{
+  let resp: {
     Reservations?: Array<{
       Reservation?: { Id?: string; GroupId?: string; Number?: string };
     }>;
-  }>("reservations/add", creds.accessToken, {
-    ServiceId: creds.serviceId,
-    CheckRateApplicability: false, // accept our Stripe-matching prices
-    CheckOverbooking: true, // fail rather than oversell
-    SendConfirmationEmail: false, // we send our own confirmation
-    Reservations: [
-      {
-        Identifier: input.orderId, // correlation only, NOT idempotency
-        State: "Confirmed",
-        StartUtc: toMewsUtc(input.startDate, creds.timezone),
-        EndUtc: toMewsUtc(input.endDate, creds.timezone),
-        CustomerId: customerId,
-        RequestedCategoryId: input.categoryId,
-        RateId: input.rateId,
-        PersonCounts: [{ AgeCategoryId: ageCategoryId, Count: input.adults }],
-        TimeUnitPrices: timeUnitPrices,
-        Notes: input.notes,
-      },
-    ],
-  });
+  };
+  try {
+    resp = await mews("reservations/add", creds.accessToken, {
+      ServiceId: creds.serviceId,
+      CheckRateApplicability: false, // accept our Stripe-matching prices
+      CheckOverbooking: true, // fail rather than oversell
+      SendConfirmationEmail: false, // we send our own confirmation
+      Reservations: [
+        {
+          Identifier: input.orderId, // correlation only, NOT idempotency
+          State: "Confirmed",
+          StartUtc: toMewsUtc(input.startDate, creds.timezone),
+          EndUtc: toMewsUtc(input.endDate, creds.timezone),
+          CustomerId: customerId,
+          RequestedCategoryId: input.categoryId,
+          RateId: input.rateId,
+          PersonCounts: [{ AgeCategoryId: ageCategoryId, Count: input.adults }],
+          TimeUnitPrices: timeUnitPrices,
+          Notes: input.notes,
+        },
+      ],
+    });
+  } catch (e) {
+    // CheckOverbooking made Mews refuse rather than oversell — surface a typed
+    // sold-out error the booking route maps to the "pick another room" UX
+    // (verified shape: 403 + no-availability message — mews-soldout-probe.ts).
+    if (isMewsSoldOut(e)) {
+      throw new PmsSoldOutError();
+    }
+    throw e;
+  }
 
   const reservation = resp.Reservations?.[0]?.Reservation;
   if (!reservation?.Id) {
@@ -395,12 +407,19 @@ export interface AddExternalPaymentInput {
   notes?: string;
 }
 
-export async function addMewsExternalPayment(
+// Core external-payment post. `sign` is +1 for a charge record and -1 for a
+// compensating reversal (a refund): Mews has no refund op for external payments
+// (only CreditCard/Alternative are refundable), so a reversal is just a second
+// addExternal with a negative value — verified on demo to net the folio to zero
+// (scripts/mews-refund-probe.ts).
+async function postMewsExternalPayment(
   creds: MewsCredentials,
-  input: AddExternalPaymentInput
+  input: AddExternalPaymentInput,
+  sign: 1 | -1
 ): Promise<string> {
   const accountId = await getReservationAccountId(creds, input.reservationId);
   const isNet = creds.taxMode === "Net";
+  const value = sign * input.amount;
   const resp = await mews<{ ExternalPaymentId?: string; Payment?: { Id?: string } }>(
     "payments/addExternal",
     creds.accessToken,
@@ -409,7 +428,7 @@ export async function addMewsExternalPayment(
       ReservationId: input.reservationId,
       Amount: {
         Currency: creds.currency,
-        ...(isNet ? { NetValue: input.amount } : { GrossValue: input.amount }),
+        ...(isNet ? { NetValue: value } : { GrossValue: value }),
       },
       Type: input.type ?? creds.externalPaymentType ?? undefined,
       ExternalIdentifier: input.externalIdentifier,
@@ -419,6 +438,96 @@ export async function addMewsExternalPayment(
   const id = resp.ExternalPaymentId ?? resp.Payment?.Id;
   if (!id) throw new Error("Mews payments/addExternal returned no id");
   return id;
+}
+
+export async function addMewsExternalPayment(
+  creds: MewsCredentials,
+  input: AddExternalPaymentInput
+): Promise<string> {
+  return postMewsExternalPayment(creds, input, 1);
+}
+
+// Compensating reversal for a Stripe refund (plan §7.4). `input.amount` is the
+// POSITIVE refunded amount; we post it as a negative external payment so the
+// Mews folio nets to zero against the original charge record.
+export async function addMewsExternalRefund(
+  creds: MewsCredentials,
+  input: AddExternalPaymentInput
+): Promise<string> {
+  return postMewsExternalPayment(creds, input, -1);
+}
+
+// --- extras (product orders) --------------------------------------------
+//
+// A Mews extra is a PRODUCT ordered on its own Orderable service (orders/add
+// rejects the accommodation ServiceId — verified on demo). We post the real
+// ProductId with a Count (plan §7.2, ProductOrders chosen 2026-06-08): Mews
+// prices it from the product, which we synced into property_extras, so the folio
+// matches what Stripe charged. The returned OrderId is the product service-order
+// id — store it so cancel can reverse the order's items.
+
+export interface AddMewsProductOrderInput {
+  reservationId: string;
+  productId: string; // property_extras.ota_extra_id
+  serviceId: string; // property_extras.pms_service_id (the product's Orderable service)
+  count: number;
+}
+
+export async function addMewsProductOrder(
+  creds: MewsCredentials,
+  input: AddMewsProductOrderInput
+): Promise<string> {
+  const accountId = await getReservationAccountId(creds, input.reservationId);
+  const resp = await mews<{ OrderId?: string; Order?: { Id?: string } }>(
+    "orders/add",
+    creds.accessToken,
+    {
+      ServiceId: input.serviceId,
+      AccountId: accountId,
+      LinkedReservationId: input.reservationId,
+      ProductOrders: [{ ProductId: input.productId, Count: input.count }],
+    }
+  );
+  const id = resp.OrderId ?? resp.Order?.Id;
+  if (!id) throw new Error("Mews orders/add returned no OrderId");
+  return id;
+}
+
+interface OrderItemRow {
+  Id?: string;
+  AccountingState?: string; // Open | Closed | Inactive | Canceled
+}
+
+// Reverse posted extras on cancellation. Mews has no order-level cancel; we fetch
+// the order's items (orderItems/getAll by ServiceOrderIds — the OrderId from
+// orders/add IS the product service-order id) and cancel the still-active ones
+// via orderItems/cancel (beta; max 10 ids/call). Cancelling the service order's
+// items removes the product line and its auto-added tax from the folio.
+export async function reverseMewsExtra(
+  creds: MewsCredentials,
+  orderIds: string[]
+): Promise<void> {
+  if (orderIds.length === 0) return;
+  const items = await mewsPaginated<OrderItemRow>(
+    "orderItems/getAll",
+    creds.accessToken,
+    { ServiceOrderIds: orderIds },
+    "OrderItems",
+    1000
+  );
+  const cancelable = items
+    .filter(
+      (i) =>
+        i.Id &&
+        i.AccountingState !== "Canceled" &&
+        i.AccountingState !== "Inactive"
+    )
+    .map((i) => i.Id as string);
+  for (let i = 0; i < cancelable.length; i += 10) {
+    await mews("orderItems/cancel", creds.accessToken, {
+      OrderItemIds: cancelable.slice(i, i + 10),
+    });
+  }
 }
 
 // --- cancel -------------------------------------------------------------

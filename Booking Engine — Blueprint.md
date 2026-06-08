@@ -10,6 +10,66 @@ This document is the single source of truth. It replaces `README.md`, `hotel-pla
 
 ---
 
+## **2026-06-08 session log — Mews PMS integration (sold-out error shape captured + mapped)**
+
+Closed the last deferred Mews build item: the `CheckOverbooking` sold-out error now maps to a real "pick another room" UX instead of a generic failure.
+
+### Captured (forced on demo)
+Demo inventory is abundant, so `scripts/mews-soldout-probe.ts` forces it — books a **0-availability** category. Shape: **HTTP 403** on `reservations/add`, `Message` = *"We're very sorry, this property has no availability for the selected dates."*, `Details: null`, plus a `RequestId`.
+
+### Shipped
+- **`src/lib/pms/errors.ts`** — neutral `PmsSoldOutError` + `isMewsSoldOut` (matches 403 + an availability message, so it's **not** confused with the other 403 = the "conflicting operation" write-serialisation case the client retries).
+- **`createMewsReservation`** wraps `reservations/add`: on a sold-out 403 it throws `PmsSoldOutError` instead of the raw `MewsApiError`.
+- **Booking route** catch maps `PmsSoldOutError` → **409 `{code:"room_sold_out"}`** (distinct from the generic 502 sync-failure).
+- **Storefront** (`BookingFlow.tsx`): on `room_sold_out` it clears the selection, re-runs the availability search (the gone room drops out), and shows the message on the room list — rather than a dead generic error.
+
+### Verified
+`scripts/mews-soldout-probe.ts` asserts `createMewsReservation` throws `PmsSoldOutError` against a 0-availability category. `tsc` + `eslint` clean (one pre-existing `useEffect` dep warning in BookingFlow, unrelated).
+
+### Note
+Sold-out bookings where money was already taken (NR) rely on the existing grace-expiry refund/unwind (`cron/pms-retry` → `giveUpAndUnwind`); a future enhancement could unwind a sold-out booking immediately rather than retrying through the grace window.
+
+---
+
+## **2026-06-08 session log — Mews PMS integration (folio extras + notes)**
+
+Built the deferred Mews **folio-extras** path end-to-end (read catalogue → post to folio → reverse on cancel) and resolved the **notes** question. All verified on the public Mews demo; ProductOrders pricing approach chosen by Karol.
+
+### Probed first (demo, like §7.4), then built
+`orders/add` `ProductOrders` linked to a reservation is **accepted** on the product's own **Orderable** service; the **accommodation** ServiceId → **"Invalid ServiceId"** (confirms the old deferral note). Order items carry `ServiceOrderId` + `AccountingState` (no `OrderId` field); the `OrderId` from `orders/add` IS the service-order id, so `orderItems/getAll {ServiceOrderIds:[OrderId]}` → `orderItems/cancel {OrderItemIds}` (beta) reverses them. `orderItems`/`payments` reads have the same read-after-write lag as reservations. Connector has **no post-create note op**.
+
+### Shipped
+- **Schema migration** (`scripts/migrate-extras-neutral.ts`, applied to Neon, idempotent): `property_extras.cloudbeds_addon_id` → nullable; added neutral **`ota_extra_id`** (unique per property, backfilled from the Cloudbeds id) + **`pms_service_id`**; unique index swapped to `(property_id, ota_extra_id)`. Cloudbeds `sync-extras` updated to write `ota_extra_id` + conflict on it.
+- **Read** — `src/lib/pms/mews/sync-extras.ts`: `products/getAll` for the admin-selected Orderable services → `property_extras` (gross price = Stripe match; `pricingModel` seeded from `ChargingMode`, admin override preserved). Wired into `MewsAdapter.syncExtras` (was a no-op); `/api/extras` cold-start is now PMS-agnostic via the adapter.
+- **Admin** — connect screen gained a multi-select of **Orderable services** (`extrasServiceIds`, validated + stored in `pms_credentials`); `config.ts` now returns `orderableServices`; status card shows the count.
+- **Write** — `postExtra` → `orders/add` ProductOrder (decision: **ProductOrders, not ad-hoc Items** — correct Mews accounting; price-match via sync). New neutral **`reverseExtra`** adapter method: Cloudbeds posts the offsetting negative custom item (unchanged behaviour, moved behind the method); Mews cancels the order's items. Booking route threads `ota_extra_id` + `pms_service_id` (server-trusted) into `postExtra`; cancel route calls `reverseExtra`.
+- **Notes** — `MewsAdapter.postReservationNote` is now a **documented no-op** (no Connector post-create note op); the extras breakdown shows on the folio as named ProductOrder lines.
+
+### Verified
+`scripts/mews-extras-smoke.ts` through the real adapter: syncExtras (5 products) → createReservation → postExtra (OrderId, ProductOrder item appears) → reverseExtra (items go Canceled) → **PASS**. Re-ran `mews-write-smoke` + `mews-refund-smoke` → no regressions. `tsc` + `eslint` clean.
+
+### Caveat (verify at cert)
+Per-morning posting (one ProductOrder/morning, `Count`=guests) is verified for **`Once`-posting** products; a **`PerPersonPerTimeUnit`** product might let Mews multiply by nights itself — confirm against the real M&F breakfast product to avoid double-posting.
+
+---
+
+## **2026-06-08 session log — Mews PMS integration (§7.4 cancel reversal — folio reconciliation)**
+
+Closed the §7.4 reconciliation gap: cancelling a Mews reservation zeroed the room and refunded in Stripe, but the originally recorded `payments/addExternal` stayed on the folio — so it still read as paid. Now the cancel path posts a **compensating reversal** so the Mews folio matches Stripe.
+
+### The finding (verified live + docs)
+Mews has **no refund operation for external payments** — `payments/refund` only accepts `CreditCardPayment`/`AlternativePayment`. The reversal is therefore a **second `payments/addExternal` with a negative value**. Probed on demo: Mews **accepts** the negative add and the account ledger **nets to zero** once it surfaces. Two gotchas: (1) a received payment is reported as a **negative GrossValue** (it's a credit), so the original +charge and the −reversal cancel; (2) `payments/getAll` (no version suffix; takes `AccountIds` + a `Limitation`) has **read-after-write lag** like `reservations/getAll`, so verification must poll.
+
+### Shipped
+- **Neutral `recordRefund` adapter method** (`PmsAdapter`). **Cloudbeds** returns `null` (out of scope — its existing prod cancel/refund behaviour is untouched). **Mews** posts the negative external payment via new `addMewsExternalRefund` (refactored shared core `postMewsExternalPayment(creds, input, sign)`; `ExternalIdentifier` = Stripe **refund** id, Gross/Net by tax mode).
+- **Wired into `bookings/cancel/route.ts`** — after a successful Stripe refund, call `pms.recordRefund(...)` in a non-fatal try/catch (mirrors the extras-reverse pattern): success logs `pms_refund_recorded` to `paymentEvents`, failure logs `pms_refund_failed` and carries on (a failed reversal is a reconciliation issue, not a cancel failure).
+- **`autoCancelAfterGrace` deliberately untouched** — it cancels *before* any successful charge (`refunded: false`, nothing recorded), so there's nothing to reverse.
+
+### Verified
+`scripts/mews-refund-smoke.ts` through the **real** `getPmsAdapter` → `MewsAdapter.recordRefund`, in the cancel route's order (create → recordPayment(+) → cancelReservation → recordRefund(−)): ledger ends at **2 payments, net 0 → PASS**. `tsc` clean. (Plan §7.4 + §11 updated.)
+
+---
+
 ## **2026-06-08 session log — Mews PMS integration (write-recovery cron parity + anti-double-book)**
 
 Closed the P5 follow-up gap: the `cron/pms-retry` write-recovery path was Cloudbeds-only, so a Mews booking whose inline PMS write failed (money taken / card saved, no reservation) would never be retried — and would never auto-refund after the grace window. Now PMS-agnostic, with a real anti-double-book guard. Verified on the demo.

@@ -14,6 +14,7 @@ interface Status {
   currency: string | null;
   taxMode: string | null;
   externalPaymentType: string | null;
+  extrasServiceCount?: number;
 }
 
 interface ValidateResult {
@@ -23,6 +24,7 @@ interface ValidateResult {
   currency: string;
   taxMode: string;
   services: Array<{ id: string; name: string }>;
+  orderableServices: Array<{ id: string; name: string }>;
   externalPaymentTypes: string[];
 }
 
@@ -37,7 +39,14 @@ export default function MewsPage() {
   const [options, setOptions] = useState<ValidateResult | null>(null);
   const [serviceId, setServiceId] = useState("");
   const [paymentType, setPaymentType] = useState("");
+  const [extrasServiceIds, setExtrasServiceIds] = useState<string[]>([]);
+  const [extrasFilter, setExtrasFilter] = useState("");
   const [msg, setMsg] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
+
+  const toggleExtrasService = (id: string) =>
+    setExtrasServiceIds((cur) =>
+      cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]
+    );
 
   async function loadStatus() {
     if (!token || !propertyId) return;
@@ -72,6 +81,8 @@ export default function MewsPage() {
       setOptions(result);
       setServiceId(result.services[0]?.id ?? "");
       setPaymentType(result.externalPaymentTypes[0] ?? "");
+      setExtrasServiceIds([]);
+      setExtrasFilter("");
     } catch (e) {
       setMsg({ kind: "error", text: e instanceof Error ? e.message : "request failed" });
     } finally {
@@ -91,6 +102,7 @@ export default function MewsPage() {
           accessToken: accessToken.trim(),
           serviceId,
           externalPaymentType: paymentType || undefined,
+          extrasServiceIds,
         }),
       });
       const body = await r.json();
@@ -216,6 +228,48 @@ export default function MewsPage() {
                 </div>
 
                 <div>
+                  <label className="text-[11px] uppercase tracking-wider block mb-1" style={{ color: "var(--a-muted)" }}>
+                    Extras services ({extrasServiceIds.length} selected of {options.orderableServices.length})
+                  </label>
+                  <p className="text-[11.5px] mb-1.5" style={{ color: "var(--a-muted)" }}>
+                    Orderable services whose products the booking engine sells as
+                    extras (breakfast, parking…). Leave empty to sell no extras.
+                  </p>
+                  {options.orderableServices.length > 8 && (
+                    <input
+                      value={extrasFilter}
+                      onChange={(e) => setExtrasFilter(e.target.value)}
+                      placeholder="filter services…"
+                      className="text-[12px] px-2.5 py-1.5 rounded border w-full mb-1.5"
+                      style={{ borderColor: "var(--a-border)", background: "var(--a-surface-2)", color: "var(--a-ink)" }}
+                    />
+                  )}
+                  <div
+                    className="border rounded max-h-48 overflow-y-auto"
+                    style={{ borderColor: "var(--a-border)", background: "var(--a-surface)" }}
+                  >
+                    {options.orderableServices
+                      .filter((s) =>
+                        s.name.toLowerCase().includes(extrasFilter.toLowerCase())
+                      )
+                      .map((s) => (
+                        <label
+                          key={s.id}
+                          className="flex items-center gap-2 px-2.5 py-1.5 text-[12.5px] cursor-pointer border-b last:border-b-0"
+                          style={{ borderColor: "var(--a-border-soft)" }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={extrasServiceIds.includes(s.id)}
+                            onChange={() => toggleExtrasService(s.id)}
+                          />
+                          <span>{s.name}</span>
+                        </label>
+                      ))}
+                  </div>
+                </div>
+
+                <div>
                   <Btn variant="primary" onClick={handleConnect}>
                     {connecting ? "Connecting…" : "Connect"}
                   </Btn>
@@ -246,10 +300,9 @@ export default function MewsPage() {
           <Kv k="Currency">{status?.currency ?? "—"}</Kv>
           <Kv k="Tax mode">{status?.taxMode ?? "—"}</Kv>
           <Kv k="External payment">{status?.externalPaymentType ?? "—"}</Kv>
-          <div className="px-4 py-3 text-[11.5px]" style={{ color: "var(--a-muted)" }}>
-            Inventory sync + bookings land in the next phases. Connecting only
-            stores the (encrypted) token + service so the sync can run.
-          </div>
+          <Kv k="Extras services">
+            {status?.extrasServiceCount ? `${status.extrasServiceCount} selected` : "none"}
+          </Kv>
         </Card>
       </div>
     </>

@@ -110,6 +110,7 @@ export async function syncExtrasForProperty(
       .insert(propertyExtras)
       .values({
         propertyId,
+        otaExtraId: addon.id,
         cloudbedsAddonId: addon.id,
         cloudbedsProductId: addon.productId ?? null,
         name: addon.name,
@@ -118,7 +119,7 @@ export async function syncExtrasForProperty(
         currency: addon.price?.currencyCode ?? fallbackCurrency,
       })
       .onConflictDoUpdate({
-        target: [propertyExtras.propertyId, propertyExtras.cloudbedsAddonId],
+        target: [propertyExtras.propertyId, propertyExtras.otaExtraId],
         set: {
           cloudbedsProductId: addon.productId ?? null,
           name: addon.name,

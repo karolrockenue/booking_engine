@@ -12,8 +12,11 @@ import type {
   CreateReservationResult,
   PostExtraParams,
   PostExtraResult,
+  ReverseExtraParams,
   RecordPaymentParams,
   RecordPaymentResult,
+  RecordRefundParams,
+  RecordRefundResult,
   CancelReservationParams,
   ReservationNoteParams,
   FindExistingReservationParams,
@@ -143,6 +146,31 @@ export class CloudbedsAdapter implements PmsAdapter {
       description: params.description,
     });
     return { pmsPaymentId: paymentID };
+  }
+
+  async reverseExtra(params: ReverseExtraParams): Promise<void> {
+    // Offset the charged item with a negative custom item — Cloudbeds v1.3 has no
+    // delete-item endpoint and postAdjustment needs a scope we don't hold, so a
+    // negative line zeroes the folio using the write:item scope we already have.
+    await postCustomItem(this.ourId, {
+      cloudbedsPropertyId: this.cbId(),
+      reservationID: params.reservationId,
+      name: `${params.name} (cancelled)`,
+      amount: -params.unitPrice,
+      quantity: params.quantity,
+    });
+  }
+
+  async recordRefund(
+    _params: RecordRefundParams
+  ): Promise<RecordRefundResult | null> {
+    // Out of scope for this pass — Cloudbeds refund-to-folio reconciliation is
+    // not handled via the adapter (its existing prod cancel/refund behaviour is
+    // left exactly as-is). Returning null is a no-op for the caller. Mews needs
+    // this because cancelling a reservation doesn't reverse the recorded
+    // external payment (plan §7.4).
+    void _params;
+    return null;
   }
 
   async cancelReservation(params: CancelReservationParams): Promise<void> {

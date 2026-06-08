@@ -71,6 +71,7 @@ export function BookingFlow({
   }
 
   function handleSelect(result: AvailabilityResult) {
+    setError(null);
     setSelected(result);
     setStep("details");
     setTimeout(() => {
@@ -106,6 +107,17 @@ export function BookingFlow({
       });
       const data = await res.json();
       if (!res.ok) {
+        // Room sold out between selection and submit — bounce back to a
+        // refreshed room list (the gone room drops out) with a clear message
+        // rather than a generic error.
+        if (data.code === "room_sold_out") {
+          setError(
+            data.error ?? "This room just sold out. Please choose another."
+          );
+          setSelected(null);
+          await search();
+          return;
+        }
         setError(data.error ?? "Something went wrong. Please try again.");
         return;
       }
@@ -203,6 +215,18 @@ export function BookingFlow({
             >
               Select Your Room
             </h2>
+            {error && (
+              <div
+                className="mb-6 px-4 py-3 text-sm rounded"
+                style={{
+                  backgroundColor: "var(--color-error)",
+                  color: "#fff",
+                  fontFamily: "var(--font-body)",
+                }}
+              >
+                {error}
+              </div>
+            )}
             <AvailabilityResults
               results={results}
               currency={currency}

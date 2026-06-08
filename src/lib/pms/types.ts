@@ -50,10 +50,26 @@ export interface PostExtraParams {
   name: string;
   amount: number; // major units, unit price
   quantity: number;
-  serviceDate?: string; // YYYY-MM-DD, for per-day folio dating
+  serviceDate?: string; // YYYY-MM-DD, for per-day folio dating (Cloudbeds)
+  // Mews only: the product to order + its Orderable service. Cloudbeds ignores
+  // both (it posts a free custom item by name/amount). When present, Mews posts
+  // a ProductOrder; the returned pmsItemId is the Mews OrderId.
+  otaExtraId?: string; // Mews ProductId (property_extras.ota_extra_id)
+  pmsServiceId?: string; // Mews Orderable ServiceId (property_extras.pms_service_id)
 }
 export interface PostExtraResult {
-  pmsItemId: string;
+  pmsItemId: string; // Cloudbeds folio item id, or Mews OrderId
+}
+
+// Reverse a previously posted extra when a booking is cancelled. Cloudbeds posts
+// an offsetting negative custom item; Mews cancels the order's items
+// (orderItems/cancel). `pmsItemId` is whatever postExtra returned.
+export interface ReverseExtraParams {
+  reservationId: string;
+  pmsItemId: string; // Cloudbeds folio item id(s), or Mews OrderId
+  name: string;
+  unitPrice: number; // major units (Cloudbeds posts -unitPrice × qty)
+  quantity: number;
 }
 
 export interface RecordPaymentParams {
@@ -72,6 +88,21 @@ export interface RecordPaymentResult {
 export interface CancelReservationParams {
   reservationId: string;
   reason?: string;
+}
+
+// Record a refund that already happened in Stripe back onto the PMS folio.
+// Cancelling a reservation zeroes the room but leaves the previously recorded
+// external payment on the folio, so it still reads as paid; this posts the
+// compensating reversal so the folio reconciles (plan §7.4).
+export interface RecordRefundParams {
+  reservationId: string;
+  amount: number; // major units, POSITIVE — the amount refunded in Stripe
+  type?: string;
+  description?: string; // e.g. "Stripe refund re_..." for reconciliation
+  externalIdentifier?: string; // Stripe refund id
+}
+export interface RecordRefundResult {
+  pmsRefundId: string;
 }
 
 // Used by the write-recovery cron to avoid creating a duplicate reservation when
@@ -150,7 +181,14 @@ export interface PmsAdapter {
     params: FindExistingReservationParams
   ): Promise<FindExistingReservationResult | null>;
   postExtra(params: PostExtraParams): Promise<PostExtraResult>;
+  // Reverse a posted extra on cancellation (offsetting line / order cancel).
+  reverseExtra(params: ReverseExtraParams): Promise<void>;
   recordPayment(params: RecordPaymentParams): Promise<RecordPaymentResult>;
+  // Post a compensating reversal for a Stripe refund. Returns null when the PMS
+  // doesn't reconcile refunds via the adapter (Cloudbeds today — see §7.4).
+  recordRefund(
+    params: RecordRefundParams
+  ): Promise<RecordRefundResult | null>;
   cancelReservation(params: CancelReservationParams): Promise<void>;
   postReservationNote(params: ReservationNoteParams): Promise<{ noteId: string }>;
 

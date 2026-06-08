@@ -288,7 +288,14 @@ export const propertyExtras = pgTable(
     propertyId: uuid("property_id")
       .references(() => properties.id)
       .notNull(),
-    cloudbedsAddonId: text("cloudbeds_addon_id").notNull(),
+    // Neutral PMS id for this extra: Cloudbeds addon id OR Mews ProductId.
+    // Unique per property; the source of truth for upserts across both PMSs.
+    otaExtraId: text("ota_extra_id").notNull(),
+    // Mews only: the Orderable ServiceId the product lives on (required by
+    // orders/add — extras can't be ordered against the accommodation service).
+    pmsServiceId: text("pms_service_id"),
+    // Cloudbeds-native ids, kept for the Cloudbeds path; null for Mews rows.
+    cloudbedsAddonId: text("cloudbeds_addon_id"),
     cloudbedsProductId: text("cloudbeds_product_id"),
     name: text("name").notNull(),
     description: text("description"),
@@ -303,9 +310,9 @@ export const propertyExtras = pgTable(
     ),
   },
   (table) => [
-    uniqueIndex("property_extras_property_addon_idx").on(
+    uniqueIndex("property_extras_property_ota_idx").on(
       table.propertyId,
-      table.cloudbedsAddonId
+      table.otaExtraId
     ),
     index("property_extras_property_idx").on(table.propertyId),
   ]

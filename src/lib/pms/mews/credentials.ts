@@ -18,6 +18,9 @@ interface StoredMewsCredentials {
   taxMode?: string; // "Gross" | "Net"
   externalPaymentType?: string | null;
   currency?: string;
+  // Orderable services whose products the booking engine sells as extras.
+  // Admin-picked (a Mews enterprise has many Orderable services — POS, F&B, …).
+  extrasServiceIds?: string[];
 }
 
 export interface MewsCredentials {
@@ -28,6 +31,7 @@ export interface MewsCredentials {
   taxMode: string;
   externalPaymentType: string | null;
   currency: string;
+  extrasServiceIds: string[];
 }
 
 // Resolve decrypted Mews credentials for a property. Throws if the property
@@ -71,5 +75,6 @@ export async function getMewsCredentials(
     taxMode: creds.taxMode || "Gross",
     externalPaymentType: creds.externalPaymentType ?? null,
     currency: creds.currency || property.currency || "GBP",
+    extrasServiceIds: creds.extrasServiceIds ?? [],
   };
 }

@@ -12,6 +12,8 @@ export interface MewsConnectionInfo {
   currency: string;
   taxMode: string; // "Gross" | "Net" | …
   services: Array<{ id: string; name: string }>; // Reservable only
+  // Orderable services (POS/F&B/etc.) — the admin picks which feed extras.
+  orderableServices: Array<{ id: string; name: string }>;
   externalPaymentTypes: string[];
 }
 
@@ -43,10 +45,17 @@ export async function fetchMewsConnectionInfo(
     ent.Currencies?.[0]?.Currency ??
     "";
 
-  const services = (
-    await mewsPaginated<ServiceRow>("services/getAll", accessToken, {}, "Services")
-  )
+  const allServices = await mewsPaginated<ServiceRow>(
+    "services/getAll",
+    accessToken,
+    {},
+    "Services"
+  );
+  const services = allServices
     .filter((s) => s.Type === "Reservable" && s.Id)
+    .map((s) => ({ id: s.Id as string, name: s.Name ?? "(unnamed)" }));
+  const orderableServices = allServices
+    .filter((s) => s.Type === "Orderable" && s.Id)
     .map((s) => ({ id: s.Id as string, name: s.Name ?? "(unnamed)" }));
 
   return {
@@ -56,6 +65,7 @@ export async function fetchMewsConnectionInfo(
     currency: defaultCurrency,
     taxMode: ent.Pricing ?? "",
     services,
+    orderableServices,
     externalPaymentTypes:
       ent.AccountingConfiguration?.EnabledExternalPaymentTypes ?? [],
   };

@@ -18,13 +18,13 @@ export async function POST(
   if (authError) return authError;
 
   const { id } = await params;
-  const { accessToken, serviceId, externalPaymentType } = (await req
-    .json()
-    .catch(() => ({}))) as {
-    accessToken?: string;
-    serviceId?: string;
-    externalPaymentType?: string;
-  };
+  const { accessToken, serviceId, externalPaymentType, extrasServiceIds } =
+    (await req.json().catch(() => ({}))) as {
+      accessToken?: string;
+      serviceId?: string;
+      externalPaymentType?: string;
+      extrasServiceIds?: string[];
+    };
 
   if (!accessToken || !serviceId) {
     return NextResponse.json(
@@ -61,6 +61,12 @@ export async function POST(
       );
     }
 
+    // Validate any chosen extras services are real Orderable services.
+    const orderableIds = new Set(info.orderableServices.map((s) => s.id));
+    const cleanExtrasServiceIds = (extrasServiceIds ?? []).filter((sid) =>
+      orderableIds.has(sid)
+    );
+
     await db
       .update(properties)
       .set({
@@ -73,6 +79,7 @@ export async function POST(
           taxMode: info.taxMode,
           externalPaymentType: externalPaymentType ?? null,
           currency: info.currency,
+          extrasServiceIds: cleanExtrasServiceIds,
         },
         // Align the property's tz/currency with the Mews enterprise so the
         // storefront and emails match the PMS.

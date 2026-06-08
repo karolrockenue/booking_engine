@@ -12,7 +12,7 @@
  *   .env.local points at.
  */
 
-import { findEligibleBookings } from "../lib/cloudbeds/retry-pms";
+import { findEligibleBookings } from "../lib/pms/retry-pms";
 
 async function main() {
   const args = process.argv.slice(2);

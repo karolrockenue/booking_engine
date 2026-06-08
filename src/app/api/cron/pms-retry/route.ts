@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   findEligibleBookings,
   retryPmsForBooking,
-} from "@/lib/cloudbeds/retry-pms";
+} from "@/lib/pms/retry-pms";
 
 // PMS recovery cron. Runs every 5 minutes. Picks up bookings where Stripe
 // took the money (NR) or saved the card (Flex) but postReservation failed

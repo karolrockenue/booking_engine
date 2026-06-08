@@ -10,6 +10,49 @@ This document is the single source of truth. It replaces `README.md`, `hotel-pla
 
 ---
 
+## **2026-06-08 session log — Mews PMS integration (write-recovery cron parity + anti-double-book)**
+
+Closed the P5 follow-up gap: the `cron/pms-retry` write-recovery path was Cloudbeds-only, so a Mews booking whose inline PMS write failed (money taken / card saved, no reservation) would never be retried — and would never auto-refund after the grace window. Now PMS-agnostic, with a real anti-double-book guard. Verified on the demo.
+
+### The core finding (verified live + Mews docs)
+**Mews has no idempotency key and no queryable external reference.** The `Identifier` we set on `reservations/add` is *transaction-local* and is never returned by `reservations/getAll` (there's no external-id filter). Mews's own guidance: *"retries risk creating duplicates unless you track the returned reservation Id."* So the integration plan's assumed §7.1 guard ("look up by our stored Identifier") was **not implementable** — a naive Mews-aware retry double-books.
+
+### Shipped
+- **`retry-pms.ts` → `src/lib/pms/` (PMS-agnostic).** Drops the `cloudbedsPropertyId` gate (uses the `pmsType !== "mews"` pattern), dispatches create/payment via `getPmsAdapter`. Loads `booking_day_rates` for Mews `TimeUnitPrices`. **Persist-first:** stores the reservation id (+ `pms_synced`) the instant it's known, before recording payment. Records the external payment once (guarded by `pms_payment_id`). `giveUpAndUnwind` (Stripe refund/detach) unchanged. Cron import updated; old `src/lib/cloudbeds/retry-pms.ts` deleted.
+- **`findExistingReservation` adapter method** (new on `PmsAdapter`). Cloudbeds returns null (existing prod behaviour preserved — out of scope). Mews (`findMewsReservation`) does a **natural-key lookup**: `reservations/getAll/2023-06-06` by `ServiceIds` + a `ScheduledStartUtc` window **widened ±1 day** + non-cancelled `States`, matched client-side on **AccountId (customer, resolved by email) + exact StartUtc/EndUtc + RequestedResourceCategoryId**.
+- **Hard-won gotchas (each cost a smoke iteration):** (1) the `ScheduledStartUtc` lower bound is **exclusive** — a reservation exactly on check-in is dropped unless the window is widened; (2) `toMewsUtc` emits `…:00.000Z` but Mews returns `…:00Z` — **compare instants, not strings**; (3) `AccountId` == the email-resolved customer id (verified); (4) `reservations/getAll` has **read-after-write lag** (prod's ≥60s `MIN_BOOKING_AGE_SECONDS` covers it; the smoke polls).
+- **Safety rule — adoption requires a resolved customer.** If the email can't be resolved (no email, or **customer-read/CQ-2 withheld**), we do NOT adopt — matching on dates+category alone could grab a *different* guest's identical booking and record this guest's payment on it. We create fresh instead (accepting a rare duplicate over a wrong adoption). **So Mews retry-dedup depends on CQ-2 in production** — another reason to secure that scope at certification.
+
+### Verified
+`scripts/mews-retry-smoke.ts` — **13/13**, through the real `retryPmsForBooking`: orphan-adopt (pre-create a reservation, stuck booking → retry adopts it, count stays 1), fresh-create (records external payment, `pms_synced`), duplicate/overlapping retry (adopts the same reservation, no second booking), eligibility excludes synced. `tsc` clean.
+
+### Decisions (asked + locked)
+- **Full natural-key guard** (not persist-first only) — strongest no-duplicate guarantee buildable without a Mews idempotency key.
+- **Mews-only** — Cloudbeds path left exactly as it runs in prod; its minor lost-response risk is documented, not changed.
+- **Inline `bookings/route.ts` reorder deliberately NOT done** — left the certified Cloudbeds hot path untouched; the recovery guard makes orphans safe regardless. Reversible if we later want fewer orphans created.
+
+---
+
+## **2026-06-07 session log — Mews PMS integration (Phase 5: webhooks + availability polling + cron parity)**
+
+Shipped **P5** on the public Mews demo. Plan §11 P5 line updated.
+
+### Shipped
+- **Cron parity — the real no-oversell safety net.** `cron/inventory-sync` was Cloudbeds-only: `syncInventoryForAllConnectedProperties` looped every property but called the Cloudbeds sync, so Mews properties were silently skipped (their "not connected to Cloudbeds" throw was swallowed). New neutral `src/lib/pms/sync-all.ts` `syncInventoryForAllProperties(days)` dispatches each property through `getPmsAdapter(p).syncInventory(days)`; the cron now calls it (old Cloudbeds-only batch **deleted**). Mews has **no availability webhook** (plan §9), so this scheduled re-pull of `services/getAvailability` is the only guarantee the cache stays honest.
+- **Mews webhook endpoint.** `POST /api/mews/webhooks/[token]` mirrors the Cloudbeds `[token]` route — shared-secret URL token (`MEWS_WEBHOOK_TOKEN`, `timingSafeEqual`, wrong token → 404), fast 2xx, async processing (Mews 5s SLA, discards after repeated failures).
+- **Handler** (`src/lib/pms/mews/webhooks.ts`). Pure `extractMewsSyncTargets` parses `Events[]`, keeps `ServiceOrderUpdated` + `ResourceBlockUpdated` (case-insensitive prefix), pulls distinct `Value.EnterpriseId`. `handleMewsWebhookEvents` maps enterprise→property via the **plaintext** `pms_credentials.enterpriseId` (only the AccessToken is encrypted — no decrypt) and fires `syncMewsInventoryForProperty` fire-and-forget per matched enterprise. Mews General Webhooks are **integration-level** (one endpoint for the whole ClientToken), so there's no per-property subscription table.
+- **Adapter webhook methods → documented no-ops.** `subscribeWebhooks`/`unsubscribeWebhooks` replaced their `NOT_YET` throws: Mews webhooks are configured in the integration config (finalised with Mews at certification, P6), not via a per-property Connector call. The `NOT_YET` helper is gone (all write methods are implemented).
+
+### Verified
+- `scripts/mews-webhook-smoke.ts` — **11/11**. 8 pure parser cases (relevant vs ignored events, dedupe, case-insensitive, missing/empty payloads) + live demo: unknown enterprise → unmatched, known enterprise → 1 property synced, and the dispatched sync populating `mews_category_availability`. `tsc` clean.
+- **Untestable on shared demo:** live webhook *delivery* — Mews doesn't push General Webhooks to arbitrary endpoints without integration config, so the endpoint + handler are exercised with synthetic payloads; live delivery is wired at P6 certification.
+
+### TODO / deferred
+- **Prod config:** set `MEWS_WEBHOOK_TOKEN` and register the endpoint in the Mews integration config (P6).
+- **Not P5 scope:** `cron/pms-retry` write-recovery is still Cloudbeds-coupled (`retry-pms.ts` requires `cloudbedsPropertyId` + calls CB directly) — a Mews booking whose inline PMS write failed won't be retried by that cron. Fold into a future write-recovery parity pass.
+
+---
+
 ## **2026-06-07 session log — Mews PMS integration (Phases 3–4, demo lifecycle verified)**
 
 Continued the Mews work stream from Phases 1–2 (below) through **reads (P3)**, **writes (P4)**, and a **full demo guest-lifecycle verification** against the public Mews demo. No Mews contact needed — built entirely on `api.mews-demo.com`. Plan + corrections live in **`Mews Integration — Plan for Review.md`** (§5 rate model, §8 availability endpoint, §11 phasing all updated this session).

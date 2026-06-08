@@ -326,27 +326,3 @@ export async function syncInventoryForProperty(
     durationMs: Date.now() - start,
   };
 }
-
-export async function syncInventoryForAllConnectedProperties(
-  days = 90
-): Promise<SyncResult[]> {
-  const all = await db
-    .select({ id: properties.id, name: properties.name })
-    .from(properties);
-
-  const results: SyncResult[] = [];
-  for (const p of all) {
-    try {
-      const res = await syncInventoryForProperty(p.id, days);
-      results.push(res);
-    } catch (e) {
-      // Skip properties without OAuth (the function throws on missing token);
-      // log and continue so one bad property doesn't kill the batch.
-      const message = e instanceof Error ? e.message : String(e);
-      if (!/has no cloudbedsPropertyId|has no Cloudbeds tokens/.test(message)) {
-        console.error(`syncInventoryForProperty(${p.id}) failed: ${message}`);
-      }
-    }
-  }
-  return results;
-}

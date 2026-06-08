@@ -74,6 +74,21 @@ export interface CancelReservationParams {
   reason?: string;
 }
 
+// Used by the write-recovery cron to avoid creating a duplicate reservation when
+// a prior attempt may have already succeeded in the PMS but we never stored the
+// id (lost response / crash mid-flight). The adapter looks for an existing
+// reservation matching this booking and returns it if found.
+export interface FindExistingReservationParams {
+  orderId: string; // our order id (Cloudbeds dedupes on it; Mews cannot — see below)
+  startDate: string; // YYYY-MM-DD
+  endDate: string; // YYYY-MM-DD
+  roomTypeId: string; // PMS-native room/category id (room_types.ota_room_id)
+  guestEmail?: string; // resolves the PMS customer for a precise match (Mews)
+}
+export interface FindExistingReservationResult {
+  pmsReservationId: string;
+}
+
 export interface ReservationNoteParams {
   reservationId: string;
   note: string;
@@ -129,6 +144,11 @@ export interface PmsAdapter {
   createReservation(
     params: CreateReservationParams
   ): Promise<CreateReservationResult>;
+  // Anti-duplicate lookup for retry recovery. Returns an existing reservation
+  // matching this booking, or null if none is found (the caller then creates).
+  findExistingReservation(
+    params: FindExistingReservationParams
+  ): Promise<FindExistingReservationResult | null>;
   postExtra(params: PostExtraParams): Promise<PostExtraResult>;
   recordPayment(params: RecordPaymentParams): Promise<RecordPaymentResult>;
   cancelReservation(params: CancelReservationParams): Promise<void>;

@@ -1,11 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
-import { syncInventoryForAllConnectedProperties } from "@/lib/cloudbeds/sync-inventory";
+import { syncInventoryForAllProperties } from "@/lib/pms/sync-all";
 
 // Triggered by Railway cron every 6 hours. Authenticated by a shared bearer
 // token (CRON_SECRET) — Railway cron jobs send the secret via the Authorization
 // header. The route must complete within Railway's request timeout, which is
 // fine for ~20 properties × ~30s sync each = 10min worst case (we'll need to
 // move to a background job once we hit that scale, but not now).
+//
+// PMS-agnostic: dispatches each property through its adapter (Cloudbeds or
+// Mews). For Mews this poll is the no-oversell safety net — there is no
+// availability webhook, so the scheduled re-sync is what keeps the cache honest.
 export async function POST(req: NextRequest) {
   const expected = process.env.CRON_SECRET;
   if (!expected) {
@@ -22,7 +26,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const results = await syncInventoryForAllConnectedProperties(90);
+    const { results, skipped } = await syncInventoryForAllProperties(90);
     const totals = results.reduce(
       (acc, r) => ({
         properties: acc.properties + 1,
@@ -41,7 +45,7 @@ export async function POST(req: NextRequest) {
         extrasDeleted: 0,
       }
     );
-    return NextResponse.json({ ok: true, totals, results });
+    return NextResponse.json({ ok: true, totals, skipped, results });
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
     console.error(`Cron inventory-sync failed: ${message}`);

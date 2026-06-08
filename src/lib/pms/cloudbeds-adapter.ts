@@ -16,6 +16,8 @@ import type {
   RecordPaymentResult,
   CancelReservationParams,
   ReservationNoteParams,
+  FindExistingReservationParams,
+  FindExistingReservationResult,
 } from "./types";
 import type { AvailabilityResultRow } from "@/lib/booking/availability";
 import { computeAvailability } from "@/lib/booking/availability";
@@ -103,6 +105,19 @@ export class CloudbedsAdapter implements PmsAdapter {
       paymentMethod: params.paymentMethod,
     });
     return { pmsReservationId: reservationID };
+  }
+
+  async findExistingReservation(
+    _params: FindExistingReservationParams
+  ): Promise<FindExistingReservationResult | null> {
+    // Cloudbeds' retry recovery has always relied on re-posting with the same
+    // thirdPartyIdentifier and has run fine in production; we don't re-query CB
+    // for an existing reservation here. Returning null keeps that behaviour
+    // unchanged — the recovery path falls through to its normal create. (Mews
+    // needs the lookup because it has no idempotency key; CB is out of scope for
+    // this pass.)
+    void _params;
+    return null;
   }
 
   async postExtra(params: PostExtraParams): Promise<PostExtraResult> {

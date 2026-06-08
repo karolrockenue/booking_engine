@@ -243,6 +243,126 @@ export async function createMewsReservation(
   };
 }
 
+// --- find existing (retry dedup) ----------------------------------------
+//
+// Mews has NO idempotency key and NO queryable external reference: the
+// `Identifier` we set on reservations/add is transaction-local and is never
+// returned by reservations/getAll (confirmed against the API + docs). So to
+// avoid double-booking on a retry, we look the reservation up by NATURAL KEY:
+// the same service + stay dates + room category, narrowed to the same customer
+// (resolved by email). Verified filter shape: ServiceIds + a ScheduledStartUtc
+// window covering the check-in day + non-cancelled States; then match
+// client-side on StartUtc/EndUtc + RequestedResourceCategoryId (+ AccountId when
+// the customer is resolvable).
+
+interface ReservationRow {
+  Id?: string;
+  AccountId?: string;
+  State?: string;
+  StartUtc?: string;
+  EndUtc?: string;
+  RequestedResourceCategoryId?: string;
+}
+
+export interface FindMewsReservationInput {
+  startDate: string; // YYYY-MM-DD
+  endDate: string; // YYYY-MM-DD
+  categoryId: string; // RequestedResourceCategoryId
+  customerEmail?: string;
+}
+
+// Resolve a customer id by email without creating one (read-only). Returns null
+// if not found or if the customer-read scope (CQ-2) is withheld.
+async function findCustomerIdByEmail(
+  creds: MewsCredentials,
+  email: string
+): Promise<string | null> {
+  try {
+    const found = await mewsPaginated<{ Id?: string }>(
+      "customers/getAll",
+      creds.accessToken,
+      { Emails: [email] },
+      "Customers",
+      100
+    );
+    return found[0]?.Id ?? null;
+  } catch {
+    return null; // scope withheld — degrade to a date+category match
+  }
+}
+
+export async function findMewsReservation(
+  creds: MewsCredentials,
+  input: FindMewsReservationInput
+): Promise<string | null> {
+  const startUtc = toMewsUtc(input.startDate, creds.timezone);
+  const endUtc = toMewsUtc(input.endDate, creds.timezone);
+
+  // Window straddling the check-in instant. Mews's ScheduledStartUtc lower bound
+  // is exclusive, so a reservation sitting exactly on check-in is dropped if the
+  // window starts there — widen ±1 day and rely on the exact StartUtc/EndUtc
+  // match below for precision (verified on demo).
+  const startMs = new Date(startUtc).getTime();
+  const windowStart = new Date(startMs - 24 * 60 * 60 * 1000).toISOString();
+  const windowEnd = new Date(startMs + 24 * 60 * 60 * 1000).toISOString();
+
+  // Adoption REQUIRES identifying the guest. Matching on dates + category alone
+  // is unsafe — a different guest's identical-dates booking in the same category
+  // would be wrongly adopted (and we'd record this guest's payment on it). A
+  // genuine orphan always has a customer: the inline attempt that reached
+  // reservations/add already ran customers/add, so the email resolves here. If
+  // we can't resolve one (no email, or customer-read/CQ-2 withheld), we DON'T
+  // adopt — the caller creates fresh (accepting the rare duplicate over a wrong
+  // adoption).
+  const customerId = input.customerEmail
+    ? await findCustomerIdByEmail(creds, input.customerEmail)
+    : null;
+  if (!customerId) {
+    console.warn(
+      `[Mews] findMewsReservation: could not resolve customer for "${input.customerEmail ?? "(no email)"}" — skipping dedup (create fresh)`
+    );
+    return null;
+  }
+
+  const rows = await mewsPaginated<ReservationRow>(
+    "reservations/getAll/2023-06-06",
+    creds.accessToken,
+    {
+      ServiceIds: [creds.serviceId],
+      ScheduledStartUtc: { StartUtc: windowStart, EndUtc: windowEnd },
+      States: ["Confirmed", "Started", "Processed"],
+    },
+    "Reservations",
+    1000
+  );
+
+  // Compare instants, not strings: toMewsUtc emits milliseconds (…:00.000Z) but
+  // Mews returns …:00Z, so string equality would never match.
+  const startMsTarget = new Date(startUtc).getTime();
+  const endMsTarget = new Date(endUtc).getTime();
+  const sameInstant = (a: string | undefined, ms: number) =>
+    !!a && new Date(a).getTime() === ms;
+
+  const matches = rows.filter(
+    (r) =>
+      r.Id &&
+      r.AccountId === customerId &&
+      sameInstant(r.StartUtc, startMsTarget) &&
+      sameInstant(r.EndUtc, endMsTarget) &&
+      r.RequestedResourceCategoryId === input.categoryId
+  );
+
+  if (matches.length === 0) return null;
+  if (matches.length > 1) {
+    // Same guest, same category, same exact dates, more than once — adopt the
+    // first (any is a correct dedup target) but log the oddity.
+    console.warn(
+      `[Mews] findMewsReservation: ${matches.length} identical reservations for customer ${customerId} ${input.startDate}→${input.endDate} cat=${input.categoryId} — adopting first`
+    );
+  }
+  return matches[0].Id ?? null;
+}
+
 // --- external payment ---------------------------------------------------
 
 // Resolve the AccountId (= CustomerId) for a reservation. payments/addExternal

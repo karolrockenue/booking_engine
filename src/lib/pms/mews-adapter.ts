@@ -15,6 +15,8 @@ import type {
   RecordPaymentResult,
   CancelReservationParams,
   ReservationNoteParams,
+  FindExistingReservationParams,
+  FindExistingReservationResult,
 } from "./types";
 import type { AvailabilityResultRow } from "@/lib/booking/availability";
 import { fetchMewsConnectionInfo } from "./mews/config";
@@ -26,10 +28,8 @@ import {
   createMewsReservation,
   addMewsExternalPayment,
   cancelMewsReservation,
+  findMewsReservation,
 } from "./mews/reservations";
-
-const NOT_YET = (op: string) =>
-  new Error(`Mews ${op} is not implemented yet (Phase 5)`);
 
 export class MewsAdapter implements PmsAdapter {
   readonly type = "mews" as const;
@@ -105,6 +105,19 @@ export class MewsAdapter implements PmsAdapter {
     return { pmsReservationId, pmsGroupId };
   }
 
+  async findExistingReservation(
+    params: FindExistingReservationParams
+  ): Promise<FindExistingReservationResult | null> {
+    const creds = await getMewsCredentials(this.ourId);
+    const id = await findMewsReservation(creds, {
+      startDate: params.startDate,
+      endDate: params.endDate,
+      categoryId: params.roomTypeId,
+      customerEmail: params.guestEmail,
+    });
+    return id ? { pmsReservationId: id } : null;
+  }
+
   async recordPayment(
     params: RecordPaymentParams
   ): Promise<RecordPaymentResult> {
@@ -145,11 +158,22 @@ export class MewsAdapter implements PmsAdapter {
   }
 
   // --- webhooks (Phase 5) ---
-
+  //
+  // Unlike Cloudbeds (per-property postWebhook subscriptions), Mews General
+  // Webhooks are configured once at the INTEGRATION level — a single endpoint
+  // for the whole ClientToken, set in the Mews integration configuration (and
+  // finalised with Mews at certification, P6), not via a per-property Connector
+  // call. So there is nothing to subscribe/unsubscribe per property; these are
+  // intentional no-ops that satisfy the PmsAdapter contract. Inbound events are
+  // handled at /api/mews/webhooks/[token] → handleMewsWebhookEvents.
   async subscribeWebhooks(): Promise<void> {
-    throw NOT_YET("subscribeWebhooks");
+    console.log(
+      `[Mews] subscribeWebhooks is a no-op for ${this.ourId} — General Webhooks are integration-level, not per-property`
+    );
   }
   async unsubscribeWebhooks(): Promise<void> {
-    throw NOT_YET("unsubscribeWebhooks");
+    console.log(
+      `[Mews] unsubscribeWebhooks is a no-op for ${this.ourId} — General Webhooks are integration-level, not per-property`
+    );
   }
 }

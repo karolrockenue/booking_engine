@@ -1,27 +1,35 @@
 import { db } from "@/db";
 import {
   bookings,
+  bookingDayRates,
   paymentEvents,
   properties,
   ratePlans,
   roomTypes,
 } from "@/db/schema";
-import { and, eq, inArray, isNull, lt, sql } from "drizzle-orm";
-import { postPayment, postReservation } from "./reservations";
+import { and, asc, eq, inArray, isNull, lt, sql } from "drizzle-orm";
+import { getPmsAdapter } from "@/lib/pms";
 import { getStripe, publicOrigin } from "@/lib/stripe/client";
 import { detachPaymentMethod } from "@/lib/stripe/detach";
 import { sendBookingConfirmationEmail } from "@/lib/email/booking-confirmation";
 import { signCancelToken } from "@/lib/crypto";
 
-// Recovery path for bookings where Stripe charged (NR) or saved a card (Flex)
-// but Cloudbeds postReservation failed inline. The /api/bookings handler
-// returns 502 and leaves a stuck row with status in ('paid','payment_authorized')
-// and cloudbedsReservationId NULL. This cron picks them up, retries the CB
-// write, and gives up after MAX_ATTEMPTS by unwinding the payment side.
+// PMS-agnostic recovery path for bookings where Stripe charged (NR) or saved a
+// card (Flex) but the inline PMS createReservation failed. The /api/bookings
+// handler returns 502 and leaves a stuck row with status in
+// ('paid','payment_authorized') and cloudbedsReservationId (our neutral PMS
+// reservation column) NULL. This cron retries the PMS write through the
+// adapter, and gives up after MAX_ATTEMPTS by unwinding the payment side.
+//
+// Anti-double-book: Mews has no idempotency key, so before creating we ask the
+// adapter whether a matching reservation already exists (a prior attempt may
+// have succeeded in the PMS but we never stored the id). If so we adopt it
+// instead of booking the room twice. We also persist the reservation id the
+// instant we have it (before recording payment) to shrink the orphan window.
 //
 // Extras attached at checkout aren't retried — bookingExtras rows are only
-// inserted after postCustomItem succeeds, so the original list is lost when
-// postReservation fails. Hotel adds them manually if needed.
+// inserted after the extra posts, so the original list is lost when
+// createReservation fails. Hotel adds them manually if needed.
 
 const MAX_ATTEMPTS = 12; // 12 × 5min cadence = ~1h grace
 const MIN_BOOKING_AGE_SECONDS = 60; // skip rows that may still be mid-flight
@@ -68,11 +76,16 @@ export async function retryPmsForBooking(
     .from(properties)
     .where(eq(properties.id, booking.propertyId))
     .limit(1);
-  if (!property?.cloudbedsPropertyId) {
+  // PMS-agnostic connection gate: Cloudbeds needs a resolved property id; Mews
+  // acts via its stored credentials (no cloudbedsPropertyId).
+  if (
+    !property ||
+    (property.pmsType !== "mews" && !property.cloudbedsPropertyId)
+  ) {
     return {
       bookingId: booking.id,
       outcome: "retry_failed",
-      reason: "property_not_cb_connected",
+      reason: "property_not_connected",
     };
   }
 
@@ -109,52 +122,99 @@ export async function retryPmsForBooking(
     return giveUpAndUnwind(booking);
   }
 
+  const pms = getPmsAdapter(property);
+  const grandTotalNum = Number(booking.grandTotal);
+
   try {
-    const result = await postReservation(booking.propertyId, {
-      cloudbedsPropertyId: property.cloudbedsPropertyId,
+    // 1. Adopt-or-create. Ask the adapter whether this booking already has a
+    //    reservation in the PMS (a prior attempt that succeeded but we never
+    //    recorded). Adopting avoids a duplicate; Mews can't dedupe any other
+    //    way (no idempotency key).
+    let pmsReservationId: string;
+    const existing = await pms.findExistingReservation({
+      orderId: booking.orderId,
       startDate: booking.checkIn,
       endDate: booking.checkOut,
-      guestFirstName: booking.guestFirst,
-      guestLastName: booking.guestLast,
+      roomTypeId: room.otaRoomId,
       guestEmail: booking.guestEmail,
-      guestCountry: booking.guestCountry ?? undefined,
-      guestPhone: booking.guestPhone ?? undefined,
-      roomTypeID: room.otaRoomId,
-      ratesID: rate.otaRateId,
-      adults: booking.adults ?? 1,
-      children: booking.children ?? 0,
-      subtotal: Number(booking.grandTotal),
-      thirdPartyIdentifier: booking.orderId,
     });
-    const cloudbedsReservationId = result.reservationID;
 
-    // For NR rates record the Stripe charge in the CB folio so the hotel's
-    // accounting reflects what the guest paid. Best-effort; missing folio
-    // line is a reconciliation problem the hotel can fix manually.
-    if (booking.rateType === "nr" && booking.stripePaymentIntentId) {
+    if (existing) {
+      pmsReservationId = existing.pmsReservationId;
+      console.log(
+        `PMS-retry adopted existing reservation ${pmsReservationId} for booking ${booking.id} (no re-create)`
+      );
+    } else {
+      // Per-night room prices — Mews requires them (TimeUnitPrices); Cloudbeds
+      // ignores them. Persisted at booking time in booking_day_rates.
+      const dayRates = await db
+        .select()
+        .from(bookingDayRates)
+        .where(eq(bookingDayRates.bookingId, booking.id))
+        .orderBy(asc(bookingDayRates.date));
+      const nightlyRates = dayRates.map((d) => ({
+        date: d.date,
+        rate: Number(d.rate),
+      }));
+
+      const created = await pms.createReservation({
+        startDate: booking.checkIn,
+        endDate: booking.checkOut,
+        guestFirstName: booking.guestFirst,
+        guestLastName: booking.guestLast,
+        guestEmail: booking.guestEmail,
+        guestCountry: booking.guestCountry ?? undefined,
+        guestPhone: booking.guestPhone ?? undefined,
+        roomTypeId: room.otaRoomId,
+        rateId: rate.otaRateId,
+        adults: booking.adults ?? 1,
+        children: booking.children ?? 0,
+        roomSubtotal: Number(booking.roomTotal),
+        orderId: booking.orderId,
+        nightlyRates: nightlyRates.length > 0 ? nightlyRates : undefined,
+      });
+      pmsReservationId = created.pmsReservationId;
+    }
+
+    // 2. Persist-first. Store the reservation id (+ advance status) immediately,
+    //    so a crash after this point can never trigger a duplicate create.
+    await db
+      .update(bookings)
+      .set({ cloudbedsReservationId: pmsReservationId, status: "pms_synced" })
+      .where(eq(bookings.id, booking.id));
+
+    // 3. For NR rates record the Stripe charge in the PMS folio (external
+    //    payment for Mews). Best-effort; missing folio line is a reconciliation
+    //    issue. Guarded by pmsPaymentId so a re-run doesn't double-record.
+    if (
+      booking.rateType === "nr" &&
+      booking.stripePaymentIntentId &&
+      !booking.pmsPaymentId
+    ) {
       try {
-        await postPayment(booking.propertyId, {
-          cloudbedsPropertyId: property.cloudbedsPropertyId,
-          reservationID: cloudbedsReservationId,
-          amount: Number(booking.grandTotal),
+        const { pmsPaymentId } = await pms.recordPayment({
+          reservationId: pmsReservationId,
+          amount: grandTotalNum,
           type: "credit",
           description: `Stripe ${booking.stripePaymentIntentId}`,
+          externalIdentifier: booking.stripePaymentIntentId,
         });
+        if (pmsPaymentId) {
+          await db
+            .update(bookings)
+            .set({ pmsPaymentId })
+            .where(eq(bookings.id, booking.id));
+        }
       } catch (payErr) {
         console.error(
-          `PMS-retry postPayment failed for ${cloudbedsReservationId}:`,
+          `PMS-retry recordPayment failed for ${pmsReservationId}:`,
           payErr
         );
       }
     }
 
-    await db
-      .update(bookings)
-      .set({ cloudbedsReservationId, status: "pms_synced" })
-      .where(eq(bookings.id, booking.id));
-
-    // Now that the booking actually exists in CB, send the confirmation that
-    // the inline path never got to send.
+    // Now that the booking actually exists in the PMS, send the confirmation
+    // that the inline path never got to send.
     const nights = Math.round(
       (new Date(booking.checkOut).getTime() -
         new Date(booking.checkIn).getTime()) /
@@ -177,7 +237,7 @@ export async function retryPmsForBooking(
           guestFirstName: booking.guestFirst,
           guestLastName: booking.guestLast,
           hotelName: property.name,
-          cloudbedsReservationId,
+          cloudbedsReservationId: pmsReservationId,
           orderId: booking.orderId,
           rateType: (booking.rateType as "flex" | "nr") ?? "flex",
           roomName: room.name,
@@ -203,7 +263,7 @@ export async function retryPmsForBooking(
     return {
       bookingId: booking.id,
       outcome: "synced",
-      cloudbedsReservationId,
+      cloudbedsReservationId: pmsReservationId,
     };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

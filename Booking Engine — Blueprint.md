@@ -8,6 +8,8 @@ This document is the single source of truth. It replaces `README.md`, `hotel-pla
 
 > **Companion blueprint — Google Hotel Center.** The Google integration work stream (Free Booking Links / Hotel Ads — Hotel List XML feed, ARI Push, Landing Pages XML, JSON-LD hotel-price data, Connectivity Partner application) lives in its **own** document: **`Google Hotel Center — Blueprint.md`** in the repo root. If a task touches Google feeds, Hotel Center, FBL/Hotel Ads, or hotel-price structured data, read that file — it's the source of truth for that work stream. This document stays focused on the IBE (booking engine, Cloudbeds, Stripe, admin, themes, email).
 
+> **Companion docs — Mews PMS.** The Mews work stream has two dedicated docs in the repo root: **`Mews — Quirks & Handoff.md`** (read first — precise current state + the consolidated list of Mews API quirks) and **`Mews Integration — Plan for Review.md`** (the design rationale + certification questions). All demo/build work is done as of 2026-06-08; only production/certification remains. The Mews session logs below are chronological detail.
+
 ---
 
 ## **2026-06-08 session log — Mews PMS integration (sold-out error shape captured + mapped)**

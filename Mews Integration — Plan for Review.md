@@ -3,6 +3,8 @@
 **Status:** Revised after expert review · **Date:** 2026-06-05
 **Author:** Rockenue Tech (booking-engine team)
 
+> **Picking this up?** Read **`Mews — Quirks & Handoff.md`** first — it has the precise current state (all demo/build work done; production-only remains) and the consolidated list of every Mews API quirk we've hit. This document is the *design rationale*; that one is the *operational handoff*.
+
 > **Review outcome (2026-06-05).** This plan was checked two ways: against our own live Mews Connector integration in the Market Pulse product (`mewsAdapter.js` and `claude/pms/mews.md`), and against the current Mews docs. **Architecture approved** — adapter interface, native-shaped per-PMS storage, Connector + external-payment money model, and phasing are all sound. Six factual corrections from the review are now folded into the body below, and two items are elevated to **certification questions to put to Mews before we build the write path** (see §0a). Items the review explicitly confirmed correct are listed in §15 so we do not second-guess them. **Update 2026-06-08:** CQ-1 was checked against the live docs and **resolved as a non-issue** — certification does not gate on API choice (see §0a). CQ-2 remains the only open Mews question.
 
 ---

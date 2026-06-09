@@ -390,6 +390,16 @@ export const bookings = pgTable("bookings", {
   cancellationPolicySnapshot: jsonb("cancellation_policy_snapshot"),
   status: text("status").notNull().default("pending"),
 
+  // Fulfilment orchestration (Step 0, create-before-pay). One idempotent
+  // fulfilBooking() runs from three triggers (inline, Stripe webhook, retry
+  // cron); fulfilmentLockedAt is an optimistic claim so two triggers can't
+  // create the same reservation at once, confirmationEmailSentAt makes the
+  // guest confirmation send exactly once.
+  fulfilmentLockedAt: timestamp("fulfilment_locked_at", { withTimezone: true }),
+  confirmationEmailSentAt: timestamp("confirmation_email_sent_at", {
+    withTimezone: true,
+  }),
+
   createdAt: timestamp("created_at", { withTimezone: true }).default(
     sql`NOW()`
   ),
@@ -447,6 +457,12 @@ export const bookingExtras = pgTable("booking_extras", {
   unitPrice: decimal("unit_price", { precision: 10, scale: 2 }).notNull(),
   totalPrice: decimal("total_price", { precision: 10, scale: 2 }).notNull(),
   currency: text("currency").notNull(),
+  // Fulfilment intent (persisted at booking time so the PMS post can run from
+  // the webhook/cron, not just inline). propertyExtraId links to the catalogue
+  // row (resolves ota/product + service id at post time); postingPlan carries
+  // the resolved per-guest-per-night plan ({ model, perMorning, mornings }).
+  propertyExtraId: uuid("property_extra_id").references(() => propertyExtras.id),
+  postingPlan: jsonb("posting_plan"),
 });
 
 // --- Payment events (audit trail for Stripe + auto-charge cron) ---

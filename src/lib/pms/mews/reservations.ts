@@ -35,11 +35,13 @@ interface AgeCategory {
   IsActive?: boolean;
 }
 
-// Adult AgeCategoryId for PersonCounts. Mews requires a real age category id;
-// every accommodation service has an "Adult" classification.
-async function getAdultAgeCategoryId(
+// Adult + (optional) Child AgeCategoryIds for PersonCounts. Mews requires a real
+// age category id; every accommodation service has an "Adult" classification. A
+// "Child" category may or may not exist on the service — the caller folds
+// children into the adult headcount when it's missing.
+async function getAgeCategoryIds(
   creds: MewsCredentials
-): Promise<string> {
+): Promise<{ adultId: string; childId?: string }> {
   const resp = await mews<{ AgeCategories?: AgeCategory[] }>(
     "ageCategories/getAll",
     creds.accessToken,
@@ -49,7 +51,8 @@ async function getAdultAgeCategoryId(
   const adult =
     cats.find((a) => a.Classification === "Adult") ?? cats[0];
   if (!adult) throw new Error("Mews: no age category found for service");
-  return adult.Id;
+  const child = cats.find((a) => a.Classification === "Child");
+  return { adultId: adult.Id, childId: child?.Id };
 }
 
 // --- pricing metadata (tax codes + currency) ----------------------------
@@ -166,6 +169,7 @@ export interface CreateMewsReservationInput {
   categoryId: string; // RequestedCategoryId (room_types.ota_room_id)
   rateId: string; // RateId (rate_plans.ota_rate_id)
   adults: number;
+  children: number;
   guest: MewsGuest;
   // Exact per-night prices charged via Stripe, in stay order. Length must equal
   // the number of nights. These become TimeUnitPrices (Index 0..n-1).
@@ -191,11 +195,32 @@ export async function createMewsReservation(
     );
   }
 
-  const [ageCategoryId, customerId, pricingMeta] = await Promise.all([
-    getAdultAgeCategoryId(creds),
+  const [ageCategories, customerId, pricingMeta] = await Promise.all([
+    getAgeCategoryIds(creds),
     findOrCreateCustomer(creds, input.guest),
     getStayPricingMeta(creds, input.rateId, input.categoryId, stayNights),
   ]);
+
+  // PersonCounts records occupancy (it does NOT drive price — we send explicit
+  // TimeUnitPrices + CheckRateApplicability:false). Send adults, plus children
+  // against the Child age category when the service has one; if it doesn't, fold
+  // children into the adult count so the headcount is still correct.
+  const personCounts: Array<{ AgeCategoryId: string; Count: number }> = [
+    { AgeCategoryId: ageCategories.adultId, Count: input.adults },
+  ];
+  if (input.children > 0) {
+    if (ageCategories.childId) {
+      personCounts.push({
+        AgeCategoryId: ageCategories.childId,
+        Count: input.children,
+      });
+    } else {
+      console.warn(
+        `[Mews] no Child age category on service ${creds.serviceId} — recording ${input.children} child(ren) as adults for occupancy`
+      );
+      personCounts[0].Count += input.children;
+    }
+  }
 
   const isNet = creds.taxMode === "Net";
   const timeUnitPrices = input.nightlyRates.map((rate, i) => ({
@@ -228,7 +253,7 @@ export async function createMewsReservation(
           CustomerId: customerId,
           RequestedCategoryId: input.categoryId,
           RateId: input.rateId,
-          PersonCounts: [{ AgeCategoryId: ageCategoryId, Count: input.adults }],
+          PersonCounts: personCounts,
           TimeUnitPrices: timeUnitPrices,
           Notes: input.notes,
         },
@@ -471,6 +496,7 @@ export interface AddMewsProductOrderInput {
   productId: string; // property_extras.ota_extra_id
   serviceId: string; // property_extras.pms_service_id (the product's Orderable service)
   count: number;
+  consumptionDate?: string; // YYYY-MM-DD — dates the folio line (per-morning extras)
 }
 
 export async function addMewsProductOrder(
@@ -478,6 +504,10 @@ export async function addMewsProductOrder(
   input: AddMewsProductOrderInput
 ): Promise<string> {
   const accountId = await getReservationAccountId(creds, input.reservationId);
+  // Order-level ConsumptionUtc dates the whole order; we post one order per
+  // morning (the booking route loops per chosen morning), so each order lands on
+  // its own service date. Per-line ProductOrder StartUtc/EndUtc are not used with
+  // orders/add (Mews docs). Falls back to the order's default date if absent.
   const resp = await mews<{ OrderId?: string; Order?: { Id?: string } }>(
     "orders/add",
     creds.accessToken,
@@ -485,6 +515,9 @@ export async function addMewsProductOrder(
       ServiceId: input.serviceId,
       AccountId: accountId,
       LinkedReservationId: input.reservationId,
+      ...(input.consumptionDate
+        ? { ConsumptionUtc: toMewsUtc(input.consumptionDate, creds.timezone) }
+        : {}),
       ProductOrders: [{ ProductId: input.productId, Count: input.count }],
     }
   );
@@ -546,13 +579,3 @@ export async function cancelMewsReservation(
     SendEmail: false, // we own guest comms
   });
 }
-
-// --- extras + notes (deferred) ------------------------------------------
-//
-// Folio extras and staff notes are NOT yet wired for Mews. Mews models extras
-// on a separate product/POS service (orders/add rejects the accommodation
-// ServiceId), and the per-guest-per-night representation needs confirming with
-// Mews (plan §7.2 / §13.5). The note-update shape likewise needs verifying.
-// Both are non-fatal in the booking flow (try/catch, room booking still
-// completes), so the adapter logs and no-ops until this is built — see
-// MewsAdapter.postExtra / postReservationNote.

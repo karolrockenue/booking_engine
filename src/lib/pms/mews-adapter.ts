@@ -1,6 +1,6 @@
-// Mews implementation of PmsAdapter. Read path is live (Phase 3); the write path
-// and webhooks throw until Phase 4/5. Bound to one property; resolves its
-// encrypted credentials lazily through getMewsCredentials.
+// Mews implementation of PmsAdapter. Full read + write path + webhooks are live
+// (Phases 3–5). Bound to one property; resolves its encrypted credentials lazily
+// through getMewsCredentials.
 
 import type {
   PmsAdapter,
@@ -98,6 +98,7 @@ export class MewsAdapter implements PmsAdapter {
       categoryId: params.roomTypeId,
       rateId: params.rateId,
       adults: params.adults,
+      children: params.children,
       guest: {
         firstName: params.guestFirstName,
         lastName: params.guestLastName,
@@ -177,6 +178,7 @@ export class MewsAdapter implements PmsAdapter {
       productId: params.otaExtraId,
       serviceId: params.pmsServiceId,
       count: params.quantity,
+      consumptionDate: params.serviceDate, // dates the folio line to the morning
     });
     return { pmsItemId: orderId };
   }

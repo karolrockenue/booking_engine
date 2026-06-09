@@ -122,7 +122,7 @@ async function main() {
           orderId: `soldout-${Date.now()}-${i}`,
           startDate: ci, endDate: co,
           categoryId: target.categoryId, rateId: target.rateId,
-          adults: 1,
+          adults: 1, children: 0,
           guest: { lastName: "Soldout", firstName: "Probe", email: `soldout+${Date.now()}-${i}@example.com`, nationalityCode: "GB" },
           nightlyRates: [price],
         });

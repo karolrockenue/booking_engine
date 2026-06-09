@@ -17,13 +17,9 @@ import {
   stayMornings,
 } from "@/lib/booking/extra-pricing";
 import type { ExtraConfig, PricingModel } from "@/lib/booking/types";
-import { format, parseISO } from "date-fns";
 import { getStripe } from "@/lib/stripe/client";
 import { getPmsAdapter } from "@/lib/pms";
-import { PmsSoldOutError } from "@/lib/pms/errors";
-import { sendBookingConfirmationEmail } from "@/lib/email/booking-confirmation";
-import { signCancelToken } from "@/lib/crypto";
-import { publicOrigin } from "@/lib/stripe/client";
+import { fulfilBooking } from "@/lib/pms/fulfil-booking";
 
 interface ExtraInput {
   id: string;
@@ -243,17 +239,11 @@ export async function POST(req: NextRequest) {
   // Pricing model per selected extra — looked up server-side (Cloudbeds doesn't
   // carry it, and we don't trust the client) so quantities can't be tampered.
   const extraModels = new Map<string, PricingModel>();
-  // Mews ProductOrders need the product id + its Orderable service id; looked up
-  // server-side (trusted) keyed by our extra id. Cloudbeds ignores both.
-  const extraOtaId = new Map<string, string>();
-  const extraServiceId = new Map<string, string | null>();
   if (extrasItems.length > 0) {
     const modelRows = await db
       .select({
         id: propertyExtras.id,
         pricingModel: propertyExtras.pricingModel,
-        otaExtraId: propertyExtras.otaExtraId,
-        pmsServiceId: propertyExtras.pmsServiceId,
       })
       .from(propertyExtras)
       .where(eq(propertyExtras.propertyId, body.propertyId));
@@ -262,8 +252,6 @@ export async function POST(req: NextRequest) {
         r.id,
         isPricingModel(r.pricingModel) ? r.pricingModel : "per_stay"
       );
-      extraOtaId.set(r.id, r.otaExtraId);
-      extraServiceId.set(r.id, r.pmsServiceId);
     }
   }
   const modelFor = (id: string): PricingModel => extraModels.get(id) ?? "per_stay";
@@ -366,260 +354,88 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // Cloudbeds postReservation. If this fails, the booking row exists with
-  // money taken (NR) or card saved (Flex) but no PMS reservation. Per build
-  // plan: land happy path; the retry/refund recovery flow lands before launch.
-  let cloudbedsReservationId: string | undefined;
-  let cancelUrl: string | undefined;
-  const pms = getPmsAdapter(property);
-  try {
-    const result = await pms.createReservation({
-      startDate: body.checkIn,
-      endDate: body.checkOut,
-      guestFirstName: body.guestFirst,
-      guestLastName: body.guestLast,
-      guestEmail: body.guestEmail,
-      guestCountry: body.guestCountry ?? undefined,
-      guestPhone: body.guestPhone ?? undefined,
-      roomTypeId: room.otaRoomId,
-      rateId: ratePlan.otaRateId,
-      adults: body.adults ?? 1,
-      children: body.children ?? 0,
-      // Room subtotal only — extras are attached separately via postExtra.
-      // (Cloudbeds prices the room from roomRateID inside postReservation; this
-      // value is informational. Previously sent room+extras, which was wrong.)
-      roomSubtotal: roomTotalNum,
-      orderId: body.orderId,
-      // Per-night prices for PMSs that need them (Mews TimeUnitPrices). Cloudbeds
-      // ignores this. Falls back to undefined if the client didn't send a breakdown.
-      nightlyRates: body.nightlyRates?.map((nr) => ({
-        date: nr.date,
-        rate: nr.rate,
-      })),
-    });
-    cloudbedsReservationId = result.pmsReservationId;
-
-    // Attach extras to the folio. Insert our row before the Cloudbeds call so
-    // the line survives a postCustomItem failure (the retry sweep at
-    // /api/admin/properties/[id]/cloudbeds/sync-pending-extras picks up rows
-    // left with cloudbedsItemId = null).
-    //
-    //  - per_stay (Early Check-In, …): one folio line, quantity 1.
-    //  - per_guest_per_night (breakfast): ONE dated line PER chosen morning
-    //    (quantity = guests that morning), so the folio's Service Date column +
-    //    Cloudbeds' "items by date" reports give staff the per-day counts. Our
-    //    bookingExtras keeps a single row (total qty) with the per-morning IDs
-    //    comma-joined in cloudbedsItemId.
-    const noteLines: string[] = [];
-    const emailExtras: { name: string; quantity: number; lineTotal: number }[] = [];
-    for (const extra of extrasItems) {
-      const unitMajor = extra.priceMinorUnits / 100;
-
-      if (modelFor(extra.id) === "per_guest_per_night") {
-        const cfg = configFor(extra) ?? { guests, mornings: allMornings };
-        const perMorning = cfg.guests;
-        const mornings = cfg.mornings;
-        if (perMorning <= 0 || mornings.length === 0) continue;
-        const totalQty = perMorning * mornings.length;
-
-        const [extraRow] = await db
-          .insert(bookingExtras)
-          .values({
-            bookingId: booking.id,
-            cloudbedsItemId: null,
-            name: extra.name,
-            qty: totalQty,
-            unitPrice: unitMajor.toFixed(2),
-            totalPrice: (unitMajor * totalQty).toFixed(2),
-            currency: extra.currency,
-          })
-          .returning({ id: bookingExtras.id });
-
-        const itemIds: string[] = [];
-        for (const morning of mornings) {
-          try {
-            const { pmsItemId } = await pms.postExtra({
-              reservationId: cloudbedsReservationId,
-              name: extra.name,
-              amount: unitMajor,
-              quantity: perMorning,
-              serviceDate: morning,
-              otaExtraId: extraOtaId.get(extra.id),
-              pmsServiceId: extraServiceId.get(extra.id) ?? undefined,
-            });
-            if (pmsItemId) itemIds.push(pmsItemId);
-          } catch (extraErr) {
-            console.error(
-              `postCustomItem failed for ${extra.name} (${morning}) on reservation ${cloudbedsReservationId}:`,
-              extraErr
-            );
-          }
-        }
-        if (itemIds.length > 0) {
-          await db
-            .update(bookingExtras)
-            .set({ cloudbedsItemId: itemIds.join(",") })
-            .where(eq(bookingExtras.id, extraRow.id));
-        }
-        noteLines.push(
-          `${extra.name}: ${perMorning} guest${perMorning === 1 ? "" : "s"} × ${mornings
-            .map(fmtMorning)
-            .join(", ")} (${totalQty} total)`
-        );
-        emailExtras.push({ name: extra.name, quantity: totalQty, lineTotal: unitMajor * totalQty });
-        continue;
-      }
-
-      // per_stay — one folio line, quantity 1
-      const [extraRow] = await db
-        .insert(bookingExtras)
-        .values({
-          bookingId: booking.id,
-          cloudbedsItemId: null,
-          name: extra.name,
-          qty: 1,
-          unitPrice: unitMajor.toFixed(2),
-          totalPrice: unitMajor.toFixed(2),
-          currency: extra.currency,
-        })
-        .returning({ id: bookingExtras.id });
-      emailExtras.push({ name: extra.name, quantity: 1, lineTotal: unitMajor });
-      try {
-        const { pmsItemId } = await pms.postExtra({
-          reservationId: cloudbedsReservationId,
-          name: extra.name,
-          amount: unitMajor,
-          quantity: 1,
-          otaExtraId: extraOtaId.get(extra.id),
-          pmsServiceId: extraServiceId.get(extra.id) ?? undefined,
-        });
-        if (pmsItemId) {
-          await db
-            .update(bookingExtras)
-            .set({ cloudbedsItemId: pmsItemId })
-            .where(eq(bookingExtras.id, extraRow.id));
-        }
-      } catch (extraErr) {
-        console.error(
-          `postCustomItem failed for ${extra.name} on reservation ${cloudbedsReservationId}:`,
-          extraErr
-        );
-      }
+  // Persist the extras INTENT before any PMS call — one bookingExtras row per
+  // selected extra, carrying the resolved posting plan (model + per-morning
+  // breakdown) and a link to the catalogue row. fulfilBooking() reads these and
+  // posts them to the folio; persisting first means the lines survive a failed
+  // post and can be completed by the Stripe webhook or the retry cron.
+  //
+  //  - per_stay (Early Check-In, …): one folio line, quantity 1.
+  //  - per_guest_per_night (breakfast): one dated line PER chosen morning
+  //    (quantity = guests that morning); bookingExtras keeps a single row (total
+  //    qty) and fulfilBooking comma-joins the per-morning ids.
+  const extraIntentRows: (typeof bookingExtras.$inferInsert)[] = [];
+  for (const extra of extrasItems) {
+    const unitMajor = extra.priceMinorUnits / 100;
+    const model = modelFor(extra.id);
+    if (model === "per_guest_per_night") {
+      const cfg = configFor(extra) ?? { guests, mornings: allMornings };
+      if (cfg.guests <= 0 || cfg.mornings.length === 0) continue;
+      const totalQty = cfg.guests * cfg.mornings.length;
+      extraIntentRows.push({
+        bookingId: booking.id,
+        name: extra.name,
+        qty: totalQty,
+        unitPrice: unitMajor.toFixed(2),
+        totalPrice: (unitMajor * totalQty).toFixed(2),
+        currency: extra.currency,
+        propertyExtraId: extra.id,
+        postingPlan: { model, perMorning: cfg.guests, mornings: cfg.mornings },
+      });
+    } else {
+      extraIntentRows.push({
+        bookingId: booking.id,
+        name: extra.name,
+        qty: 1,
+        unitPrice: unitMajor.toFixed(2),
+        totalPrice: unitMajor.toFixed(2),
+        currency: extra.currency,
+        propertyExtraId: extra.id,
+        postingPlan: { model: "per_stay" },
+      });
     }
+  }
+  if (extraIntentRows.length > 0) {
+    await db.insert(bookingExtras).values(extraIntentRows);
+  }
 
-    // Staff-facing reservation note: which breakfasts, how many, on which
-    // mornings. Non-fatal — a failed note never voids the booking.
-    if (noteLines.length > 0) {
-      try {
-        await pms.postReservationNote({
-          reservationId: cloudbedsReservationId,
-          note: noteLines.join(" | "),
-        });
-      } catch (noteErr) {
-        console.error(
-          `postReservationNote failed for reservation ${cloudbedsReservationId}:`,
-          noteErr
-        );
-      }
-    }
+  // Fulfil synchronously (the happy path): create reservation → post extras →
+  // record the external payment → staff note → confirmation email → status.
+  // The same idempotent, claim-locked unit also runs from the Stripe webhook and
+  // the retry cron, so a failure here is recoverable rather than lost.
+  const result = await fulfilBooking(booking.id);
 
-    // For NR rates: record the Stripe charge in the Cloudbeds folio so the
-    // hotel's accounting reflects what the guest paid. Failure here doesn't
-    // void the booking — the money is already with Stripe; missing folio
-    // line is a reconciliation problem the hotel can fix manually.
-    if (rateType === "nr" && body.paymentIntentId) {
-      try {
-        await pms.recordPayment({
-          reservationId: cloudbedsReservationId,
-          amount: grandTotalNum,
-          type: "credit",
-          description: `Stripe ${body.paymentIntentId}`,
-          externalIdentifier: body.paymentIntentId,
-        });
-      } catch (payErr) {
-        console.error(
-          `postPayment failed for reservation ${cloudbedsReservationId}:`,
-          payErr
-        );
-      }
-    }
+  if (result.outcome === "sold_out") {
+    // PMS refused to oversell (final defence after the pre-create availability
+    // re-check). Distinct code + 409 so the storefront shows "pick another room".
+    console.warn(
+      `Booking ${booking.id} (${body.orderId}): room sold out at PMS create.`
+    );
+    return NextResponse.json(
+      {
+        success: false,
+        code: "room_sold_out",
+        orderId: body.orderId,
+        bookingId: booking.id,
+        error: result.reason ?? "Room is no longer available",
+      },
+      { status: 409 }
+    );
+  }
 
-    await db
-      .update(bookings)
-      .set({
-        cloudbedsReservationId,
-        status: "pms_synced",
-      })
-      .where(eq(bookings.id, booking.id));
-
-    // Self-cancel link only for Flex bookings — NR has no self-cancel path
-    // (the cancel route returns "non_refundable" / "contact hotel" for those).
-    cancelUrl =
-      rateType === "flex"
-        ? `${publicOrigin()}/cancel/${signCancelToken(booking.id)}`
-        : undefined;
-
-    // Fire-and-forget confirmation email. Booking is already done; a failed
-    // send is a customer-service problem, not a booking-failure problem.
-    void (async () => {
-      try {
-        await sendBookingConfirmationEmail({
-          propertyId: property.id,
-          bookingId: booking.id,
-          to: body.guestEmail,
-          guestFirstName: body.guestFirst,
-          guestLastName: body.guestLast,
-          hotelName: property.name,
-          cloudbedsReservationId: cloudbedsReservationId!,
-          orderId: body.orderId,
-          rateType,
-          roomName: room.name,
-          rateName: ratePlan.name,
-          checkIn: body.checkIn,
-          checkOut: body.checkOut,
-          nights,
-          adults: body.adults ?? 1,
-          currency: body.currency ?? "GBP",
-          roomTotal: roomTotalNum,
-          extrasTotal: extrasTotalNum,
-          grandTotal: grandTotalNum,
-          extras: emailExtras,
-          cancelUrl,
-        });
-      } catch (emailErr) {
-        console.error(
-          `Confirmation email failed for booking ${booking.id} (reservation ${cloudbedsReservationId}):`,
-          emailErr
-        );
-      }
-    })();
-  } catch (err) {
-    // Sold-out: the PMS refused to oversell (final defence after the pre-create
-    // availability re-check). Retrying won't help — tell the guest to pick
-    // another room. Distinct code + 409 so the storefront shows the right UX.
-    if (err instanceof PmsSoldOutError) {
-      console.warn(
-        `Booking ${booking.id} (${body.orderId}): room sold out at PMS create.`
-      );
-      return NextResponse.json(
-        {
-          success: false,
-          code: "room_sold_out",
-          orderId: body.orderId,
-          bookingId: booking.id,
-          error: err.message,
-        },
-        { status: 409 }
-      );
-    }
-    console.error("Cloudbeds postReservation failed:", err);
-    const message = err instanceof Error ? err.message : "Unknown error";
+  if (result.outcome !== "synced") {
+    // Booking + extras intent are persisted; the Stripe webhook and retry cron
+    // will complete the PMS write. Surface the error to the guest (today's
+    // behaviour); Phase 2 turns this into a 202 + status poll instead.
+    console.error(
+      `Booking ${booking.id} (${body.orderId}) fulfilment failed: ${result.reason}`
+    );
     return NextResponse.json(
       {
         success: false,
         orderId: body.orderId,
         bookingId: booking.id,
-        error: `Booking saved but Cloudbeds sync failed: ${message}`,
+        error: `Booking saved but PMS sync failed: ${result.reason ?? "unknown"}`,
       },
       { status: 502 }
     );
@@ -629,16 +445,7 @@ export async function POST(req: NextRequest) {
     success: true,
     orderId: body.orderId,
     bookingId: booking.id,
-    cloudbedsReservationId,
-    cancelUrl,
+    cloudbedsReservationId: result.pmsReservationId,
+    cancelUrl: result.cancelUrl,
   });
-}
-
-// Short morning label for the staff reservation note, e.g. "Wed 28 May".
-function fmtMorning(d: string): string {
-  try {
-    return format(parseISO(d), "EEE d MMM");
-  } catch {
-    return d;
-  }
 }

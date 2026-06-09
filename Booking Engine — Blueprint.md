@@ -10,6 +10,48 @@ This document is the single source of truth. It replaces `README.md`, `hotel-pla
 
 > **Companion docs — Mews PMS.** The Mews work stream has two dedicated docs in the repo root: **`Mews — Quirks & Handoff.md`** (read first — precise current state + the consolidated list of Mews API quirks) and **`Mews Integration — Plan for Review.md`** (the design rationale + certification questions). All demo/build work is done as of 2026-06-08; only production/certification remains. The Mews session logs below are chronological detail.
 
+> **Companion doc — Robust fulfilment / async checkout.** The booking→PMS fulfilment rework lives in **`Robust Fulfilment (Async Checkout) — Handoff.md`** (repo root). **Step 0a is DONE + verified** (idempotent `fulfilBooking` driven by inline + Stripe-webhook + retry-cron, with an optimistic lock; checkout UX unchanged). **0b (create-before-pay UI) and Phase 2 (202 + status poll) are NOT started** — that handoff has the full design, invariants, file map, and step-by-step plan. Read it before touching `/api/bookings`, the Stripe webhook, the checkout clients, or `fulfilBooking`. See the 2026-06-09 "Robust fulfilment Step 0a" session log below.
+
+---
+
+## **2026-06-09 session log — Robust fulfilment Step 0a (webhook-driven, idempotent `fulfilBooking`)**
+
+Reworking the booking→PMS path to the industry-standard shape: payment provider is the source of truth, fulfilment is **idempotent + durable + triggerable from anywhere**, so a browser crash after payment can't leave money-taken-no-reservation. Grounded in Stripe's "fulfil on the webhook, not the client" guidance + the async request-reply pattern. **This is 0a (backend only) — the certified checkout UX is unchanged (still synchronous, still returns the reservation #). UI rewiring (0b) + 202/status-poll (Phase 2) are the next steps.**
+
+### Shipped (backend, verified by smokes)
+- **`src/lib/pms/fulfil-booking.ts` — one idempotent fulfilment unit.** create-or-adopt reservation → post folio extras (from persisted intent) → record external payment → staff note → confirmation email → status. Run from THREE triggers: `/api/bookings` inline (happy path), the Stripe webhook (durable backstop), and `cron/pms-retry`. Safety: an **optimistic claim** (`bookings.fulfilment_locked_at`) so two triggers can't double-create; every step individually guarded (reservation id / `pms_payment_id` / posted item id / `confirmation_email_sent_at`); anti-double-book via `findExistingReservation` (Mews has no idempotency key). Verified idempotent end-to-end (`mews-fulfil-smoke`: 1st run creates everything, 2nd run no second reservation/payment/email/extra).
+- **`/api/bookings` refactor.** Now persists the booking + day-rates + **extras INTENT** (catalogue link + resolved per-morning posting plan) *before* any PMS call, then delegates to `fulfilBooking`. Observable behaviour identical (synchronous, returns reservation #, 409 sold-out, 502 on failure). **Bonus: fixes the long-standing "extras lost if the PMS write fails" limitation** — extras are persisted first, so the webhook/cron can complete them.
+- **Stripe webhook → fulfilment.** `payment_intent.succeeded` / `setup_intent.succeeded` now rescue a stuck booking (was log-only). **Age-gated (≥60s)** so it never races the inline path — only rescues genuinely stuck/re-delivered bookings; the cron remains the final backstop.
+- **`cron/pms-retry` simplified.** `retryPmsForBooking` now delegates to `fulfilBooking` (deletes the duplicated create/payment/email logic) and keeps only the attempt-count + `giveUpAndUnwind` (refund NR / detach Flex after ~1h). Recovered bookings now also get their **extras + rich confirmation email** restored (previously omitted). `mews-retry-smoke` 13/13.
+- **`GET /api/bookings/[id]/status`** — poll target for Phase 2 (`pending`/`confirmed`/`failed`/`cancelled` + reservation #).
+- **Schema (additive):** `booking_extras.property_extra_id` + `posting_plan` jsonb; `bookings.fulfilment_locked_at` + `confirmation_email_sent_at`. Pushed to Neon.
+
+### Verified
+`tsc` + `eslint` clean. Smokes: `mews-fulfil-smoke` (idempotency) PASS, `mews-write-smoke` + `mews-extras-smoke` PASS (adapter unchanged), `mews-retry-smoke` 13/13 (now routed through `fulfilBooking`).
+
+### Next
+- **0b** — point the three checkout clients at create-before-pay (`init` persists the row + intent at payment time; `confirm` patches guest details). Closes the "browser died before /api/bookings" window entirely. (Synchronous UX preserved.)
+- **Phase 2** — `/api/bookings` returns **202**; confirmation page polls `/status` ("finalising…"). Mockup first.
+
+---
+
+## **2026-06-09 session log — Mews PMS integration (hardening pass: occupancy, extra dating, demo extras)**
+
+A review pass over the whole Mews path ("anything built just-for-now?") plus the safe fixes. All Mews-isolated, `tsc` clean, both smokes (`mews-write-smoke`, `mews-extras-smoke`) green, new behaviours verified live on the gross demo.
+
+### Shipped
+- **Children now sent to Mews.** `createReservation` only put **adults** in `PersonCounts` — children (passed by the route) were silently dropped. New `getAgeCategoryIds` resolves Adult **+ Child**; `PersonCounts` sends a Child entry when the service has a Child age category, else folds children into the adult count (headcount stays correct). Occupancy-only — does **not** change price (we still send explicit `TimeUnitPrices` + `CheckRateApplicability:false`). Verified: 2 adults + 1 child → two `PersonCounts` entries (`Count:2` + `Count:1`).
+- **Per-morning extras now dated.** The route passed `serviceDate` per morning but the Mews adapter ignored it, so multi-morning breakfast posted all lines on the order day. `addMewsProductOrder` now sets order-level **`ConsumptionUtc`** (Mews docs: per-line `StartUtc/EndUtc` are not used with `orders/add`; we already post one order per morning, so each lands on its own date). Verified: requested 28 Jun → folio item `ConsumedUtc` = midnight 28 Jun in the enterprise TZ.
+- **Demo extras wired + exercised.** `mews-demo-hotel` had **no `extrasServiceIds`** (0 rows) — extras worked in the smoke but had never flowed through the real storefront. Wired the `breakfast - FnB` Orderable service; `syncExtras` populated `property_extras` (2 products) and they now surface through `/api/extras`. Caveat: the shared demo service carries a mixed-currency junk product (`desayuno` €20 on a GBP property) — fine for demo, pick a clean service per real hotel.
+- **Doc-rot removed.** `mews-adapter.ts` header ("write path + webhooks throw until P4/P5") and the stale "extras + notes (deferred)" block at the foot of `reservations.ts` were both false — deleted.
+
+### Deliberately descoped (touch the certified shared create path — handle as their own change)
+- **Staff note / guest special-requests → Mews `Notes`.** The extras-breakdown note is built *after* extras post and `postReservationNote` is a Connector no-op, so feeding it into `createReservation` means reordering the shared booking path. (Also: there is still no guest special-requests field flowing to *either* PMS — pre-existing.)
+- **Move the PMS write off the checkout request path** (the "stuck processing for ages" UX). `createReservation` runs inline with read-after-write polling; the retry cron already covers orphans, so this can go async — but it's a change to the certified hot path, done on its own.
+
+### Still production-only (unchanged)
+CQ-2 (`read:customers`) at cert; `PerPersonPerTimeUnit` extra posting confirmation; live webhook delivery config.
+
 ---
 
 ## **2026-06-08 session log — Mews PMS integration (sold-out error shape captured + mapped)**

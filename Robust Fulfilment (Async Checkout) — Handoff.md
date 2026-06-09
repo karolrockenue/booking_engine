@@ -434,9 +434,15 @@ Run on the dev server (`npm run dev`). Cover **both PMSs** and **both rate types
    Stripe receipt may go out without one on a pure NR flow — confirm the **guest
    confirmation email** (our own, sent at fulfilment) still arrives correctly.
 
-**Known follow-up (not a test, a cleanup):** abandoned `init` rows (guest types email,
-never pays) now linger as `status:"pending"` forever. Harmless (cron/webhook ignore them)
-but they accumulate — worth a TTL sweep eventually.
+**Abandoned-cart sweep (BUILT 2026-06-09).** `init` rows where the guest typed an email
+but never paid would otherwise linger as `status:"pending"` forever. `POST
+/api/cron/cleanup-pending` (CRON_SECRET-protected, `src/lib/booking/sweep-abandoned.ts`)
+marks them `"abandoned"` — non-destructive (status flip only, kept for funnel analytics)
+and conservative: it only touches rows that are pending + unreserved + older than 24h
+(`?ttlHours=` overridable) + have **no** succeeded payment event, so a genuinely-paid row
+with a slow webhook is never swept. Smoke: `src/scripts/sweep-abandoned-smoke.ts` PASS.
+**Karol ops step:** register the schedule (hourly) in the external scheduler, same as the
+other crons — the route is done, only the cron entry is missing.
 
 Report back which theme/PMS/rate combos you ran; I'll fix anything that surfaces.
 

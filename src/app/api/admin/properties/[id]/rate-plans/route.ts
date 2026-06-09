@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyAdmin } from "@/lib/admin-auth";
 import { db } from "@/db";
-import { ratePlans, roomTypes } from "@/db/schema";
+import { properties, ratePlans, roomTypes } from "@/db/schema";
 import { asc, eq } from "drizzle-orm";
 
 export async function GET(
@@ -12,6 +12,14 @@ export async function GET(
   if (authError) return authError;
 
   const { id } = await params;
+
+  // pmsType drives PMS-aware copy in the admin Rates UI ("synced from Mews"
+  // vs "Cloudbeds", source-link target, etc.).
+  const [property] = await db
+    .select({ pmsType: properties.pmsType })
+    .from(properties)
+    .where(eq(properties.id, id))
+    .limit(1);
 
   const list = await db
     .select({
@@ -32,5 +40,8 @@ export async function GET(
     .where(eq(ratePlans.propertyId, id))
     .orderBy(asc(roomTypes.name), asc(ratePlans.name));
 
-  return NextResponse.json({ ratePlans: list });
+  return NextResponse.json({
+    ratePlans: list,
+    pmsType: property?.pmsType ?? "cloudbeds",
+  });
 }

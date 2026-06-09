@@ -63,9 +63,16 @@ export default function RatesPage() {
   const token = useAdminToken();
 
   const [list, setList] = useState<RatePlan[]>([]);
+  const [pmsType, setPmsType] = useState<string>("cloudbeds");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [openKey, setOpenKey] = useState<string | null>(null);
+
+  // PMS-aware copy: this page works identically for Mews + Cloudbeds (the
+  // visibility/display-name controls write the shared rate_plans table), so the
+  // labels just follow the property's PMS.
+  const pmsLabel = pmsType === "mews" ? "Mews" : "Cloudbeds";
+  const syncHref = `/admin/${propertyId}/${pmsType === "mews" ? "mews" : "cloudbeds"}`;
 
   async function load() {
     if (!token || !propertyId) return;
@@ -76,8 +83,9 @@ export default function RatesPage() {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      const d = (await r.json()) as { ratePlans: RatePlan[] };
+      const d = (await r.json()) as { ratePlans: RatePlan[]; pmsType?: string };
       setList(d.ratePlans);
+      if (d.pmsType) setPmsType(d.pmsType);
     } catch (e) {
       setError(e instanceof Error ? e.message : "failed to load");
     } finally {
@@ -151,13 +159,9 @@ export default function RatesPage() {
             ? "Loading…"
             : `${groups.length} rate ${
                 groups.length === 1 ? "plan" : "plans"
-              } · synced from Cloudbeds · toggle visibility & edit policy across all room types`
+              } · synced from ${pmsLabel} · toggle visibility & edit policy across all room types`
         }
-        actions={
-          <Btn href={`/admin/${propertyId}/cloudbeds`}>
-            Re-sync from Cloudbeds
-          </Btn>
-        }
+        actions={<Btn href={syncHref}>Re-sync from {pmsLabel}</Btn>}
       />
 
       {loading && list.length === 0 ? (
@@ -173,7 +177,7 @@ export default function RatesPage() {
           className="border rounded-md p-12 text-center text-[13px]"
           style={{ borderColor: "var(--a-border)", color: "var(--a-muted)" }}
         >
-          No rate plans yet. Run a Cloudbeds sync to populate.
+          No rate plans yet. Run a {pmsLabel} sync to populate.
         </div>
       ) : (
         <div className="flex flex-col gap-1.5">
@@ -191,7 +195,7 @@ export default function RatesPage() {
 
       <p className="mt-6 text-[11.5px]" style={{ color: "var(--a-muted)" }}>
         Rate plans are grouped across room types — hiding or editing one applies
-        to every room that offers it. CB-side rate name &amp; price stay
+        to every room that offers it. {pmsLabel}-side rate name &amp; price stay
         authoritative; admin only edits visibility, refundability &amp;
         cancellation policy.
       </p>

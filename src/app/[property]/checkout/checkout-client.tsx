@@ -20,6 +20,8 @@ import {
   loadPersistedDraft,
   savePersistedConfirmation,
   submitBooking,
+  initBooking,
+  patchBookingDetails,
   SubmitBookingError,
   type PersistedBookingDraft,
 } from "@/lib/booking";
@@ -78,6 +80,11 @@ export function CheckoutClient({ property }: { property: ResolvedProperty }) {
 
   const stripeFormRef = useRef<StripePaymentSectionHandle | null>(null);
 
+  // Booking row id returned by initBooking() — the row exists server-side before
+  // the card is confirmed (create-before-pay), so the patch + finalise calls and
+  // the Stripe webhook can all reference it.
+  const bookingIdRef = useRef<string | null>(null);
+
   // One-shot guard: ensures we only fire one fetch per (orderId, ratePlanId)
   // combo. Prevents the cancellation-race that left intentLoading stuck true
   // when the user typed during an in-flight fetch.
@@ -114,85 +121,67 @@ export function CheckoutClient({ property }: { property: ResolvedProperty }) {
   const emailReady = guestDetails.email.includes("@");
   const intentReady = !!intent && !intentLoading;
 
-  // Lazily create the intent once we have draft + email. One-shot per
-  // (orderId, ratePlanId): once fired we never re-fire, so subsequent edits
-  // to email/name/extras don't race with an in-flight fetch.
+  // Create-before-pay: once we have draft + email, persist the booking row +
+  // extras intent + Stripe intent server-side via initBooking(). One-shot per
+  // (orderId, ratePlanId): once fired we never re-fire, so subsequent edits to
+  // email/name/extras don't race with an in-flight call.
   useEffect(() => {
     if (!draftHydrated || !draft?.result || !emailReady) return;
     if (!orderIdRef.current) return;
 
     const orderId = orderIdRef.current;
-    const ratePlanId = draft.result.ratePlan.id;
+    const result = draft.result;
+    const ratePlanId = result.ratePlan.id;
     const fetchKey = `${orderId}:${ratePlanId}`;
     if (intentFetchedKeyRef.current === fetchKey) return;
     intentFetchedKeyRef.current = fetchKey;
 
     const kind: IntentKind = isRefundable ? "setup" : "payment";
     const guest = guestDetailsRef.current;
-    const t = totalsRef.current;
+    const selectedExtras = extras.filter((e) => draft.extras.includes(e.id));
 
     setIntentLoading(true);
     setIntentError(null);
 
-    const url =
-      kind === "setup"
-        ? "/api/stripe/setup-intent"
-        : "/api/stripe/payment-intent";
-    const payload =
-      kind === "setup"
-        ? {
-            propertyId: property.id,
-            ratePlanId,
-            orderId,
-            guestEmail: guest.email,
-            guestFirst: guest.firstName || undefined,
-            guestLast: guest.lastName || undefined,
-          }
-        : {
-            propertyId: property.id,
-            ratePlanId,
-            orderId,
-            amount: t.total,
-            guestEmail: guest.email,
-          };
-
-    fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
+    initBooking({
+      propertyId: property.id,
+      orderId,
+      result,
+      extras: selectedExtras,
+      extrasConfig: draft.extrasConfig,
+      guestEmail: guest.email,
+      guestFirst: guest.firstName || undefined,
+      guestLast: guest.lastName || undefined,
+      checkIn: draft.checkIn,
+      checkOut: draft.checkOut,
+      adults: draft.adults,
+      children: draft.children,
+      currency,
     })
-      .then(async (res) => {
-        const body = (await res.json().catch(() => ({}))) as {
-          error?: string;
-          clientSecret?: string;
-          paymentIntentId?: string;
-          setupIntentId?: string;
-          customerId?: string;
-        };
-        if (!res.ok || !body.clientSecret) {
-          setIntentError(
-            body.error ?? `Failed to initialise payment (${res.status})`
-          );
-          setIntentLoading(false);
-          // Allow a retry on next email change since fetch failed.
-          intentFetchedKeyRef.current = null;
-          return;
-        }
+      .then((init) => {
+        bookingIdRef.current = init.bookingId;
         setIntent({
           kind,
-          clientSecret: body.clientSecret,
-          paymentIntentId: body.paymentIntentId,
-          setupIntentId: body.setupIntentId,
-          customerId: body.customerId,
+          clientSecret: init.clientSecret,
+          paymentIntentId: init.paymentIntentId,
+          setupIntentId: init.setupIntentId,
+          customerId: init.customerId,
         });
         setIntentLoading(false);
       })
       .catch((err) => {
-        setIntentError(err instanceof Error ? err.message : "Network error");
+        setIntentError(
+          err instanceof SubmitBookingError
+            ? err.message
+            : err instanceof Error
+              ? err.message
+              : "Network error"
+        );
         setIntentLoading(false);
+        // Allow a retry on next email change since the call failed.
         intentFetchedKeyRef.current = null;
       });
-  }, [draftHydrated, draft, emailReady, isRefundable, property.id]);
+  }, [draftHydrated, draft, emailReady, isRefundable, property.id, extras, currency]);
 
   async function handleSubmit() {
     if (!draft?.result || !orderIdRef.current) return;
@@ -204,6 +193,21 @@ export function CheckoutClient({ property }: { property: ResolvedProperty }) {
     setSubmitting(true);
     setError(null);
     try {
+      const guest = {
+        firstName: guestDetails.firstName,
+        lastName: guestDetails.lastName,
+        email: guestDetails.email,
+        phone: guestDetails.phone,
+        country: guestDetails.country,
+      };
+
+      // Persist guest details onto the row BEFORE charging — if the tab dies
+      // right after the charge, the Stripe webhook still has the name/country
+      // it needs to fulfil. Throws (blocking the charge) if it can't save.
+      if (bookingIdRef.current) {
+        await patchBookingDetails(bookingIdRef.current, guest);
+      }
+
       const confirmResult = await stripeFormRef.current.confirm();
 
       const selectedExtras = extras.filter((e) => draft.extras.includes(e.id));
@@ -212,13 +216,7 @@ export function CheckoutClient({ property }: { property: ResolvedProperty }) {
         orderId: orderIdRef.current,
         result: draft.result,
         extras: selectedExtras,
-        guest: {
-          firstName: guestDetails.firstName,
-          lastName: guestDetails.lastName,
-          email: guestDetails.email,
-          phone: guestDetails.phone,
-          country: guestDetails.country,
-        },
+        guest,
         checkIn: draft.checkIn,
         checkOut: draft.checkOut,
         adults: draft.adults,

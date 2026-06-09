@@ -39,17 +39,23 @@ done in the market — see the separate Mews docs / the chat research summary. N
 needed to implement this; mentioned so you don't re-litigate it.
 
 ### The phased plan
-- **0a — DONE & VERIFIED (this session).** Extract one idempotent `fulfilBooking()`;
-  drive it from three triggers (inline, Stripe webhook, retry cron). Backend only.
-  Checkout UX **unchanged** (still synchronous, still returns the reservation #).
-- **0b — NOT STARTED.** Create-before-pay: persist the booking row + extras intent at
-  *payment-intent* time so the server can fulfil independently of the browser. Closes
-  the "browser died before `/api/bookings`" window. Touches the 3 checkout clients.
+- **0a — DONE & VERIFIED.** Extract one idempotent `fulfilBooking()`; drive it from
+  three triggers (inline, Stripe webhook, retry cron). Backend only. Checkout UX
+  **unchanged** (still synchronous, still returns the reservation #).
+- **0b — DONE & BACKEND-VERIFIED (2026-06-09).** Create-before-pay: the booking row +
+  extras intent are persisted at `init` time (email entry), guest details patched
+  before the card is charged, finalise verifies + fulfils. Webhook hardened to backfill
+  Stripe state (esp. the Flex saved payment method) + flip status on a browser-death
+  rescue. **Backend + browser-death smoke pass; awaiting Karol's 3-theme UI click-
+  throughs** (see §5 "SHIPPED" + §10). Checkout UX still synchronous (still returns the
+  reservation #).
 - **Phase 2 — NOT STARTED.** `/api/bookings` returns **202**; the confirmation page
   polls `/status` ("finalising…"). The actual fast-checkout win. **Needs a confirmation
-  -page mockup first** (house rule: UX changes get an HTML mockup before code).
+  -page mockup first** (house rule: UX changes get an HTML mockup before code). 0b is now
+  in place as its prerequisite.
 
-**0a alone is a real, shippable robustness win** even if 0b/Phase 2 never happen.
+**0a alone is a real, shippable robustness win** even if Phase 2 never happens; 0b closes
+the browser-death-before-`/api/bookings` window and unblocks Phase 2.
 
 ---
 
@@ -201,7 +207,54 @@ is junk demo data — pick a clean service per real hotel.
 
 ---
 
-## 5. Step 0b — create-before-pay (NOT STARTED) — detailed plan
+## 5. Step 0b — create-before-pay — **SHIPPED 2026-06-09** (backend-verified)
+
+> The plan below (kept for context) was implemented with one refinement: the "confirm"
+> step is **two calls** around the card charge — a lightweight **details patch** (before
+> charge) and the existing **finalise** (after charge) — not one. And the webhook needed
+> **hardening** to make the rescue complete for Flex. What actually shipped:
+>
+> **New/changed files**
+> - `src/lib/booking/prepare-booking.ts` (NEW) — shared validation + availability
+>   re-check + price split + cancellation snapshot + `chargeAt` + extras-intent builder.
+>   Used by **both** `init` and finalise so they can't drift. Throws `PrepareBookingError`.
+> - `src/lib/stripe/intents.ts` (NEW) — `createBookingPaymentIntent` /
+>   `createBookingSetupIntent`. The two standalone intent routes are now thin wrappers;
+>   `init` reuses the same functions (no drift on settlement routing / idempotency keys).
+> - `src/app/api/bookings/init/route.ts` (NEW) — fires on email entry. `prepareBooking`
+>   → insert **`status:"pending"`** row (name placeholders, email optional — some themes
+>   render Stripe before email) + day-rates + extras intent → create Stripe PI/SI →
+>   persist intent ids → return `{ bookingId, clientSecret, paymentIntentId|setupIntentId,
+>   customerId }`. Idempotent on `orderId` (re-fires reuse the row + re-issue the intent).
+> - `src/app/api/bookings/[id]/details/route.ts` (NEW) — patches guest name/country/phone
+>   onto the **pending** row, called **before** the card is charged. Guarded to
+>   `status:"pending"` (won't rewrite a finalised reservation). Idempotent.
+> - `src/app/api/bookings/route.ts` (REFACTORED) — now **verify-and-fulfil**: find row by
+>   `orderId` (created by `init`); already-synced → idempotent return; else patch final
+>   details + verify the Stripe intent + flip `pending → paid/payment_authorized` +
+>   `fulfilBooking`. **Create-if-absent fallback** via `prepareBooking` kept for pre-0b /
+>   standalone callers. The big inline block is gone.
+> - `src/lib/stripe/rescue-booking.ts` (NEW) — extracted the webhook rescue so it's unit-
+>   testable. On `payment_intent.succeeded` / `setup_intent.succeeded` it now **(1)
+>   backfills** missing Stripe ids — critically the **Flex saved payment method**
+>   (`si.payment_method`), without which the auto-charge cron skips the booking forever —
+>   and **(2) flips** `pending → paid/payment_authorized` so the row becomes retry-cron-
+>   eligible even if the immediate (age-gated) rescue defers. `src/app/api/stripe/webhooks
+>   /route.ts` now imports it.
+> - `src/lib/booking/submitBooking.ts` (+`index.ts`) — added `initBooking()` +
+>   `patchBookingDetails()` (throws on failure → we never charge a card we couldn't attach
+>   details to). `submitBooking()` unchanged (still the finalise call).
+> - The **3 checkout clients** (default / Portico / Street) — email-time fetch now calls
+>   `initBooking` (stores `bookingId` in a ref); `handleSubmit` calls
+>   `patchBookingDetails` **before** `stripeForm.confirm()`, then `submitBooking`.
+>
+> **No schema change** (reused 0a's columns). **Verification:** `tsc` + `eslint` clean
+> (only the 2 pre-existing `property.slug` warnings); new
+> `src/scripts/bookings-init-smoke.ts` PASS (prepareBooking correctness; NR + Flex
+> browser-death rescue through the **real** `rescueStuckBooking` incl. the Flex PM
+> backfill + age-gate; idempotency); `mews-fulfil-smoke` PASS; `mews-retry-smoke` 13/13.
+> **Still needs Karol:** the 3-theme × NR+Flex × Mews+Cloudbeds **visual click-throughs**
+> (see §10), incl. the kill-the-tab-after-charge durability check.
 
 **Goal:** the full booking row + extras intent exist server-side **before** the card is
 confirmed, so fulfilment never depends on the browser. This is also the foundation
@@ -341,5 +394,50 @@ For 0b you'll touch:
       src/themes/portico/screens/Checkout.tsx
       src/themes/street/screens/Checkout.tsx
 ```
+
+## 10. 0b — Karol's manual UI checklist (the part smokes can't cover)
+
+Run on the dev server (`npm run dev`). Cover **both PMSs** and **both rate types** on
+**each theme** (default, Portico, Street).
+
+1. **Happy path (each theme × NR + Flex × Mews `mews-demo-hotel` + a Cloudbeds hotel):**
+   book end-to-end. Expect unchanged UX — confirmation page shows the reservation #.
+   - DB sanity: one `bookings` row per booking, `status = pms_synced`,
+     `cloudbeds_reservation_id` set, guest name correct (not blank).
+2. **Create-before-pay is real:** enter only the **email** on checkout, then check the DB —
+   a `bookings` row exists at `status:"pending"` with **no** `cloudbeds_reservation_id`
+   *before* you ever click Pay. (Portico/Street render the card before email, so their
+   row may show `guest_email = ""` until you type it — that's expected; it backfills.)
+3. **Browser-death durability (the whole point):** start a Flex booking, fill details,
+   click Pay, and **kill the tab the instant the card confirms** (before the confirmation
+   page loads). Then either wait for the Stripe webhook or run the retry cron
+   (`/api/cron/pms-retry`). Expect: the reservation still appears in the PMS with the
+   **correct guest name**, and (Flex) the row has `stripe_payment_method_id` set so the
+   auto-charge cron can later collect.
+4. **Extras + breakfast (per-guest-per-night):** book with an Early-Check-In (per_stay)
+   and a breakfast (per_guest_per_night) extra; confirm both land on the PMS folio.
+5. **Sold-out race:** (Cloudbeds) drop inventory to 0 between landing on checkout and
+   paying; expect the "pick another room" 409, not a charge-without-room.
+
+**Edge cases to also hit:**
+6. **Failed details-save blocks the charge:** `patchBookingDetails` throws on failure —
+   confirm that if it can't save (simulate by killing the network for that one call) you
+   see an error and the card is **not** charged.
+7. **Email edited / back-and-forward:** change the email after the card mounts, or go back
+   to the room page and return. Expect **no duplicate** `bookings` row (init is idempotent
+   on `orderId`) and the booking still completes.
+8. **Fast-checkout death (<60s):** if you go email→pay→kill-tab in under ~60s, the
+   immediate webhook rescue is age-gated; it still flips status to paid/authorized, so the
+   **retry cron** completes it on its next run. Verify the booking lands after the cron,
+   not just after the webhook.
+9. **NR receipt email on Portico/Street:** these create the intent before email, so the
+   Stripe receipt may go out without one on a pure NR flow — confirm the **guest
+   confirmation email** (our own, sent at fulfilment) still arrives correctly.
+
+**Known follow-up (not a test, a cleanup):** abandoned `init` rows (guest types email,
+never pays) now linger as `status:"pending"` forever. Harmless (cron/webhook ignore them)
+but they accumulate — worth a TTL sweep eventually.
+
+Report back which theme/PMS/rate combos you ran; I'll fix anything that surfaces.
 
 *End of handoff.*

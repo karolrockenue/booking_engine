@@ -12,6 +12,8 @@ import {
   loadPersistedDraft,
   savePersistedConfirmation,
   submitBooking,
+  initBooking,
+  patchBookingDetails,
   SubmitBookingError,
   useExtras,
   type PersistedBookingDraft,
@@ -73,6 +75,8 @@ export function PorticoCheckout({ t, property }: { t: PorticoTokens; property: R
 
   const stripeFormRef = useRef<StripePaymentSectionHandle | null>(null);
   const intentFetchedKeyRef = useRef<string | null>(null);
+  // Booking row id from initBooking() — created before the card is confirmed.
+  const bookingIdRef = useRef<string | null>(null);
 
   const [intent, setIntent] = useState<CreatedIntent | null>(null);
   const [intentLoading, setIntentLoading] = useState(false);
@@ -98,76 +102,66 @@ export function PorticoCheckout({ t, property }: { t: PorticoTokens; property: R
   const isRefundable = draft?.result?.ratePlan.isRefundable ?? true;
   const intentReady = !!intent && !intentLoading;
 
+  // Create-before-pay: persist the booking row + extras intent + Stripe intent
+  // server-side via initBooking(). Fires once per (orderId, ratePlanId). Email
+  // may still be empty here (this theme renders the card before it's typed) —
+  // init stores "" and the details-patch backfills it before any charge.
   useEffect(() => {
     if (!draftHydrated || !draft?.result) return;
     if (!orderIdRef.current) return;
 
     const orderId = orderIdRef.current;
-    const ratePlanId = draft.result.ratePlan.id;
+    const result = draft.result;
+    const ratePlanId = result.ratePlan.id;
     const fetchKey = `${orderId}:${ratePlanId}`;
     if (intentFetchedKeyRef.current === fetchKey) return;
     intentFetchedKeyRef.current = fetchKey;
 
     const kind: IntentKind = isRefundable ? "setup" : "payment";
     const guest = guestRef.current;
-    const tot = totalsRef.current;
+    const selectedExtras = extras.filter((e) => draft.extras.includes(e.id));
 
     setIntentLoading(true);
     setIntentError(null);
 
-    const url = kind === "setup" ? "/api/stripe/setup-intent" : "/api/stripe/payment-intent";
-    const payload =
-      kind === "setup"
-        ? {
-            propertyId: property.id,
-            ratePlanId,
-            orderId,
-            guestEmail: guest.email,
-            guestFirst: guest.first || undefined,
-            guestLast: guest.last || undefined,
-          }
-        : {
-            propertyId: property.id,
-            ratePlanId,
-            orderId,
-            amount: tot.total,
-            guestEmail: guest.email,
-          };
-
-    fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
+    initBooking({
+      propertyId: property.id,
+      orderId,
+      result,
+      extras: selectedExtras,
+      extrasConfig: draft.extrasConfig,
+      guestEmail: guest.email,
+      guestFirst: guest.first || undefined,
+      guestLast: guest.last || undefined,
+      checkIn: draft.checkIn,
+      checkOut: draft.checkOut,
+      adults: draft.adults,
+      children: draft.children,
+      currency,
     })
-      .then(async (res) => {
-        const body = (await res.json().catch(() => ({}))) as {
-          error?: string;
-          clientSecret?: string;
-          paymentIntentId?: string;
-          setupIntentId?: string;
-          customerId?: string;
-        };
-        if (!res.ok || !body.clientSecret) {
-          setIntentError(body.error ?? `Failed to initialise payment (${res.status})`);
-          setIntentLoading(false);
-          intentFetchedKeyRef.current = null;
-          return;
-        }
+      .then((init) => {
+        bookingIdRef.current = init.bookingId;
         setIntent({
           kind,
-          clientSecret: body.clientSecret,
-          paymentIntentId: body.paymentIntentId,
-          setupIntentId: body.setupIntentId,
-          customerId: body.customerId,
+          clientSecret: init.clientSecret,
+          paymentIntentId: init.paymentIntentId,
+          setupIntentId: init.setupIntentId,
+          customerId: init.customerId,
         });
         setIntentLoading(false);
       })
       .catch((err) => {
-        setIntentError(err instanceof Error ? err.message : "Network error");
+        setIntentError(
+          err instanceof SubmitBookingError
+            ? err.message
+            : err instanceof Error
+              ? err.message
+              : "Network error"
+        );
         setIntentLoading(false);
         intentFetchedKeyRef.current = null;
       });
-  }, [draftHydrated, draft, isRefundable, property.id]);
+  }, [draftHydrated, draft, isRefundable, property.id, extras, currency]);
 
   async function handleSubmit() {
     if (!draft?.result || !orderIdRef.current) return;
@@ -179,6 +173,22 @@ export function PorticoCheckout({ t, property }: { t: PorticoTokens; property: R
     setSubmitting(true);
     setError(null);
     try {
+      const guest = {
+        firstName: first,
+        lastName: last,
+        email,
+        phone,
+        country,
+        specialRequests: draft.specialRequests,
+      };
+
+      // Persist guest details onto the row BEFORE charging — so a tab-death
+      // right after the charge still leaves the webhook everything it needs.
+      // Throws (blocking the charge) if it can't save.
+      if (bookingIdRef.current) {
+        await patchBookingDetails(bookingIdRef.current, guest);
+      }
+
       const stripeResult = await stripeFormRef.current.confirm();
       const selectedExtras = extras.filter((e) => draft.extras.includes(e.id));
       const result = await submitBooking({
@@ -187,14 +197,7 @@ export function PorticoCheckout({ t, property }: { t: PorticoTokens; property: R
         result: draft.result,
         extras: selectedExtras,
         extrasConfig: draft.extrasConfig,
-        guest: {
-          firstName: first,
-          lastName: last,
-          email,
-          phone,
-          country,
-          specialRequests: draft.specialRequests,
-        },
+        guest,
         checkIn: draft.checkIn,
         checkOut: draft.checkOut,
         adults: draft.adults,

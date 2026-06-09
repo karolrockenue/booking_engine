@@ -5,14 +5,7 @@ import { properties, bookings, paymentEvents } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { getStripe } from "@/lib/stripe/client";
 import { resolveStripeAccountStatus } from "@/lib/stripe/status";
-import { fulfilBooking } from "@/lib/pms/fulfil-booking";
-
-// Don't fulfil from the webhook while the inline /api/bookings call may still be
-// running — it's the primary fulfiller and returns the reservation # to the
-// guest. Only rescue bookings older than this (the webhook re-delivers, or the
-// browser died), matching the retry cron's min-age. fulfilBooking is claim-
-// locked + idempotent regardless, so this just avoids a needless race.
-const WEBHOOK_FULFIL_MIN_AGE_MS = 60 * 1000;
+import { rescueStuckBooking } from "@/lib/stripe/rescue-booking";
 
 export async function POST(req: NextRequest) {
   const secret = process.env.STRIPE_WEBHOOK_SECRET;
@@ -49,7 +42,7 @@ export async function POST(req: NextRequest) {
         const pi = event.data.object as Stripe.PaymentIntent;
         await logPaymentIntentEvent(event.type, pi);
         if (event.type === "payment_intent.succeeded") {
-          await rescueStuckBooking((pi.metadata?.orderId as string) ?? null);
+          await rescueStuckBooking("payment", pi);
         }
         break;
       }
@@ -58,7 +51,7 @@ export async function POST(req: NextRequest) {
         const si = event.data.object as Stripe.SetupIntent;
         await logSetupIntentEvent(event.type, si);
         if (event.type === "setup_intent.succeeded") {
-          await rescueStuckBooking((si.metadata?.orderId as string) ?? null);
+          await rescueStuckBooking("setup", si);
         }
         break;
       }
@@ -111,34 +104,6 @@ async function bookingIdForOrderId(orderId: string | null): Promise<string | nul
     .where(eq(bookings.orderId, orderId))
     .limit(1);
   return booking?.id ?? null;
-}
-
-// Payment/card succeeded but the booking isn't fulfilled in the PMS — the
-// reliable signal (Stripe), independent of the browser. Fire-and-forget so the
-// webhook stays fast; fulfilBooking claim-locks + is idempotent, and the retry
-// cron is the final backstop.
-async function rescueStuckBooking(orderId: string | null): Promise<void> {
-  if (!orderId) return;
-  const [booking] = await db
-    .select({
-      id: bookings.id,
-      status: bookings.status,
-      reservationId: bookings.cloudbedsReservationId,
-      createdAt: bookings.createdAt,
-    })
-    .from(bookings)
-    .where(eq(bookings.orderId, orderId))
-    .limit(1);
-  if (!booking) return; // row not written yet — inline path / cron will handle
-  if (booking.reservationId) return; // already fulfilled
-  if (booking.status === "cancelled" || booking.status === "failed") return;
-  const ageMs = booking.createdAt
-    ? Date.now() - new Date(booking.createdAt).getTime()
-    : Infinity;
-  if (ageMs < WEBHOOK_FULFIL_MIN_AGE_MS) return; // let the inline path go first
-  void fulfilBooking(booking.id).catch((e) =>
-    console.error(`webhook rescue fulfilBooking failed for ${booking.id}:`, e)
-  );
 }
 
 async function logPaymentIntentEvent(

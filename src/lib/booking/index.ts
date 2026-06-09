@@ -12,9 +12,13 @@ export {
 } from "./usePersistedDraft";
 export {
   submitBooking,
+  initBooking,
+  patchBookingDetails,
   SubmitBookingError,
   type SubmitBookingArgs,
   type SubmitBookingResult,
+  type InitBookingArgs,
+  type InitBookingResult,
 } from "./submitBooking";
 export type {
   AvailabilityResult,

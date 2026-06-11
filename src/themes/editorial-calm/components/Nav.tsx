@@ -4,18 +4,23 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import type { EditorialCalmTokens } from "../tokens";
 
-// Minimal Editorial Calm nav: property wordmark left, one booking action
-// right. `over` = sitting on the hero photo (white type, absolute position).
+// Editorial Calm nav, exactly as the mockups:
+//  · hero (`over`)  — wordmark + mono location label + underlined "Book a stay"
+//  · inner pages    — wordmark + the three editorial links (The houses /
+//    Journal / Neighbourhood). Journal & Neighbourhood are placeholder pages
+//    in the mockup too — they link home until those pages exist.
 
 export function Nav({
   t,
   name,
   over = false,
+  location,
   cta = "Book a stay",
 }: {
   t: EditorialCalmTokens;
   name: string;
   over?: boolean;
+  location?: string;
   cta?: string;
 }) {
   const slug = useParams<{ property: string }>().property ?? "";
@@ -43,23 +48,61 @@ export function Nav({
       <Link href={home} aria-label={`${name} — home`} style={{ textDecoration: "none" }}>
         <Wordmark name={name} color={fg} />
       </Link>
-      <Link
-        href={home}
-        style={{
-          fontFamily: "var(--ec-sans)",
-          fontWeight: 500,
-          fontSize: 14.5,
-          color: fg,
-          borderBottom: `1px solid ${fg}`,
-          paddingBottom: 2,
-          textDecoration: "none",
-        }}
-      >
-        {cta}
-      </Link>
+      {over ? (
+        <div style={{ display: "flex", alignItems: "center", gap: 30 }}>
+          {location && (
+            <span
+              style={{
+                fontFamily: "var(--ec-mono)",
+                fontSize: 11.5,
+                letterSpacing: "0.12em",
+                textTransform: "uppercase",
+                color: fg,
+                opacity: 0.85,
+              }}
+            >
+              {location}
+            </span>
+          )}
+          <Link
+            href={home}
+            style={{
+              fontFamily: "var(--ec-sans)",
+              fontWeight: 500,
+              fontSize: 14.5,
+              color: fg,
+              borderBottom: `1px solid ${fg}`,
+              paddingBottom: 2,
+              textDecoration: "none",
+            }}
+          >
+            {cta}
+          </Link>
+        </div>
+      ) : (
+        <div style={{ display: "flex", alignItems: "center", gap: 26 }} className="ec-nav-links">
+          {["The houses", "Journal", "Neighbourhood"].map((l) => (
+            <Link
+              key={l}
+              href={home}
+              style={{
+                fontFamily: "var(--ec-sans)",
+                fontWeight: 400,
+                fontSize: 13,
+                letterSpacing: "0.01em",
+                color: t.ink50,
+                textDecoration: "none",
+              }}
+            >
+              {l}
+            </Link>
+          ))}
+        </div>
+      )}
       <style>{`
         @media (max-width: 720px) {
           .ec-nav { padding: 20px 24px !important; }
+          .ec-nav-links { display: none !important; }
         }
       `}</style>
     </nav>
@@ -93,7 +136,7 @@ export function Wordmark({
       {parts.length === 2 ? (
         <>
           {parts[0]}
-          <span style={{ fontWeight: 400, margin: "0 0.06em" }}>&amp;</span>
+          <span style={{ fontWeight: 400, margin: "0 0.02em" }}>&amp;</span>
           {parts[1]}
         </>
       ) : (

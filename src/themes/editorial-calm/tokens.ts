@@ -25,6 +25,7 @@ export interface EditorialCalmTokens {
   forest: string;
 
   // Hero photo scrim — keeps white type legible over photography.
+  // Exact gradients from the mockup's brand.css `.scrim`.
   scrim: string;
 }
 
@@ -43,7 +44,7 @@ export const editorialCalm: Record<EditorialCalmTheme, EditorialCalmTokens> = {
     forest: "#1D5D3F",
 
     scrim:
-      "linear-gradient(180deg, rgba(18,20,14,.42) 0%, rgba(18,20,14,.30) 42%, rgba(18,20,14,.55) 100%)",
+      "radial-gradient(120% 80% at 50% 52%, rgba(18,20,14,.46), transparent 70%), linear-gradient(180deg, rgba(18,20,14,.42) 0%, rgba(18,20,14,.30) 42%, rgba(18,20,14,.55) 100%)",
   },
 };
 

@@ -9,6 +9,9 @@ import { activePorticoTokens } from "@/themes/portico";
 import { PorticoHome } from "@/themes/portico/screens/Home";
 import { activeStreetTokens } from "@/themes/street";
 import { StreetHome } from "@/themes/street/screens/Home";
+import { activeEditorialCalmTokens } from "@/themes/editorial-calm";
+import { EditorialCalmHome } from "@/themes/editorial-calm/screens/Home";
+import { ecDefaultContent } from "@/themes/editorial-calm/content-defaults";
 import { isValidTheme } from "@/lib/active-theme";
 import type { Metadata } from "next";
 
@@ -66,6 +69,25 @@ export default async function HomePage({ params, searchParams }: HomePageProps) 
     return (
       <StreetHome
         t={street}
+        slug={slug}
+        name={property.name}
+        photos={photos}
+        content={content}
+      />
+    );
+  }
+
+  const editorialCalm = await activeEditorialCalmTokens(effectiveSlug);
+  if (editorialCalm) {
+    const [photos, content] = await Promise.all([
+      getPropertyPhotos(property.id),
+      // Editorial Calm ships its own seed copy (the Mason & Fifth voice);
+      // saved content blocks still override field-by-field.
+      getPropertyContent(property.id, ecDefaultContent),
+    ]);
+    return (
+      <EditorialCalmHome
+        t={editorialCalm}
         slug={slug}
         name={property.name}
         photos={photos}

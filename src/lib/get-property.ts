@@ -206,14 +206,17 @@ export async function getPropertyPhotos(
   return out;
 }
 
+// `defaults` lets a template supply its own seed copy (e.g. Editorial Calm's
+// Mason & Fifth voice) — DB content blocks still override field-by-field.
 export async function getPropertyContent(
-  propertyId: string
+  propertyId: string,
+  defaults?: PropertyContent
 ): Promise<PropertyContent> {
   const blocks = await db
     .select({ key: contentBlocks.key, content: contentBlocks.content })
     .from(contentBlocks)
     .where(eq(contentBlocks.propertyId, propertyId));
-  return mergeContent(blocks);
+  return mergeContent(blocks, defaults);
 }
 
 export function parseTheme(raw: unknown): PropertyTheme {

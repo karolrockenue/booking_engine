@@ -5,6 +5,8 @@ import { activePorticoTokens } from "@/themes/portico";
 import { PorticoConfirmation } from "@/themes/portico/screens/Confirmation";
 import { activeStreetTokens } from "@/themes/street";
 import { StreetConfirmation } from "@/themes/street/screens/Confirmation";
+import { activeEditorialCalmTokens } from "@/themes/editorial-calm";
+import { EditorialCalmConfirmation } from "@/themes/editorial-calm/screens/Confirmation";
 
 export default async function ConfirmationPage({
   params,
@@ -22,6 +24,11 @@ export default async function ConfirmationPage({
   if (street) {
     const photos = await getPropertyPhotos(property.id);
     return <StreetConfirmation t={street} property={property} photos={photos} />;
+  }
+
+  const editorialCalm = await activeEditorialCalmTokens(property.templateSlug);
+  if (editorialCalm) {
+    return <EditorialCalmConfirmation t={editorialCalm} property={property} />;
   }
 
   return <ConfirmationClient property={property} />;

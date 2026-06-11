@@ -122,8 +122,11 @@ export const defaultContent: PropertyContent = {
   },
 };
 
-export function mergeContent(blocks: Array<{ key: string; content: unknown }>): PropertyContent {
-  const out: PropertyContent = structuredClone(defaultContent);
+export function mergeContent(
+  blocks: Array<{ key: string; content: unknown }>,
+  base: PropertyContent = defaultContent
+): PropertyContent {
+  const out: PropertyContent = structuredClone(base);
   for (const b of blocks) {
     if ((CONTENT_KEYS as readonly string[]).includes(b.key) && b.content && typeof b.content === "object") {
       // Per-key shallow merge — DB row overrides defaults at the field level.

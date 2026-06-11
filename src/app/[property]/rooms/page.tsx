@@ -5,6 +5,8 @@ import { activePorticoTokens } from "@/themes/portico";
 import { PorticoRoomSelect } from "@/themes/portico/screens/RoomSelect";
 import { activeStreetTokens } from "@/themes/street";
 import { StreetRoomSelect } from "@/themes/street/screens/RoomSelect";
+import { activeEditorialCalmTokens } from "@/themes/editorial-calm";
+import { EditorialCalmRoomSelect } from "@/themes/editorial-calm/screens/RoomSelect";
 import { buildHotelJsonLd } from "@/lib/google-hotels/hotel-json-ld";
 
 export default async function RoomsPage({
@@ -59,6 +61,29 @@ export default async function RoomsPage({
         <JsonLd data={jsonLd} />
         <StreetRoomSelect
           t={street}
+          property={property}
+          checkIn={checkIn}
+          checkOut={checkOut}
+          adults={adults}
+          children={children}
+          photos={photos}
+        />
+      </>
+    );
+  }
+
+  const editorialCalm = await activeEditorialCalmTokens(property.templateSlug);
+  if (editorialCalm) {
+    if (!checkIn || !checkOut) redirect(`/${slug}`);
+    const [photos, jsonLd] = await Promise.all([
+      getPropertyPhotos(property.id),
+      buildHotelJsonLd({ property, checkIn, checkOut, adults }),
+    ]);
+    return (
+      <>
+        <JsonLd data={jsonLd} />
+        <EditorialCalmRoomSelect
+          t={editorialCalm}
           property={property}
           checkIn={checkIn}
           checkOut={checkOut}

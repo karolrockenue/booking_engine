@@ -11,7 +11,7 @@ import {
   type TemplateSchema,
 } from "@/lib/template-schema";
 
-type TemplateSlug = "default" | "portico-ivory" | "street-ivory";
+type TemplateSlug = "default" | "portico-ivory" | "street-ivory" | "editorial-calm";
 
 interface Template {
   slug: TemplateSlug;
@@ -52,6 +52,11 @@ const TEMPLATES: Template[] = [
     slug: "street-ivory",
     label: "Street · Ivory",
     description: "Cinematic-light for limited-service hotels — same warm ivory, gold-italic accent, ghost-bordered buttons. Photo speaks for itself; type breathes.",
+  },
+  {
+    slug: "editorial-calm",
+    label: "Editorial · Calm",
+    description: "Off-white paper, mono bracketed labels, pill buttons, dotted-leader extras and a floating basket. Boutique-guesthouse voice — one decision at a time.",
   },
 ];
 

@@ -8,6 +8,7 @@
 
 import { porticoSchema } from "@/themes/portico/schema";
 import { streetSchema } from "@/themes/street/schema";
+import { editorialCalmSchema } from "@/themes/editorial-calm/schema";
 
 export type PhotoSlotKey = "hero" | "gallery" | "neighbourhood" | "room";
 export type ContentBlockKey =
@@ -52,6 +53,7 @@ const SCHEMAS: Record<string, TemplateSchema> = {
   default: DEFAULT_SCHEMA,
   "portico-ivory": porticoSchema,
   "street-ivory": streetSchema,
+  "editorial-calm": editorialCalmSchema,
 };
 
 export function getTemplateSchema(slug: string | null | undefined): TemplateSchema {

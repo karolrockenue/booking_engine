@@ -4,6 +4,8 @@ import { activePorticoTokens } from "@/themes/portico";
 import { PorticoExtras } from "@/themes/portico/screens/Extras";
 import { activeStreetTokens } from "@/themes/street";
 import { StreetExtras } from "@/themes/street/screens/Extras";
+import { activeEditorialCalmTokens } from "@/themes/editorial-calm";
+import { EditorialCalmExtras } from "@/themes/editorial-calm/screens/Extras";
 
 export default async function ExtrasPage({
   params,
@@ -21,6 +23,12 @@ export default async function ExtrasPage({
   if (street) {
     const photos = await getPropertyPhotos(property.id);
     return <StreetExtras t={street} property={property} photos={photos} />;
+  }
+
+  const editorialCalm = await activeEditorialCalmTokens(property.templateSlug);
+  if (editorialCalm) {
+    const photos = await getPropertyPhotos(property.id);
+    return <EditorialCalmExtras t={editorialCalm} property={property} photos={photos} />;
   }
 
   // Default theme handles extras inline on /rooms — no dedicated page.

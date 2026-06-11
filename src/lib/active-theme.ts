@@ -29,7 +29,10 @@ export type PorticoTheme = (typeof PORTICO_THEMES)[number];
 export const STREET_THEMES = ["street-ivory"] as const;
 export type StreetTheme = (typeof STREET_THEMES)[number];
 
-export type ActiveTheme = "default" | PorticoTheme | StreetTheme;
+export const EDITORIAL_CALM_THEMES = ["editorial-calm"] as const;
+export type EditorialCalmTheme = (typeof EDITORIAL_CALM_THEMES)[number];
+
+export type ActiveTheme = "default" | PorticoTheme | StreetTheme | EditorialCalmTheme;
 
 export const DEV_THEME_COOKIE = "dev-theme";
 
@@ -37,6 +40,7 @@ const VALID_THEMES = new Set<ActiveTheme>([
   "default",
   "portico-ivory",
   "street-ivory",
+  "editorial-calm",
 ]);
 
 // Per-property resolver. Pass the property's `template_slug` (from the DB)
@@ -80,6 +84,10 @@ export function isPortico(theme: ActiveTheme): theme is PorticoTheme {
 
 export function isStreet(theme: ActiveTheme): theme is StreetTheme {
   return (STREET_THEMES as readonly string[]).includes(theme);
+}
+
+export function isEditorialCalm(theme: ActiveTheme): theme is EditorialCalmTheme {
+  return (EDITORIAL_CALM_THEMES as readonly string[]).includes(theme);
 }
 
 export function isValidTheme(s: string): s is ActiveTheme {

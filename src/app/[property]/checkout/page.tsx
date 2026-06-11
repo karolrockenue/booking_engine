@@ -1,10 +1,12 @@
-import { resolvePropertyBySlug } from "@/lib/get-property";
+import { resolvePropertyBySlug, getPropertyPhotos } from "@/lib/get-property";
 import { notFound } from "next/navigation";
 import { CheckoutClient } from "./checkout-client";
 import { activePorticoTokens } from "@/themes/portico";
 import { PorticoCheckout } from "@/themes/portico/screens/Checkout";
 import { activeStreetTokens } from "@/themes/street";
 import { StreetCheckout } from "@/themes/street/screens/Checkout";
+import { activeEditorialCalmTokens } from "@/themes/editorial-calm";
+import { EditorialCalmCheckout } from "@/themes/editorial-calm/screens/Checkout";
 
 export default async function CheckoutPage({
   params,
@@ -20,6 +22,12 @@ export default async function CheckoutPage({
 
   const street = await activeStreetTokens(property.templateSlug);
   if (street) return <StreetCheckout t={street} property={property} />;
+
+  const editorialCalm = await activeEditorialCalmTokens(property.templateSlug);
+  if (editorialCalm) {
+    const photos = await getPropertyPhotos(property.id);
+    return <EditorialCalmCheckout t={editorialCalm} property={property} photos={photos} />;
+  }
 
   return <CheckoutClient property={property} />;
 }

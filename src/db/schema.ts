@@ -59,6 +59,11 @@ export const properties = pgTable("properties", {
   emailFromName: text("email_from_name"),
   emailReplyTo: text("email_reply_to"),
 
+  // Per-property Google Analytics 4 Measurement ID (G-XXXXXXXXXX). NULL = no
+  // analytics, which also means no cookie-consent banner for this hotel.
+  // Set via the admin Analytics tab; injected (consent-gated) on the storefront.
+  gaMeasurementId: text("ga_measurement_id"),
+
   createdAt: timestamp("created_at", { withTimezone: true }).default(
     sql`NOW()`
   ),
@@ -95,6 +100,32 @@ export const contentBlocks = pgTable(
     uniqueIndex("content_blocks_property_key_idx").on(
       table.propertyId,
       table.key
+    ),
+  ]
+);
+
+// --- Legal pages (privacy / cookies / accessibility / terms) ---
+// Per-property hosted policy pages. Body is markdown authored in the admin
+// Legal tab, rendered to sanitized HTML at /[property]/legal/[slug]. Only
+// `published` pages are reachable and linked from the storefront footer.
+
+export const legalPages = pgTable(
+  "legal_pages",
+  {
+    id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+    propertyId: uuid("property_id").references(() => properties.id),
+    slug: text("slug").notNull(), // privacy | cookies | accessibility | terms
+    title: text("title").notNull(),
+    body: text("body").notNull().default(""),
+    published: boolean("published").notNull().default(false),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).default(
+      sql`NOW()`
+    ),
+  },
+  (table) => [
+    uniqueIndex("legal_pages_property_slug_idx").on(
+      table.propertyId,
+      table.slug
     ),
   ]
 );

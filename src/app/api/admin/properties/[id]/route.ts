@@ -96,6 +96,21 @@ export async function PATCH(
     }
   }
 
+  // gaMeasurementId — validate the GA4 format, or allow clearing it (null/"").
+  if (body.gaMeasurementId !== undefined) {
+    const raw = body.gaMeasurementId;
+    if (raw === null || raw === "") {
+      allowed.gaMeasurementId = null;
+    } else if (typeof raw === "string" && /^G-[A-Z0-9]{6,}$/.test(raw.trim())) {
+      allowed.gaMeasurementId = raw.trim();
+    } else {
+      return NextResponse.json(
+        { error: "Invalid GA4 Measurement ID (expected G-XXXXXXXXXX)" },
+        { status: 400 }
+      );
+    }
+  }
+
   // templateSlug — validate against the known template registry before allowing.
   if (body.templateSlug !== undefined) {
     if (typeof body.templateSlug !== "string" || !isValidTheme(body.templateSlug)) {

@@ -24,6 +24,8 @@ const TAB_FROM_PATH: Record<string, Parameters<typeof Sidebar>[0]["activeTab"]> 
   emails: "emails",
   alerts: "alerts",
   design: "design",
+  legal: "legal",
+  analytics: "analytics",
   cloudbeds: "cloudbeds",
   mews: "mews",
   stripe: "stripe",

@@ -20,6 +20,8 @@ interface SidebarProps {
     | "emails"
     | "alerts"
     | "design"
+    | "legal"
+    | "analytics"
     | "cloudbeds"
     | "mews"
     | "stripe"
@@ -33,7 +35,7 @@ interface SidebarProps {
   onLogout?: () => void;
 }
 
-type PropertyItemId = "overview" | "bookings" | "content" | "media" | "rooms" | "rates" | "extras" | "emails" | "alerts" | "design";
+type PropertyItemId = "overview" | "bookings" | "content" | "media" | "rooms" | "rates" | "extras" | "emails" | "alerts" | "design" | "legal" | "analytics";
 
 const PROPERTY_ITEMS: Array<{
   id: PropertyItemId;
@@ -51,6 +53,8 @@ const PROPERTY_ITEMS: Array<{
   { id: "emails", icon: "✉", label: "Emails", countKey: "emailsCount" },
   { id: "alerts", icon: "⇄", label: "Alerts", countKey: "alertsCount" },
   { id: "design", icon: "◇", label: "Design" },
+  { id: "legal", icon: "§", label: "Legal" },
+  { id: "analytics", icon: "▲", label: "Analytics" },
 ];
 
 const INTEGRATION_ITEMS = [

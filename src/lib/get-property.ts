@@ -17,6 +17,7 @@ export type ResolvedProperty = {
   theme: PropertyTheme;
   templateSlug: string;
   status: string | null;
+  gaMeasurementId: string | null;
 };
 
 /**
@@ -90,6 +91,7 @@ function toResolved(property: PropertyRow): ResolvedProperty {
     theme: parseTheme(property.theme),
     templateSlug: property.templateSlug,
     status: property.status,
+    gaMeasurementId: property.gaMeasurementId,
   };
 }
 

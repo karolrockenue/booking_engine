@@ -147,6 +147,7 @@ function Hero({
           </h1>
         </div>
 
+        {content.pressQuote ? (
         <aside
           style={{ maxWidth: 280, textAlign: "right", color: "#fff" }}
           className="portico-hero-quote"
@@ -174,6 +175,7 @@ function Hero({
             — {content.pressQuoteAttribution}
           </div>
         </aside>
+        ) : null}
       </div>
 
       <div

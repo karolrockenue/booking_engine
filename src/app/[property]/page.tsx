@@ -13,7 +13,19 @@ import { activeEditorialCalmTokens } from "@/themes/editorial-calm";
 import { EditorialCalmHome } from "@/themes/editorial-calm/screens/Home";
 import { ecDefaultContent } from "@/themes/editorial-calm/content-defaults";
 import { isValidTheme } from "@/lib/active-theme";
+import {
+  getPublishedLegalPages,
+  buildLegalFineprintLinks,
+} from "@/lib/legal";
 import type { Metadata } from "next";
+
+// Footer fine-print links derived from the property's published legal pages.
+// Replaces the content block's links entirely so unpublished pages never leave
+// dead "#" links in the footer.
+async function legalFooterLinks(propertyId: string, propertySlug: string) {
+  const pages = await getPublishedLegalPages(propertyId);
+  return buildLegalFineprintLinks(propertySlug, pages);
+}
 
 type HomePageProps = {
   params: Promise<{ property: string }>;
@@ -51,10 +63,12 @@ export default async function HomePage({ params, searchParams }: HomePageProps) 
 
   const portico = await activePorticoTokens(effectiveSlug);
   if (portico) {
-    const [photos, content] = await Promise.all([
+    const [photos, content, legalLinks] = await Promise.all([
       getPropertyPhotos(property.id),
       getPropertyContent(property.id),
+      legalFooterLinks(property.id, slug),
     ]);
+    content.footer = { ...content.footer, fineprintLinks: legalLinks };
     return (
       <PorticoHome t={portico} slug={slug} photos={photos} content={content} />
     );
@@ -62,10 +76,12 @@ export default async function HomePage({ params, searchParams }: HomePageProps) 
 
   const street = await activeStreetTokens(effectiveSlug);
   if (street) {
-    const [photos, content] = await Promise.all([
+    const [photos, content, legalLinks] = await Promise.all([
       getPropertyPhotos(property.id),
       getPropertyContent(property.id),
+      legalFooterLinks(property.id, slug),
     ]);
+    content.footer = { ...content.footer, fineprintLinks: legalLinks };
     return (
       <StreetHome
         t={street}
@@ -79,12 +95,14 @@ export default async function HomePage({ params, searchParams }: HomePageProps) 
 
   const editorialCalm = await activeEditorialCalmTokens(effectiveSlug);
   if (editorialCalm) {
-    const [photos, content] = await Promise.all([
+    const [photos, content, legalLinks] = await Promise.all([
       getPropertyPhotos(property.id),
       // Editorial Calm ships its own seed copy (the Mason & Fifth voice);
       // saved content blocks still override field-by-field.
       getPropertyContent(property.id, ecDefaultContent),
+      legalFooterLinks(property.id, slug),
     ]);
+    content.footer = { ...content.footer, fineprintLinks: legalLinks };
     return (
       <EditorialCalmHome
         t={editorialCalm}

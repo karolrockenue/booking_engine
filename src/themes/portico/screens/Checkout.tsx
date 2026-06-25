@@ -407,6 +407,15 @@ export function PorticoCheckout({ t, property }: { t: PorticoTokens; property: R
                   clientSecret={intent.clientSecret}
                   publicKey={intent.publicKey ?? ""}
                   accountId={intent.accountId}
+                  style={{
+                    color: t.ink,
+                    bodyColor: t.ink,
+                    borderColor: t.rule,
+                    focusColor: t.accent,
+                    backgroundColor: "#FFFFFF",
+                    borderRadius: 4,
+                    padding: 14,
+                  }}
                 />
               </div>
             )}

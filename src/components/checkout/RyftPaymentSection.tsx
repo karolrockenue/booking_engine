@@ -10,11 +10,35 @@ import { forwardRef, useEffect, useImperativeHandle, useState } from "react";
 
 const SDK_SRC = "https://embedded.ryftpay.com/v2/ryft.min.js";
 
+// Ryft Embedded SDK appearance. The SDK's defaults are unusable on a light
+// page (text color defaults to #FFF on a #FFF background → invisible), so we
+// always pass a readable style; callers can override accent/border per theme.
+export interface RyftStyle {
+  borderRadius?: number;
+  backgroundColor?: string;
+  borderColor?: string;
+  padding?: number;
+  color?: string;
+  focusColor?: string;
+  bodyColor?: string;
+}
+
+const DEFAULT_STYLE: RyftStyle = {
+  backgroundColor: "#FFFFFF",
+  color: "#1A1A1A",
+  bodyColor: "#1A1A1A",
+  borderColor: "#D4D4D4",
+  focusColor: "#5B4CFF",
+  borderRadius: 6,
+  padding: 14,
+};
+
 interface RyftSdk {
   init: (opts: {
     publicKey: string;
     clientSecret: string;
     accountId?: string;
+    style?: RyftStyle;
   }) => void;
   attemptPayment: () => Promise<{ status?: string; lastError?: string }>;
   getUserFacingErrorMessage: (err?: string) => string;
@@ -37,6 +61,7 @@ interface Props {
   clientSecret: string;
   publicKey: string;
   accountId?: string | null;
+  style?: RyftStyle;
 }
 
 function loadSdk(): Promise<void> {
@@ -58,7 +83,7 @@ function loadSdk(): Promise<void> {
 }
 
 const RyftPaymentSection = forwardRef<RyftPaymentSectionHandle, Props>(
-  function RyftPaymentSection({ clientSecret, publicKey, accountId }, ref) {
+  function RyftPaymentSection({ clientSecret, publicKey, accountId, style }, ref) {
     // Track which session has actually mounted / errored, keyed by clientSecret,
     // so we never reset state synchronously in the effect (which triggers
     // cascading renders). `ready`/`loadError` are derived from these below.
@@ -67,14 +92,22 @@ const RyftPaymentSection = forwardRef<RyftPaymentSectionHandle, Props>(
 
     // (Re)mount the SDK whenever the session changes — Ryft.init binds to one
     // clientSecret, mirroring Stripe Elements' set-once clientSecret.
+    const missingConfig = !publicKey || !clientSecret;
+
     useEffect(() => {
       let cancelled = false;
+      if (missingConfig) return;
       loadSdk()
         .then(() => {
           if (cancelled) return;
           const ryft = (window as RyftWindow).Ryft;
           if (!ryft) throw new Error("Ryft SDK unavailable");
-          ryft.init({ publicKey, clientSecret, accountId: accountId ?? undefined });
+          ryft.init({
+            publicKey,
+            clientSecret,
+            accountId: accountId ?? undefined,
+            style: { ...DEFAULT_STYLE, ...style },
+          });
           setMountedSecret(clientSecret);
         })
         .catch((e) => {
@@ -90,7 +123,11 @@ const RyftPaymentSection = forwardRef<RyftPaymentSectionHandle, Props>(
     }, [clientSecret, publicKey, accountId]);
 
     const ready = mountedSecret === clientSecret;
-    const loadError = errState?.secret === clientSecret ? errState.message : null;
+    const loadError = missingConfig
+      ? "Payment is not configured (missing Ryft key). Please contact the hotel."
+      : errState?.secret === clientSecret
+        ? errState.message
+        : null;
 
     useImperativeHandle(
       ref,
@@ -124,14 +161,22 @@ const RyftPaymentSection = forwardRef<RyftPaymentSectionHandle, Props>(
     }
 
     return (
-      <div className="Ryft--paysection">
-        <form id="ryft-pay-form" className="Ryft--payform" onSubmit={(e) => e.preventDefault()}>
-          <div id="ryft-pay-error" style={{ color: "#c00", fontSize: 13 }} />
+      <div className="Ryft--paysection" style={{ width: "100%" }}>
+        <form
+          id="ryft-pay-form"
+          className="Ryft--payform"
+          onSubmit={(e) => e.preventDefault()}
+          style={{ width: "100%", minHeight: ready ? undefined : 0 }}
+        >
+          <div
+            id="ryft-pay-error"
+            style={{ color: "#c0392b", fontSize: 13, marginTop: 8 }}
+          />
         </form>
         {!ready && (
           <div
             className="text-sm p-4 rounded text-center"
-            style={{ backgroundColor: "#fafafa", color: "var(--color-text-muted)" }}
+            style={{ backgroundColor: "#fafafa", color: "#888" }}
           >
             Loading secure payment form…
           </div>

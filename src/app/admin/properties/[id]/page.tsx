@@ -23,6 +23,9 @@ interface Property {
   stripeAccountId: string | null;
   stripeAccountStatus: string | null;
   stripeAccountCurrency: string | null;
+  ryftAccountId: string | null;
+  ryftAccountStatus: string | null;
+  ryftAccountCurrency: string | null;
   platformFeePercent: string | null;
   payoutSchedule: string | null;
   currency: string | null;
@@ -83,6 +86,7 @@ export default function PropertyDetailPage({
   // Cloudbeds OAuth
   const [connecting, setConnecting] = useState(false);
   const [connectingStripe, setConnectingStripe] = useState(false);
+  const [connectingRyft, setConnectingRyft] = useState(false);
 
   async function handleConnectCloudbeds() {
     setConnecting(true);
@@ -129,6 +133,30 @@ export default function PropertyDetailPage({
     } catch {
       alert("Failed to start Stripe onboarding");
       setConnectingStripe(false);
+    }
+  }
+
+  async function handleConnectRyft() {
+    setConnectingRyft(true);
+    try {
+      const res = await fetch("/api/ryft/connect/start", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ propertyId: id }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.onboardingUrl) {
+        alert(data.error ?? "Failed to start Ryft onboarding");
+        setConnectingRyft(false);
+        return;
+      }
+      window.location.href = data.onboardingUrl;
+    } catch {
+      alert("Failed to start Ryft onboarding");
+      setConnectingRyft(false);
     }
   }
 
@@ -423,6 +451,43 @@ export default function PropertyDetailPage({
                     : property.stripeAccountId
                       ? "Resume onboarding"
                       : "Connect to Stripe"}
+              </button>
+            </div>
+            <div className="flex items-center gap-3 flex-wrap">
+              <span className="text-gray-500">Ryft:</span>
+              <span
+                className={`px-2 py-0.5 rounded-full font-medium ${
+                  property.ryftAccountStatus === "active"
+                    ? "bg-green-100 text-green-700"
+                    : property.ryftAccountStatus === "restricted"
+                      ? "bg-red-100 text-red-700"
+                      : property.ryftAccountId
+                        ? "bg-yellow-100 text-yellow-700"
+                        : "bg-gray-100 text-gray-500"
+                }`}
+              >
+                {property.ryftAccountId
+                  ? (property.ryftAccountStatus ?? "pending")
+                  : "not connected"}
+              </span>
+              {property.ryftAccountCurrency && (
+                <span className="text-gray-400">
+                  · {property.ryftAccountCurrency.toUpperCase()}
+                </span>
+              )}
+              <button
+                type="button"
+                onClick={handleConnectRyft}
+                disabled={connectingRyft}
+                className="text-xs px-2 py-0.5 border rounded hover:bg-gray-50 disabled:opacity-50"
+              >
+                {connectingRyft
+                  ? "Redirecting..."
+                  : property.ryftAccountStatus === "active"
+                    ? "Manage in Ryft"
+                    : property.ryftAccountId
+                      ? "Resume onboarding"
+                      : "Connect to Ryft"}
               </button>
             </div>
           </div>

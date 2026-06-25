@@ -9,6 +9,11 @@ import {
   type RyftWebhookEvent,
 } from "@/lib/ryft/webhook";
 import { fulfilBooking } from "@/lib/pms/fulfil-booking";
+import {
+  resolveRyftAccountStatus,
+  type RyftAccount,
+} from "@/lib/ryft/accounts";
+import { properties } from "@/db/schema";
 
 // Ryft webhook receiver — the durable backstop that turns a confirmed Ryft
 // payment into a fulfilled booking (reservation + folio payment in the PMS),
@@ -60,6 +65,10 @@ export async function POST(req: NextRequest) {
       case RyftEvent.PaymentDeclined:
         await logPaymentEvent(event, "payment_session_declined");
         break;
+      case RyftEvent.AccountCreated:
+      case RyftEvent.AccountUpdated:
+        await handleAccountUpdated(event);
+        break;
       default:
         // Account.*, Dispute.*, Payout.*, Person.* — not needed for the
         // pay-now → fulfil path yet; acknowledged so Ryft stops retrying.
@@ -110,6 +119,30 @@ async function handlePaymentSucceeded(event: RyftWebhookEvent) {
     .where(eq(bookings.id, booking.id));
 
   await fulfilBooking(booking.id);
+}
+
+// Keep a hotel's onboarding status fresh as Ryft verifies the sub-account
+// (the durable backstop to the connect/return redirect). The event payload is
+// the full Account resource; match the property by its stored ryftAccountId.
+async function handleAccountUpdated(event: RyftWebhookEvent) {
+  const account = (event.data ?? {}) as unknown as RyftAccount;
+  if (!account.id) return;
+
+  const [property] = await db
+    .select({ id: properties.id })
+    .from(properties)
+    .where(eq(properties.ryftAccountId, account.id))
+    .limit(1);
+
+  if (!property) {
+    console.warn(`Ryft ${event.eventType} for unmapped account ${account.id}`);
+    return;
+  }
+
+  await db
+    .update(properties)
+    .set({ ryftAccountStatus: resolveRyftAccountStatus(account) })
+    .where(eq(properties.id, property.id));
 }
 
 async function logPaymentEvent(

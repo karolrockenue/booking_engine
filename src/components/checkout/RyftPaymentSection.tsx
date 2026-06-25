@@ -116,7 +116,7 @@ const RyftPaymentSection = forwardRef<RyftPaymentSectionHandle, Props>(
         <CardForm
           ref={cardFormRef}
           displayConfig={{ fieldLayout: "separated", showInputIcons: true }}
-          paymentFieldConfig={{ collectNameOnCard: true }}
+          paymentFieldConfig={{ collectNameOnCard: false }}
           theme={buildTheme(brand)}
           validationMode="onChange"
           onReady={() => setError(null)}

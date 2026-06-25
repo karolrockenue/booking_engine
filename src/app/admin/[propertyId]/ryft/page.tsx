@@ -59,13 +59,22 @@ export default function RyftPage() {
       });
       const body = (await r.json().catch(() => ({}))) as {
         onboardingUrl?: string;
+        active?: boolean;
+        message?: string;
         error?: string;
       };
-      if (!r.ok || !body.onboardingUrl) {
+      if (!r.ok) {
         alert(body.error ?? `Failed to start onboarding (HTTP ${r.status})`);
         return;
       }
-      window.location.href = body.onboardingUrl;
+      // Hosted onboarding (prod/https) → redirect. Otherwise the sub-account is
+      // created and its status resolved server-side; just reload to show it.
+      if (body.onboardingUrl) {
+        window.location.href = body.onboardingUrl;
+        return;
+      }
+      if (body.message) alert(body.message);
+      load();
     } finally {
       setConnecting(false);
     }

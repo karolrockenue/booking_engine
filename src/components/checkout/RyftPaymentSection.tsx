@@ -56,7 +56,6 @@ const RyftPaymentSection = forwardRef<RyftPaymentSectionHandle, Props>(
   function RyftPaymentSection({ clientSecret, publicKey, accountId, brand }, ref) {
     const cardFormRef = useRef<RyftCardFormInstance>(null);
     const [error, setError] = useState<string | null>(null);
-    const validRef = useRef(false);
 
     useImperativeHandle(
       ref,
@@ -64,12 +63,20 @@ const RyftPaymentSection = forwardRef<RyftPaymentSectionHandle, Props>(
         async confirm(): Promise<RyftConfirmResult> {
           const form = cardFormRef.current;
           if (!form) throw new Error("Payment form is still loading");
-          if (!validRef.current) {
-            throw new Error(
-              "Please complete all card fields — card number, expiry, CVC, and name on card."
-            );
+          // Let the SDK validate (don't pre-gate — onBlur validity races with
+          // the submit click). It throws on incomplete fields; rephrase that.
+          let res;
+          try {
+            res = await form.attemptPayment();
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : "";
+            if (/valid/i.test(msg)) {
+              throw new Error(
+                "Please check your card details — number, expiry, CVC and name on card must all be complete."
+              );
+            }
+            throw err instanceof Error ? err : new Error("Payment failed");
           }
-          const res = await form.attemptPayment();
           if (res.type === "final") {
             const status = res.paymentSession?.status;
             if (status === "Approved" || status === "Captured") {
@@ -111,10 +118,9 @@ const RyftPaymentSection = forwardRef<RyftPaymentSectionHandle, Props>(
           displayConfig={{ fieldLayout: "separated", showInputIcons: true }}
           paymentFieldConfig={{ collectNameOnCard: true }}
           theme={buildTheme(brand)}
-          validationMode="onBlur"
+          validationMode="onChange"
           onReady={() => setError(null)}
           onValidationChange={(e) => {
-            validRef.current = !!e.isValid;
             if (e.isValid) setError(null);
           }}
         />

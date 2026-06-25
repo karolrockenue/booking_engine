@@ -47,6 +47,15 @@ function platformFeeMinor(property: Property, totalMinor: number): number {
   return Math.round((totalMinor * feePercent) / 100);
 }
 
+// Ryft requires an https returnUrl. On http/localhost (dev) omit it entirely —
+// the Embedded SDK handles 3DS inline, so a redirect URL isn't needed.
+function ryftReturnUrl(): { returnUrl?: string } {
+  const origin = publicOrigin();
+  return origin.startsWith("https://")
+    ? { returnUrl: `${origin}/api/ryft/return` }
+    : {};
+}
+
 // Route Ryft's processing fee to the hotel sub-account. `combined` books every
 // Ryft-charged fee to one account and overrides the granular per-fee fields, so
 // it's the safe choice regardless of the hotel's Blended/ICC++ pricing model.
@@ -96,7 +105,7 @@ export async function createBookingPaymentSession(
     // hotel's settlement → hotel receives amount − platformFee − processingFee.
     platformSettings: feeToSubAccount(property),
     metadata: { orderId, propertyId: property.id },
-    returnUrl: `${publicOrigin()}/api/ryft/return`,
+    ...ryftReturnUrl(),
   });
 
   return {
@@ -152,7 +161,7 @@ export async function createBookingCardSave(
     customerDetails: customer.id ? undefined : undefined,
     customerId: customer.id,
     metadata: { orderId, propertyId: property.id },
-    returnUrl: `${publicOrigin()}/api/ryft/return`,
+    ...ryftReturnUrl(),
   });
 
   return {

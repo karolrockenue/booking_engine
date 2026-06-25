@@ -407,15 +407,7 @@ export function PorticoCheckout({ t, property }: { t: PorticoTokens; property: R
                   clientSecret={intent.clientSecret}
                   publicKey={intent.publicKey ?? ""}
                   accountId={intent.accountId}
-                  style={{
-                    color: t.ink,
-                    bodyColor: t.ink,
-                    borderColor: t.rule,
-                    focusColor: t.accent,
-                    backgroundColor: "#FFFFFF",
-                    borderRadius: 2,
-                    padding: 16,
-                  }}
+                  brand={{ accent: t.accent, ink: t.ink, rule: t.rule }}
                 />
                 <p
                   style={{

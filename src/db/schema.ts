@@ -44,10 +44,17 @@ export const properties = pgTable("properties", {
     withTimezone: true,
   }),
 
-  // Stripe Connect (Express, direct charges)
+  // Stripe Connect (Express, direct charges) — legacy rail, retained during the
+  // phased Ryft migration so the live storefront keeps transacting. Removed in
+  // the final cutover pass once checkout runs on Ryft.
   stripeAccountId: text("stripe_account_id"),
   stripeAccountCurrency: text("stripe_account_currency"),
   stripeAccountStatus: text("stripe_account_status").default("pending"), // pending | active | restricted
+
+  // Ryft sub-account (marketplace / platform-fee model — the Connect equivalent)
+  ryftAccountId: text("ryft_account_id"),
+  ryftAccountCurrency: text("ryft_account_currency"),
+  ryftAccountStatus: text("ryft_account_status").default("pending"), // pending | active | restricted
   platformFeePercent: decimal("platform_fee_percent", {
     precision: 5,
     scale: 2,
@@ -395,11 +402,20 @@ export const bookings = pgTable("bookings", {
   grandTotal: decimal("grand_total", { precision: 10, scale: 2 }).notNull(),
   currency: text("currency").notNull(),
 
-  // Stripe state
+  // Stripe state — legacy rail, retained during the phased Ryft migration.
   stripePaymentIntentId: text("stripe_payment_intent_id"),
   stripeSetupIntentId: text("stripe_setup_intent_id"),
   stripePaymentMethodId: text("stripe_payment_method_id"),
   stripeCustomerId: text("stripe_customer_id"),
+
+  // Ryft state. ryftPaymentSessionId is the pay-now (NR) session. For Flex,
+  // ryftVerifySessionId is the zero-auth (verifyAccount, amount:0) session that
+  // saves the card to ryftCustomerId, and ryftPaymentMethodId is the saved card
+  // the auto-charge cron later charges off-session.
+  ryftPaymentSessionId: text("ryft_payment_session_id"),
+  ryftVerifySessionId: text("ryft_verify_session_id"),
+  ryftPaymentMethodId: text("ryft_payment_method_id"),
+  ryftCustomerId: text("ryft_customer_id"),
   chargeAt: timestamp("charge_at", { withTimezone: true }),
 
   // Auto-charge cron state (Phase 5). attempts counter is the simple loop
@@ -422,7 +438,7 @@ export const bookings = pgTable("bookings", {
   status: text("status").notNull().default("pending"),
 
   // Fulfilment orchestration (Step 0, create-before-pay). One idempotent
-  // fulfilBooking() runs from three triggers (inline, Stripe webhook, retry
+  // fulfilBooking() runs from three triggers (inline, Ryft webhook, retry
   // cron); fulfilmentLockedAt is an optimistic claim so two triggers can't
   // create the same reservation at once, confirmationEmailSentAt makes the
   // guest confirmation send exactly once.
@@ -496,13 +512,14 @@ export const bookingExtras = pgTable("booking_extras", {
   postingPlan: jsonb("posting_plan"),
 });
 
-// --- Payment events (audit trail for Stripe + auto-charge cron) ---
+// --- Payment events (audit trail for Ryft + auto-charge cron) ---
 
 export const paymentEvents = pgTable("payment_events", {
   id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
   bookingId: uuid("booking_id").references(() => bookings.id),
-  type: text("type").notNull(), // payment_intent_created | payment_intent_succeeded | payment_intent_failed | setup_intent_created | setup_intent_succeeded | auto_charge_attempt | auto_charge_succeeded | auto_charge_failed | refund | payment_method_detached
-  stripeId: text("stripe_id"),
+  type: text("type").notNull(), // payment_session_created | payment_session_approved | payment_session_declined | card_save_succeeded | card_save_failed | auto_charge_attempt | auto_charge_succeeded | auto_charge_failed | refund | payment_method_detached | (legacy Stripe: payment_intent_*/setup_intent_*)
+  stripeId: text("stripe_id"), // legacy rail
+  ryftId: text("ryft_id"),
   amount: decimal("amount", { precision: 10, scale: 2 }),
   currency: text("currency"),
   status: text("status"),

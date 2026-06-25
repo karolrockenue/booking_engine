@@ -300,18 +300,21 @@ export async function fulfilBooking(bookingId: string): Promise<FulfilResult> {
 
     // 4. Record the external payment for NR (paid at checkout). Flex records it
     //    later at auto-charge. Guarded by pmsPaymentId so a re-run can't double.
-    if (
-      booking.rateType === "nr" &&
-      booking.stripePaymentIntentId &&
-      !booking.pmsPaymentId
-    ) {
+    //    Rail-agnostic: prefer the Ryft session id, fall back to the legacy
+    //    Stripe PaymentIntent during the phased migration.
+    const paymentRef = booking.ryftPaymentSessionId
+      ? { id: booking.ryftPaymentSessionId, label: `Ryft ${booking.ryftPaymentSessionId}` }
+      : booking.stripePaymentIntentId
+        ? { id: booking.stripePaymentIntentId, label: `Stripe ${booking.stripePaymentIntentId}` }
+        : null;
+    if (booking.rateType === "nr" && paymentRef && !booking.pmsPaymentId) {
       try {
         const { pmsPaymentId } = await pms.recordPayment({
           reservationId: pmsReservationId,
           amount: Number(booking.grandTotal),
           type: "credit",
-          description: `Stripe ${booking.stripePaymentIntentId}`,
-          externalIdentifier: booking.stripePaymentIntentId,
+          description: paymentRef.label,
+          externalIdentifier: paymentRef.id,
         });
         if (pmsPaymentId) {
           await db

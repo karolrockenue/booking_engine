@@ -121,7 +121,18 @@ const RyftPaymentSection = forwardRef<RyftPaymentSectionHandle, Props>(
           validationMode="onChange"
           onReady={() => setError(null)}
           onValidationChange={(e) => {
-            if (e.isValid) setError(null);
+            // eslint-disable-next-line no-console
+            console.log("[Ryft validation]", e.isValid, e.validationErrors);
+            if (e.isValid) {
+              setError(null);
+            } else if (e.validationErrors?.length) {
+              setError(
+                "Needs attention: " +
+                  e.validationErrors
+                    .map((v) => `${v.field}${v.message ? ` (${v.message})` : ""}`)
+                    .join(", ")
+              );
+            }
           }}
         />
         {error && (

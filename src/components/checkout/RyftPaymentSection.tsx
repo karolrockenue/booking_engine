@@ -56,6 +56,7 @@ const RyftPaymentSection = forwardRef<RyftPaymentSectionHandle, Props>(
   function RyftPaymentSection({ clientSecret, publicKey, accountId, brand }, ref) {
     const cardFormRef = useRef<RyftCardFormInstance>(null);
     const [error, setError] = useState<string | null>(null);
+    const validRef = useRef(false);
 
     useImperativeHandle(
       ref,
@@ -63,6 +64,11 @@ const RyftPaymentSection = forwardRef<RyftPaymentSectionHandle, Props>(
         async confirm(): Promise<RyftConfirmResult> {
           const form = cardFormRef.current;
           if (!form) throw new Error("Payment form is still loading");
+          if (!validRef.current) {
+            throw new Error(
+              "Please complete all card fields — card number, expiry, CVC, and name on card."
+            );
+          }
           const res = await form.attemptPayment();
           if (res.type === "final") {
             const status = res.paymentSession?.status;
@@ -105,7 +111,12 @@ const RyftPaymentSection = forwardRef<RyftPaymentSectionHandle, Props>(
           displayConfig={{ fieldLayout: "separated", showInputIcons: true }}
           paymentFieldConfig={{ collectNameOnCard: true }}
           theme={buildTheme(brand)}
+          validationMode="onBlur"
           onReady={() => setError(null)}
+          onValidationChange={(e) => {
+            validRef.current = !!e.isValid;
+            if (e.isValid) setError(null);
+          }}
         />
         {error && (
           <div style={{ color: "#c0392b", fontSize: 13, marginTop: 8 }}>{error}</div>

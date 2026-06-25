@@ -174,7 +174,14 @@ export async function syncHotelDetailsForProperty(
     propertyUpdate.name = cbName;
     propertyFieldsUpdated.push("name");
   }
-  if (cbCurrency && property.currency !== cbCurrency) {
+  // Once a hotel is live on Ryft, its settlement currency is fixed by the Ryft
+  // account — don't let Cloudbeds flip it (the sandbox returns USD for non-USD
+  // hotels, which would break payment sessions against a GBP Ryft account).
+  if (
+    cbCurrency &&
+    property.currency !== cbCurrency &&
+    property.ryftAccountStatus !== "active"
+  ) {
     propertyUpdate.currency = cbCurrency;
     propertyFieldsUpdated.push("currency");
   }

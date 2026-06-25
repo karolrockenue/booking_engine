@@ -61,6 +61,7 @@ const INTEGRATION_ITEMS = [
   { id: "cloudbeds", icon: "●", label: "Cloudbeds" },
   { id: "mews", icon: "◆", label: "Mews" },
   { id: "stripe", icon: "$", label: "Stripe" },
+  { id: "ryft", icon: "◈", label: "Ryft" },
   { id: "domain", icon: "⌘", label: "Domain & deploy" },
 ] as const;
 

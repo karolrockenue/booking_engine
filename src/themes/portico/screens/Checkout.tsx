@@ -401,7 +401,7 @@ export function PorticoCheckout({ t, property }: { t: PorticoTokens; property: R
               <p style={{ fontSize: 12, color: "#c25a4d", margin: 0 }}>{intentError}</p>
             )}
             {intent && rail === "ryft" && (
-              <div style={{ marginTop: 8 }}>
+              <div style={{ marginTop: 8, maxWidth: 460 }}>
                 <RyftPaymentSection
                   ref={ryftFormRef}
                   clientSecret={intent.clientSecret}
@@ -413,10 +413,22 @@ export function PorticoCheckout({ t, property }: { t: PorticoTokens; property: R
                     borderColor: t.rule,
                     focusColor: t.accent,
                     backgroundColor: "#FFFFFF",
-                    borderRadius: 4,
-                    padding: 14,
+                    borderRadius: 2,
+                    padding: 16,
                   }}
                 />
+                <p
+                  style={{
+                    marginTop: 12,
+                    fontSize: 10,
+                    letterSpacing: "0.18em",
+                    textTransform: "uppercase",
+                    color: t.inkSoft,
+                    fontFamily: "var(--portico-sans)",
+                  }}
+                >
+                  Secured by Ryft · 256-bit encryption
+                </p>
               </div>
             )}
             {intent && rail === "stripe" && (

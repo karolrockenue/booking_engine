@@ -13,6 +13,8 @@ import {
   savePersistedConfirmation,
   submitBooking,
   initBooking,
+  ryftInitBooking,
+  ryftFinaliseBooking,
   patchBookingDetails,
   SubmitBookingError,
   useExtras,
@@ -22,6 +24,9 @@ import StripePaymentSection, {
   type IntentKind,
   type StripePaymentSectionHandle,
 } from "@/components/checkout/StripePaymentSection";
+import RyftPaymentSection, {
+  type RyftPaymentSectionHandle,
+} from "@/components/checkout/RyftPaymentSection";
 import type { ResolvedProperty } from "@/lib/get-property";
 import type { PorticoTokens } from "../tokens";
 import { porticoImg } from "../tokens";
@@ -37,6 +42,10 @@ interface CreatedIntent {
   paymentIntentId?: string;
   setupIntentId?: string;
   customerId?: string;
+  // Ryft rail only.
+  paymentSessionId?: string;
+  accountId?: string | null;
+  publicKey?: string | null;
 }
 
 export function PorticoCheckout({ t, property }: { t: PorticoTokens; property: ResolvedProperty }) {
@@ -74,6 +83,8 @@ export function PorticoCheckout({ t, property }: { t: PorticoTokens; property: R
   }
 
   const stripeFormRef = useRef<StripePaymentSectionHandle | null>(null);
+  const ryftFormRef = useRef<RyftPaymentSectionHandle | null>(null);
+  const rail = property.paymentRail;
   const intentFetchedKeyRef = useRef<string | null>(null);
   // Booking row id from initBooking() — created before the card is confirmed.
   const bookingIdRef = useRef<string | null>(null);
@@ -121,10 +132,21 @@ export function PorticoCheckout({ t, property }: { t: PorticoTokens; property: R
     const guest = guestRef.current;
     const selectedExtras = extras.filter((e) => draft.extras.includes(e.id));
 
+    // Flex (refundable) on Ryft needs the off-session saved-card redesign that
+    // isn't built yet — block here rather than init a path that can't charge.
+    if (rail === "ryft" && isRefundable) {
+      setIntentError(
+        "Refundable rates aren’t available for online payment yet — please choose a non-refundable rate."
+      );
+      setIntentLoading(false);
+      intentFetchedKeyRef.current = null;
+      return;
+    }
+
     setIntentLoading(true);
     setIntentError(null);
 
-    initBooking({
+    const initArgs = {
       propertyId: property.id,
       orderId,
       result,
@@ -138,18 +160,33 @@ export function PorticoCheckout({ t, property }: { t: PorticoTokens; property: R
       adults: draft.adults,
       children: draft.children,
       currency,
-    })
-      .then((init) => {
-        bookingIdRef.current = init.bookingId;
-        setIntent({
-          kind,
-          clientSecret: init.clientSecret,
-          paymentIntentId: init.paymentIntentId,
-          setupIntentId: init.setupIntentId,
-          customerId: init.customerId,
-        });
-        setIntentLoading(false);
-      })
+    };
+
+    const initPromise =
+      rail === "ryft"
+        ? ryftInitBooking(initArgs).then((init) => {
+            bookingIdRef.current = init.bookingId;
+            setIntent({
+              kind: "payment",
+              clientSecret: init.clientSecret,
+              paymentSessionId: init.paymentSessionId,
+              accountId: init.accountId,
+              publicKey: init.publicKey,
+            });
+          })
+        : initBooking(initArgs).then((init) => {
+            bookingIdRef.current = init.bookingId;
+            setIntent({
+              kind,
+              clientSecret: init.clientSecret,
+              paymentIntentId: init.paymentIntentId,
+              setupIntentId: init.setupIntentId,
+              customerId: init.customerId,
+            });
+          });
+
+    initPromise
+      .then(() => setIntentLoading(false))
       .catch((err) => {
         setIntentError(
           err instanceof SubmitBookingError
@@ -161,11 +198,12 @@ export function PorticoCheckout({ t, property }: { t: PorticoTokens; property: R
         setIntentLoading(false);
         intentFetchedKeyRef.current = null;
       });
-  }, [draftHydrated, draft, isRefundable, property.id, extras, currency]);
+  }, [draftHydrated, draft, isRefundable, property.id, extras, currency, rail]);
 
   async function handleSubmit() {
     if (!draft?.result || !orderIdRef.current) return;
-    if (!intent || !stripeFormRef.current) {
+    const activeFormRef = rail === "ryft" ? ryftFormRef : stripeFormRef;
+    if (!intent || !activeFormRef.current) {
       setError("Payment form is still loading. Try again in a moment.");
       return;
     }
@@ -189,30 +227,50 @@ export function PorticoCheckout({ t, property }: { t: PorticoTokens; property: R
         await patchBookingDetails(bookingIdRef.current, guest);
       }
 
-      const stripeResult = await stripeFormRef.current.confirm();
       const selectedExtras = extras.filter((e) => draft.extras.includes(e.id));
-      const result = await submitBooking({
-        propertyId: property.id,
-        orderId: orderIdRef.current,
-        result: draft.result,
-        extras: selectedExtras,
-        extrasConfig: draft.extrasConfig,
-        guest,
-        checkIn: draft.checkIn,
-        checkOut: draft.checkOut,
-        adults: draft.adults,
-        children: draft.children,
-        currency,
-        paymentIntentId: stripeResult.paymentIntentId,
-        setupIntentId: stripeResult.setupIntentId,
-        paymentMethodId: stripeResult.paymentMethodId,
-        customerId: intent.customerId,
-      });
+
+      let result: {
+        orderId: string;
+        bookingId: string;
+        cloudbedsReservationId?: string | null;
+        cancelUrl?: string;
+      };
+
+      if (rail === "ryft") {
+        // Confirm the card via the Ryft SDK, then finalise server-side
+        // (verify paid + fulfil to the PMS). Webhook is the async backstop.
+        await ryftFormRef.current!.confirm();
+        const finalised = await ryftFinaliseBooking(bookingIdRef.current!);
+        result = {
+          orderId: orderIdRef.current,
+          bookingId: bookingIdRef.current!,
+          cloudbedsReservationId: finalised.cloudbedsReservationId,
+        };
+      } else {
+        const stripeResult = await stripeFormRef.current!.confirm();
+        result = await submitBooking({
+          propertyId: property.id,
+          orderId: orderIdRef.current,
+          result: draft.result,
+          extras: selectedExtras,
+          extrasConfig: draft.extrasConfig,
+          guest,
+          checkIn: draft.checkIn,
+          checkOut: draft.checkOut,
+          adults: draft.adults,
+          children: draft.children,
+          currency,
+          paymentIntentId: stripeResult.paymentIntentId,
+          setupIntentId: stripeResult.setupIntentId,
+          paymentMethodId: stripeResult.paymentMethodId,
+          customerId: intent.customerId,
+        });
+      }
 
       savePersistedConfirmation({
         orderId: result.orderId,
         bookingId: result.bookingId,
-        cloudbedsReservationId: result.cloudbedsReservationId,
+        cloudbedsReservationId: result.cloudbedsReservationId ?? undefined,
         cancelUrl: result.cancelUrl,
         firstName: first,
         lastName: last,
@@ -342,7 +400,17 @@ export function PorticoCheckout({ t, property }: { t: PorticoTokens; property: R
             {intentError && (
               <p style={{ fontSize: 12, color: "#c25a4d", margin: 0 }}>{intentError}</p>
             )}
-            {intent && (
+            {intent && rail === "ryft" && (
+              <div style={{ marginTop: 8 }}>
+                <RyftPaymentSection
+                  ref={ryftFormRef}
+                  clientSecret={intent.clientSecret}
+                  publicKey={intent.publicKey ?? ""}
+                  accountId={intent.accountId}
+                />
+              </div>
+            )}
+            {intent && rail === "stripe" && (
               <div style={{ marginTop: 8 }}>
                 <StripePaymentSection
                   ref={stripeFormRef}

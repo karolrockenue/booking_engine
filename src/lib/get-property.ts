@@ -18,6 +18,10 @@ export type ResolvedProperty = {
   templateSlug: string;
   status: string | null;
   gaMeasurementId: string | null;
+  // Which payment rail this hotel transacts on. "ryft" once its Ryft
+  // sub-account is active; otherwise the legacy Stripe rail. Drives the
+  // storefront checkout during the phased migration.
+  paymentRail: "ryft" | "stripe";
 };
 
 /**
@@ -92,6 +96,7 @@ function toResolved(property: PropertyRow): ResolvedProperty {
     templateSlug: property.templateSlug,
     status: property.status,
     gaMeasurementId: property.gaMeasurementId,
+    paymentRail: property.ryftAccountStatus === "active" ? "ryft" : "stripe",
   };
 }
 

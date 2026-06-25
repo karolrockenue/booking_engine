@@ -163,6 +163,17 @@ export async function createBookingCardSave(
   };
 }
 
+// Fetch a payment session to verify its status server-side (the inline
+// finalise after the browser confirms — the webhook is the async backstop).
+export async function getPaymentSession(
+  paymentSessionId: string,
+  account: string
+): Promise<RyftPaymentSession> {
+  return ryftFetch<RyftPaymentSession>(`/payment-sessions/${paymentSessionId}`, {
+    account,
+  });
+}
+
 // Capture a previously authorised (Manual captureFlow) session. Full capture
 // when amount omitted.
 export async function capturePaymentSession(

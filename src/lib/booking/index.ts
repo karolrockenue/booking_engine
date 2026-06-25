@@ -13,12 +13,15 @@ export {
 export {
   submitBooking,
   initBooking,
+  ryftInitBooking,
+  ryftFinaliseBooking,
   patchBookingDetails,
   SubmitBookingError,
   type SubmitBookingArgs,
   type SubmitBookingResult,
   type InitBookingArgs,
   type InitBookingResult,
+  type RyftInitBookingResult,
 } from "./submitBooking";
 export type {
   AvailabilityResult,

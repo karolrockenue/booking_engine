@@ -21,6 +21,8 @@ import {
   savePersistedConfirmation,
   submitBooking,
   initBooking,
+  ryftInitBooking,
+  ryftFinaliseBooking,
   patchBookingDetails,
   SubmitBookingError,
   type PersistedBookingDraft,
@@ -30,6 +32,9 @@ import StripePaymentSection, {
   type StripePaymentSectionHandle,
   type IntentKind,
 } from "@/components/checkout/StripePaymentSection";
+import RyftPaymentSection, {
+  type RyftPaymentSectionHandle,
+} from "@/components/checkout/RyftPaymentSection";
 
 interface CreatedIntent {
   kind: IntentKind;
@@ -37,6 +42,10 @@ interface CreatedIntent {
   paymentIntentId?: string;
   setupIntentId?: string;
   customerId?: string;
+  // Ryft rail only.
+  paymentSessionId?: string;
+  accountId?: string | null;
+  publicKey?: string | null;
 }
 
 export function CheckoutClient({ property }: { property: ResolvedProperty }) {
@@ -79,6 +88,8 @@ export function CheckoutClient({ property }: { property: ResolvedProperty }) {
   }
 
   const stripeFormRef = useRef<StripePaymentSectionHandle | null>(null);
+  const ryftFormRef = useRef<RyftPaymentSectionHandle | null>(null);
+  const rail = property.paymentRail;
 
   // Booking row id returned by initBooking() — the row exists server-side before
   // the card is confirmed (create-before-pay), so the patch + finalise calls and
@@ -140,10 +151,21 @@ export function CheckoutClient({ property }: { property: ResolvedProperty }) {
     const guest = guestDetailsRef.current;
     const selectedExtras = extras.filter((e) => draft.extras.includes(e.id));
 
+    // Flex (refundable) on Ryft needs the off-session saved-card redesign that
+    // isn't built yet — block here rather than init a path that can't charge.
+    if (rail === "ryft" && isRefundable) {
+      setIntentError(
+        "Refundable rates aren’t available for online payment yet — please choose a non-refundable rate."
+      );
+      setIntentLoading(false);
+      intentFetchedKeyRef.current = null;
+      return;
+    }
+
     setIntentLoading(true);
     setIntentError(null);
 
-    initBooking({
+    const initArgs = {
       propertyId: property.id,
       orderId,
       result,
@@ -157,18 +179,33 @@ export function CheckoutClient({ property }: { property: ResolvedProperty }) {
       adults: draft.adults,
       children: draft.children,
       currency,
-    })
-      .then((init) => {
-        bookingIdRef.current = init.bookingId;
-        setIntent({
-          kind,
-          clientSecret: init.clientSecret,
-          paymentIntentId: init.paymentIntentId,
-          setupIntentId: init.setupIntentId,
-          customerId: init.customerId,
-        });
-        setIntentLoading(false);
-      })
+    };
+
+    const initPromise =
+      rail === "ryft"
+        ? ryftInitBooking(initArgs).then((init) => {
+            bookingIdRef.current = init.bookingId;
+            setIntent({
+              kind: "payment",
+              clientSecret: init.clientSecret,
+              paymentSessionId: init.paymentSessionId,
+              accountId: init.accountId,
+              publicKey: init.publicKey,
+            });
+          })
+        : initBooking(initArgs).then((init) => {
+            bookingIdRef.current = init.bookingId;
+            setIntent({
+              kind,
+              clientSecret: init.clientSecret,
+              paymentIntentId: init.paymentIntentId,
+              setupIntentId: init.setupIntentId,
+              customerId: init.customerId,
+            });
+          });
+
+    initPromise
+      .then(() => setIntentLoading(false))
       .catch((err) => {
         setIntentError(
           err instanceof SubmitBookingError
@@ -181,11 +218,12 @@ export function CheckoutClient({ property }: { property: ResolvedProperty }) {
         // Allow a retry on next email change since the call failed.
         intentFetchedKeyRef.current = null;
       });
-  }, [draftHydrated, draft, emailReady, isRefundable, property.id, extras, currency]);
+  }, [draftHydrated, draft, emailReady, isRefundable, property.id, extras, currency, rail]);
 
   async function handleSubmit() {
     if (!draft?.result || !orderIdRef.current) return;
-    if (!intent || !stripeFormRef.current) {
+    const activeFormRef = rail === "ryft" ? ryftFormRef : stripeFormRef;
+    if (!intent || !activeFormRef.current) {
       setError("Payment form is not ready yet.");
       return;
     }
@@ -202,36 +240,54 @@ export function CheckoutClient({ property }: { property: ResolvedProperty }) {
       };
 
       // Persist guest details onto the row BEFORE charging — if the tab dies
-      // right after the charge, the Stripe webhook still has the name/country
-      // it needs to fulfil. Throws (blocking the charge) if it can't save.
+      // right after the charge, the webhook still has the name/country it
+      // needs to fulfil. Throws (blocking the charge) if it can't save.
       if (bookingIdRef.current) {
         await patchBookingDetails(bookingIdRef.current, guest);
       }
 
-      const confirmResult = await stripeFormRef.current.confirm();
-
       const selectedExtras = extras.filter((e) => draft.extras.includes(e.id));
-      const result = await submitBooking({
-        propertyId: property.id,
-        orderId: orderIdRef.current,
-        result: draft.result,
-        extras: selectedExtras,
-        guest,
-        checkIn: draft.checkIn,
-        checkOut: draft.checkOut,
-        adults: draft.adults,
-        children: draft.children,
-        currency,
-        paymentIntentId: confirmResult.paymentIntentId,
-        setupIntentId: confirmResult.setupIntentId,
-        paymentMethodId: confirmResult.paymentMethodId,
-        customerId: intent.customerId,
-      });
+
+      let result: {
+        orderId: string;
+        bookingId: string;
+        cloudbedsReservationId?: string | null;
+      };
+
+      if (rail === "ryft") {
+        // Confirm the card via the Ryft SDK, then finalise server-side
+        // (verify paid + fulfil to the PMS). Webhook is the async backstop.
+        await ryftFormRef.current!.confirm();
+        const finalised = await ryftFinaliseBooking(bookingIdRef.current!);
+        result = {
+          orderId: orderIdRef.current,
+          bookingId: bookingIdRef.current!,
+          cloudbedsReservationId: finalised.cloudbedsReservationId,
+        };
+      } else {
+        const confirmResult = await stripeFormRef.current!.confirm();
+        result = await submitBooking({
+          propertyId: property.id,
+          orderId: orderIdRef.current,
+          result: draft.result,
+          extras: selectedExtras,
+          guest,
+          checkIn: draft.checkIn,
+          checkOut: draft.checkOut,
+          adults: draft.adults,
+          children: draft.children,
+          currency,
+          paymentIntentId: confirmResult.paymentIntentId,
+          setupIntentId: confirmResult.setupIntentId,
+          paymentMethodId: confirmResult.paymentMethodId,
+          customerId: intent.customerId,
+        });
+      }
 
       savePersistedConfirmation({
         orderId: result.orderId,
         bookingId: result.bookingId,
-        cloudbedsReservationId: result.cloudbedsReservationId,
+        cloudbedsReservationId: result.cloudbedsReservationId ?? undefined,
         firstName: guestDetails.firstName,
         lastName: guestDetails.lastName,
         email: guestDetails.email,
@@ -495,7 +551,16 @@ export function CheckoutClient({ property }: { property: ResolvedProperty }) {
                     </div>
                   )}
 
-                  {emailReady && intent && (
+                  {emailReady && intent && rail === "ryft" && (
+                    <RyftPaymentSection
+                      ref={ryftFormRef}
+                      clientSecret={intent.clientSecret}
+                      publicKey={intent.publicKey ?? ""}
+                      accountId={intent.accountId}
+                    />
+                  )}
+
+                  {emailReady && intent && rail === "stripe" && (
                     <StripePaymentSection
                       ref={stripeFormRef}
                       kind={intent.kind}
@@ -515,7 +580,7 @@ export function CheckoutClient({ property }: { property: ResolvedProperty }) {
                       className="text-[11px]"
                       style={{ color: "var(--color-text-muted)" }}
                     >
-                      Secured by Stripe · 256-bit SSL encryption
+                      Secured by {rail === "ryft" ? "Ryft" : "Stripe"} · 256-bit SSL encryption
                     </p>
                   </div>
                 </div>

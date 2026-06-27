@@ -132,6 +132,21 @@ export function PorticoCheckout({ t, property }: { t: PorticoTokens; property: R
     const guest = guestRef.current;
     const selectedExtras = extras.filter((e) => draft.extras.includes(e.id));
 
+    // Ryft refundable (Flex) saves the card to a Ryft customer, which REQUIRES
+    // the guest email at card-save-session creation time. This form renders
+    // before the email is typed, so wait for it — the effect re-runs when the
+    // email is entered. (NR has no customer, so it can init immediately.)
+    if (
+      rail === "ryft" &&
+      isRefundable &&
+      !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(guestRef.current.email)
+    ) {
+      intentFetchedKeyRef.current = null;
+      setIntentLoading(false);
+      setIntentError("Enter your email above to load the secure card form.");
+      return;
+    }
+
     setIntentLoading(true);
     setIntentError(null);
 
@@ -187,7 +202,7 @@ export function PorticoCheckout({ t, property }: { t: PorticoTokens; property: R
         setIntentLoading(false);
         intentFetchedKeyRef.current = null;
       });
-  }, [draftHydrated, draft, isRefundable, property.id, extras, currency, rail]);
+  }, [draftHydrated, draft, isRefundable, property.id, extras, currency, rail, email]);
 
   async function handleSubmit() {
     if (!draft?.result || !orderIdRef.current) return;

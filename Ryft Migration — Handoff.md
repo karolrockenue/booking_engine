@@ -103,7 +103,7 @@ npx next dev --experimental-https \
 
 **Checkout (storefront)**
 - `src/components/checkout/RyftPaymentSection.tsx` — `@ryftpay/react` CardForm, separated fields, `confirm()` → `attemptPayment`. (Was the v2 embedded `ryft.min.js` — replaced; that was the cramped white-on-white single line.)
-- `src/themes/portico/screens/Checkout.tsx` — **branched by `property.paymentRail`** (Ryft vs Stripe). ⚠️ Street + Editorial-Calm themes NOT yet branched.
+- `src/themes/{portico,street,editorial-calm}/screens/Checkout.tsx` — all three **branched by `property.paymentRail`** (Ryft vs Stripe).
 - `src/app/[property]/checkout/checkout-client.tsx` — fallback, also branched.
 - `src/lib/booking/submitBooking.ts` — `ryftInitBooking`, `ryftFinaliseBooking` helpers.
 - `src/lib/get-property.ts` — `ResolvedProperty.paymentRail` = `ryftAccountStatus==='active' ? 'ryft' : 'stripe'`.
@@ -127,7 +127,7 @@ npx next dev --experimental-https \
 
 ### Functional (real gaps)
 - [x] **Flex / refundable rates** — BUILT (2026-06-27), pending live storefront proof. Ryft has no SetupIntent 1:1, so Flex runs as **Credential-on-File / Merchant-Initiated Transactions**: a zero-value `verifyAccount` card-save session with `paymentType:"Unscheduled"` on the hotel sub-account establishes the COF mandate; the auto-charge cron later charges the saved card off-session (`paymentType:"Unscheduled"` + `previousPayment` = the mandate + saved `pmt_`). Both constraints (sub-account scope for mandate+charge; mandate must be `Unscheduled` not Standard) were proven in sandbox. Files: `lib/ryft/sessions.ts` (`createBookingCardSave`, `getCustomerPaymentMethods`, `chargeSavedCard`, `deletePaymentMethod`), `lib/ryft/auto-charge.ts` (mirrors the Stripe cron), `cron/auto-charge` (runs both rails), `ryft/booking-init`+`booking-finalise` (rate-aware), `ryft/webhooks` (card-save backstop), Portico + fallback checkout un-gated. **Deferred sub-piece:** a Ryft "re-enter your card" page for a failed off-session charge (the Stripe `payment-update` page equivalent) — grace retries + auto-cancel cover it for now.
-- [ ] **Street + Editorial-Calm themes** — only Portico's checkout is branched. Hotels on those themes still get the Stripe-only checkout. Apply the same per-rail branch to `src/themes/street/screens/Checkout.tsx` and `src/themes/editorial-calm/screens/Checkout.tsx`.
+- [x] **Street + Editorial-Calm themes** — DONE (2026-06-27). Both checkout screens now branch by `property.paymentRail`, same pattern as Portico. All three storefront themes can transact NR + Flex on Ryft.
 - [x] **Cancellations / refunds on Ryft** — DONE (2026-06-27). `api/bookings/cancel/route.ts` refund branch is now rail-aware: refunds (Captured) or voids (Approved) via Ryft, falls back to the Stripe paths. (Note: NR self-cancel is still punted to the hotel before the refund branch, so this activates for Flex/refundable bookings.)
 - [ ] **Production webhook** — register `POST /api/ryft/webhooks` against a stable HTTPS prod domain (inline finalise covers the happy path; webhook is the durable backstop if the guest tab dies post-charge). Store the `whs_…` secret as `RYFT_WEBHOOK_SECRET`.
 - [ ] **Real hotel onboarding** — `connect/start` shortcuts on localhost (no hosted KYC). In prod (https), the hosted-onboarding link + `Account.updated` webhook drive real verification → active.
@@ -168,7 +168,6 @@ b8136bb Ryft rail: webhook → fee split → Cloudbeds posting (backend)
    - Card-save: the Ryft CardForm should complete (3DS in-browser) and the confirmation page should render — booking ends `pms_synced`, `rateType=flex`, with `ryftVerifySessionId` + `ryftCustomerId` + `ryftPaymentMethodId` set and NO `ryftPaymentSessionId`. Status must NOT be `paid` yet.
    - Off-session charge: set `chargeAt` in the past (or wait for the window) and POST `/api/cron/auto-charge` with the `CRON_SECRET` bearer. Expect a `chargeSavedCard` MIT → session `Captured`, booking `paid`, folio payment posted, `auto_charge_succeeded` event.
    - Throwaway sandbox proof of the MIT contract lived in the scratchpad (`ryft-mit-proof.mjs`); the 3DS step is why it can't run fully headless.
-2. **Street + Editorial-Calm theme checkout branching** — copy the per-rail branch from `themes/portico/screens/Checkout.tsx` into those two theme screens (mechanical).
-3. **Production webhook** — register `/api/ryft/webhooks` on the prod HTTPS domain; store `whs_…` as `RYFT_WEBHOOK_SECRET`. Confirm the signature digest encoding against the first live delivery (verifier accepts hex+base64).
-4. **Ryft "re-enter card" page** for a failed off-session charge (the Stripe `payment-update` equivalent) — currently deferred; grace retries + auto-cancel cover it.
-5. **Cutover** — once all themes + Flex are proven live: delete Stripe (~65 files + `stripe_*` columns) and fold the ad-hoc Ryft ALTERs into drizzle migrations.
+2. **Production webhook** — register `/api/ryft/webhooks` on the prod HTTPS domain; store `whs_…` as `RYFT_WEBHOOK_SECRET`. Confirm the signature digest encoding against the first live delivery (verifier accepts hex+base64).
+3. **Ryft "re-enter card" page** for a failed off-session charge (the Stripe `payment-update` equivalent) — currently deferred; grace retries + auto-cancel cover it.
+4. **Cutover** — once Flex is proven live: delete Stripe (~65 files + `stripe_*` columns) and fold the ad-hoc Ryft ALTERs into drizzle migrations.

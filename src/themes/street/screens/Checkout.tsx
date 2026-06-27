@@ -12,6 +12,8 @@ import {
   savePersistedConfirmation,
   submitBooking,
   initBooking,
+  ryftInitBooking,
+  ryftFinaliseBooking,
   patchBookingDetails,
   SubmitBookingError,
   useExtras,
@@ -21,6 +23,9 @@ import StripePaymentSection, {
   type IntentKind,
   type StripePaymentSectionHandle,
 } from "@/components/checkout/StripePaymentSection";
+import RyftPaymentSection, {
+  type RyftPaymentSectionHandle,
+} from "@/components/checkout/RyftPaymentSection";
 import { COUNTRIES } from "@/lib/countries";
 import type { ResolvedProperty } from "@/lib/get-property";
 import type { StreetTokens } from "../tokens";
@@ -36,6 +41,10 @@ interface CreatedIntent {
   paymentIntentId?: string;
   setupIntentId?: string;
   customerId?: string;
+  // Ryft rail only.
+  paymentSessionId?: string;
+  accountId?: string | null;
+  publicKey?: string | null;
 }
 
 export function StreetCheckout({ t, property }: { t: StreetTokens; property: ResolvedProperty }) {
@@ -71,6 +80,8 @@ export function StreetCheckout({ t, property }: { t: StreetTokens; property: Res
   }
 
   const stripeFormRef = useRef<StripePaymentSectionHandle | null>(null);
+  const ryftFormRef = useRef<RyftPaymentSectionHandle | null>(null);
+  const rail = property.paymentRail;
   const intentFetchedKeyRef = useRef<string | null>(null);
   // Booking row id from initBooking() — created before the card is confirmed.
   const bookingIdRef = useRef<string | null>(null);
@@ -121,7 +132,7 @@ export function StreetCheckout({ t, property }: { t: StreetTokens; property: Res
     setIntentLoading(true);
     setIntentError(null);
 
-    initBooking({
+    const initArgs = {
       propertyId: property.id,
       orderId,
       result,
@@ -135,18 +146,33 @@ export function StreetCheckout({ t, property }: { t: StreetTokens; property: Res
       adults: draft.adults,
       children: draft.children,
       currency,
-    })
-      .then((init) => {
-        bookingIdRef.current = init.bookingId;
-        setIntent({
-          kind,
-          clientSecret: init.clientSecret,
-          paymentIntentId: init.paymentIntentId,
-          setupIntentId: init.setupIntentId,
-          customerId: init.customerId,
-        });
-        setIntentLoading(false);
-      })
+    };
+
+    const initPromise =
+      rail === "ryft"
+        ? ryftInitBooking(initArgs).then((init) => {
+            bookingIdRef.current = init.bookingId;
+            setIntent({
+              kind: "payment",
+              clientSecret: init.clientSecret,
+              paymentSessionId: init.paymentSessionId,
+              accountId: init.accountId,
+              publicKey: init.publicKey,
+            });
+          })
+        : initBooking(initArgs).then((init) => {
+            bookingIdRef.current = init.bookingId;
+            setIntent({
+              kind,
+              clientSecret: init.clientSecret,
+              paymentIntentId: init.paymentIntentId,
+              setupIntentId: init.setupIntentId,
+              customerId: init.customerId,
+            });
+          });
+
+    initPromise
+      .then(() => setIntentLoading(false))
       .catch((err) => {
         setIntentError(
           err instanceof SubmitBookingError
@@ -158,11 +184,12 @@ export function StreetCheckout({ t, property }: { t: StreetTokens; property: Res
         setIntentLoading(false);
         intentFetchedKeyRef.current = null;
       });
-  }, [draftHydrated, draft, isRefundable, property.id, extras, currency]);
+  }, [draftHydrated, draft, isRefundable, property.id, extras, currency, rail]);
 
   async function handleSubmit() {
     if (!draft?.result || !orderIdRef.current) return;
-    if (!intent || !stripeFormRef.current) {
+    const activeFormRef = rail === "ryft" ? ryftFormRef : stripeFormRef;
+    if (!intent || !activeFormRef.current) {
       setError("Payment form is still loading. Try again in a moment.");
       return;
     }
@@ -186,30 +213,50 @@ export function StreetCheckout({ t, property }: { t: StreetTokens; property: Res
         await patchBookingDetails(bookingIdRef.current, guest);
       }
 
-      const stripeResult = await stripeFormRef.current.confirm();
       const selectedExtras = extras.filter((e) => draft.extras.includes(e.id));
-      const result = await submitBooking({
-        propertyId: property.id,
-        orderId: orderIdRef.current,
-        result: draft.result,
-        extras: selectedExtras,
-        extrasConfig: draft.extrasConfig,
-        guest,
-        checkIn: draft.checkIn,
-        checkOut: draft.checkOut,
-        adults: draft.adults,
-        children: draft.children,
-        currency,
-        paymentIntentId: stripeResult.paymentIntentId,
-        setupIntentId: stripeResult.setupIntentId,
-        paymentMethodId: stripeResult.paymentMethodId,
-        customerId: intent.customerId,
-      });
+
+      let result: {
+        orderId: string;
+        bookingId: string;
+        cloudbedsReservationId?: string | null;
+        cancelUrl?: string;
+      };
+
+      if (rail === "ryft") {
+        // Confirm the card via the Ryft SDK, then finalise server-side
+        // (verify paid + fulfil to the PMS). Webhook is the async backstop.
+        await ryftFormRef.current!.confirm();
+        const finalised = await ryftFinaliseBooking(bookingIdRef.current!);
+        result = {
+          orderId: orderIdRef.current,
+          bookingId: bookingIdRef.current!,
+          cloudbedsReservationId: finalised.cloudbedsReservationId,
+        };
+      } else {
+        const stripeResult = await stripeFormRef.current!.confirm();
+        result = await submitBooking({
+          propertyId: property.id,
+          orderId: orderIdRef.current,
+          result: draft.result,
+          extras: selectedExtras,
+          extrasConfig: draft.extrasConfig,
+          guest,
+          checkIn: draft.checkIn,
+          checkOut: draft.checkOut,
+          adults: draft.adults,
+          children: draft.children,
+          currency,
+          paymentIntentId: stripeResult.paymentIntentId,
+          setupIntentId: stripeResult.setupIntentId,
+          paymentMethodId: stripeResult.paymentMethodId,
+          customerId: intent.customerId,
+        });
+      }
 
       savePersistedConfirmation({
         orderId: result.orderId,
         bookingId: result.bookingId,
-        cloudbedsReservationId: result.cloudbedsReservationId,
+        cloudbedsReservationId: result.cloudbedsReservationId ?? undefined,
         cancelUrl: result.cancelUrl,
         firstName: first,
         lastName: last,
@@ -319,7 +366,31 @@ export function StreetCheckout({ t, property }: { t: StreetTokens; property: Res
                 </p>
               )}
               {intentError && <p style={{ fontSize: 12, color: "#b54a3a", margin: 0 }}>{intentError}</p>}
-              {intent && (
+              {intent && rail === "ryft" && (
+                <div style={{ marginTop: 8, maxWidth: 460 }}>
+                  <RyftPaymentSection
+                    ref={ryftFormRef}
+                    clientSecret={intent.clientSecret}
+                    publicKey={intent.publicKey ?? ""}
+                    accountId={intent.accountId}
+                    customerEmail={email}
+                    brand={{ accent: t.accent, ink: t.ink, rule: t.rule }}
+                  />
+                  <p
+                    style={{
+                      marginTop: 12,
+                      fontSize: 10,
+                      letterSpacing: "0.18em",
+                      textTransform: "uppercase",
+                      color: t.inkMuted,
+                      fontFamily: "var(--street-sans)",
+                    }}
+                  >
+                    Secured by Ryft · 256-bit encryption
+                  </p>
+                </div>
+              )}
+              {intent && rail === "stripe" && (
                 <div style={{ marginTop: 8 }}>
                   <StripePaymentSection
                     ref={stripeFormRef}

@@ -13,6 +13,7 @@ import {
   resolveRyftAccountStatus,
   type RyftAccount,
 } from "@/lib/ryft/accounts";
+import { getCustomerPaymentMethods } from "@/lib/ryft/sessions";
 import { properties } from "@/db/schema";
 
 // Ryft webhook receiver — the durable backstop that turns a confirmed Ryft
@@ -108,8 +109,55 @@ async function handlePaymentSucceeded(event: RyftWebhookEvent) {
     return;
   }
 
-  // Stamp the session id (idempotent) and mark paid so fulfilBooking's payment
-  // step posts the Ryft reference to the PMS folio.
+  // A Flex card-save (verify) session shares the booking's orderId but is a
+  // zero-value account verification, NOT a payment. Identify it (amount 0, or
+  // it's the booking's stored verify session) and DON'T mark the booking paid
+  // or treat the verify session as the payment session — that's what the
+  // off-session auto-charge does later. We still fulfil (backstop the inline
+  // finalise) and persist the saved card so the cron can charge it.
+  const isCardSave =
+    (session.amount ?? 0) === 0 ||
+    (booking.rateType === "flex" && session.id === booking.ryftVerifySessionId);
+
+  if (isCardSave) {
+    if (
+      booking.rateType === "flex" &&
+      !booking.ryftPaymentMethodId &&
+      booking.ryftCustomerId &&
+      booking.propertyId
+    ) {
+      const [property] = await db
+        .select()
+        .from(properties)
+        .where(eq(properties.id, booking.propertyId))
+        .limit(1);
+      if (property?.ryftAccountId) {
+        try {
+          const methods = await getCustomerPaymentMethods(
+            booking.ryftCustomerId,
+            property.ryftAccountId
+          );
+          if (methods[0]?.id) {
+            await db
+              .update(bookings)
+              .set({ ryftPaymentMethodId: methods[0].id })
+              .where(eq(bookings.id, booking.id));
+          }
+        } catch (err) {
+          console.error(
+            `Ryft webhook: payment-method resolve failed for booking ${booking.id}:`,
+            err
+          );
+        }
+      }
+    }
+    await fulfilBooking(booking.id);
+    return;
+  }
+
+  // Real pay-now charge (NR) or the Flex off-session charge: stamp the session
+  // id (idempotent) and mark paid so fulfilBooking's payment step posts the
+  // Ryft reference to the PMS folio.
   await db
     .update(bookings)
     .set({

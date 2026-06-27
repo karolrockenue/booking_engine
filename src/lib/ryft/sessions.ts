@@ -88,7 +88,12 @@ export async function createBookingPaymentSession(
   assertRyftActive(property);
   if (amount <= 0) throw new RyftSessionError("amount must be > 0", 400);
 
-  const currency = property.currency ?? "GBP";
+  // Charge in the Ryft account's settlement currency, NOT property.currency.
+  // The hotel's Cloudbeds currency (and thus property.currency) can flip — e.g.
+  // the Cloudbeds sandbox reports USD — but the Ryft sub-account only settles
+  // its own currency, so use that (stable; the sync never touches it).
+  const currency =
+    property.ryftAccountCurrency ?? property.currency ?? "GBP";
   const totalMinor = toMinorUnits(amount, currency);
 
   const session = await createSession(property, {

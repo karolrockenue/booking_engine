@@ -172,6 +172,22 @@ export async function createBookingCardSave(
   };
 }
 
+// Set the customer email on an existing session. Ryft refuses to action a
+// payment unless the SESSION carries customerEmail, but the storefront themes
+// create the session before the guest types their email — so we patch it on
+// when the details are saved, just before payment.
+export async function updateSessionEmail(
+  paymentSessionId: string,
+  account: string,
+  email: string
+): Promise<void> {
+  await ryftFetch(`/payment-sessions/${paymentSessionId}`, {
+    method: "PATCH",
+    account,
+    body: { customerEmail: email },
+  });
+}
+
 // Fetch a payment session to verify its status server-side (the inline
 // finalise after the browser confirms — the webhook is the async backstop).
 export async function getPaymentSession(

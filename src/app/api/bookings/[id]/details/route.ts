@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
-import { bookings } from "@/db/schema";
+import { bookings, properties } from "@/db/schema";
 import { eq } from "drizzle-orm";
+import { updateSessionEmail } from "@/lib/ryft/sessions";
 
 // Patch the guest details onto a create-before-pay booking BEFORE the card is
 // confirmed (Step 0b ordering invariant). At init time we only had the email;
@@ -30,7 +31,12 @@ export async function POST(
   const body = (await req.json().catch(() => ({}))) as DetailsBody;
 
   const [booking] = await db
-    .select({ id: bookings.id, status: bookings.status })
+    .select({
+      id: bookings.id,
+      status: bookings.status,
+      propertyId: bookings.propertyId,
+      ryftPaymentSessionId: bookings.ryftPaymentSessionId,
+    })
     .from(bookings)
     .where(eq(bookings.id, id))
     .limit(1);
@@ -54,6 +60,28 @@ export async function POST(
 
   if (Object.keys(patch).length > 0) {
     await db.update(bookings).set(patch).where(eq(bookings.id, id));
+  }
+
+  // Ryft refuses to action a payment unless the session carries customerEmail,
+  // and the storefront creates the session before the email is typed — so push
+  // it onto the session now, just before the card is confirmed.
+  if (body.guestEmail && booking.ryftPaymentSessionId && booking.propertyId) {
+    try {
+      const [property] = await db
+        .select({ ryftAccountId: properties.ryftAccountId })
+        .from(properties)
+        .where(eq(properties.id, booking.propertyId))
+        .limit(1);
+      if (property?.ryftAccountId) {
+        await updateSessionEmail(
+          booking.ryftPaymentSessionId,
+          property.ryftAccountId,
+          body.guestEmail
+        );
+      }
+    } catch (err) {
+      console.error(`Ryft session email patch failed for ${id}:`, err);
+    }
   }
 
   return NextResponse.json({ ok: true, patched: true });

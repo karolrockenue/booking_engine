@@ -1,6 +1,11 @@
 "use client";
 
-import { forwardRef, useImperativeHandle, useRef, useState } from "react";
+import {
+  forwardRef,
+  useImperativeHandle,
+  useRef,
+  useState,
+} from "react";
 import {
   RyftProvider,
   CardForm,
@@ -35,6 +40,10 @@ interface Props {
   publicKey: string;
   accountId?: string | null;
   brand?: RyftBrand;
+  // Ryft requires the customer email to action a payment. The session is often
+  // created before the guest types it (themes render the card early), so we
+  // attach it at attempt time instead.
+  customerEmail?: string;
 }
 
 function buildTheme(brand?: RyftBrand): RyftCardFormTheme {
@@ -53,7 +62,10 @@ function buildTheme(brand?: RyftBrand): RyftCardFormTheme {
 }
 
 const RyftPaymentSection = forwardRef<RyftPaymentSectionHandle, Props>(
-  function RyftPaymentSection({ clientSecret, publicKey, accountId, brand }, ref) {
+  function RyftPaymentSection(
+    { clientSecret, publicKey, accountId, brand, customerEmail },
+    ref
+  ) {
     const cardFormRef = useRef<RyftCardFormInstance>(null);
     const [error, setError] = useState<string | null>(null);
 
@@ -67,7 +79,9 @@ const RyftPaymentSection = forwardRef<RyftPaymentSectionHandle, Props>(
           // the submit click). It throws on incomplete fields; rephrase that.
           let res;
           try {
-            res = await form.attemptPayment();
+            res = await form.attemptPayment(
+              customerEmail ? { customerEmail } : undefined
+            );
           } catch (err) {
             const msg = err instanceof Error ? err.message : "";
             if (/valid/i.test(msg)) {
@@ -92,7 +106,7 @@ const RyftPaymentSection = forwardRef<RyftPaymentSectionHandle, Props>(
           throw new Error("Additional authentication is required — please try again.");
         },
       }),
-      []
+      [customerEmail]
     );
 
     if (!publicKey || !clientSecret) {
@@ -121,7 +135,6 @@ const RyftPaymentSection = forwardRef<RyftPaymentSectionHandle, Props>(
           validationMode="onChange"
           onReady={() => setError(null)}
           onValidationChange={(e) => {
-            // eslint-disable-next-line no-console
             console.log("[Ryft validation]", e.isValid, e.validationErrors);
             if (e.isValid) {
               setError(null);

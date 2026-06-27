@@ -557,6 +557,7 @@ export function CheckoutClient({ property }: { property: ResolvedProperty }) {
                       clientSecret={intent.clientSecret}
                       publicKey={intent.publicKey ?? ""}
                       accountId={intent.accountId}
+                      customerEmail={guestDetails.email}
                     />
                   )}
 

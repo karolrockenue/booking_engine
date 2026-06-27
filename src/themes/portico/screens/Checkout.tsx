@@ -407,6 +407,7 @@ export function PorticoCheckout({ t, property }: { t: PorticoTokens; property: R
                   clientSecret={intent.clientSecret}
                   publicKey={intent.publicKey ?? ""}
                   accountId={intent.accountId}
+                  customerEmail={email}
                   brand={{ accent: t.accent, ink: t.ink, rule: t.rule }}
                 />
                 <p

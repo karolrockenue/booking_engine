@@ -151,17 +151,6 @@ export function CheckoutClient({ property }: { property: ResolvedProperty }) {
     const guest = guestDetailsRef.current;
     const selectedExtras = extras.filter((e) => draft.extras.includes(e.id));
 
-    // Flex (refundable) on Ryft needs the off-session saved-card redesign that
-    // isn't built yet — block here rather than init a path that can't charge.
-    if (rail === "ryft" && isRefundable) {
-      setIntentError(
-        "Refundable rates aren’t available for online payment yet — please choose a non-refundable rate."
-      );
-      setIntentLoading(false);
-      intentFetchedKeyRef.current = null;
-      return;
-    }
-
     setIntentLoading(true);
     setIntentError(null);
 

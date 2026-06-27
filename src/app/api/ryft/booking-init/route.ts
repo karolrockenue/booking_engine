@@ -9,17 +9,20 @@ import {
 } from "@/lib/booking/prepare-booking";
 import {
   createBookingPaymentSession,
+  createBookingCardSave,
   RyftSessionError,
 } from "@/lib/ryft/sessions";
 
 // Ryft create-before-pay — the Ryft analog of /api/bookings/init. Persists the
-// booking row (status "pending") + day-rates + extras intent, creates a Ryft
-// pay-now session routed to the hotel sub-account (platform fee + card fee
-// booked to the hotel), and stamps ryftPaymentSessionId on the row so the
-// webhook/fulfil path has it. Returns the clientSecret for the Embedded SDK.
+// booking row (status "pending") + day-rates + extras intent, creates the Ryft
+// session routed to the hotel sub-account, and stamps the session id(s) on the
+// row so the webhook/fulfil path has them. Returns the clientSecret for the SDK.
 //
-// NR (pay-now) only for now: Flex needs the off-session saved-card redesign
-// (Ryft has no Stripe SetupIntent 1:1). Driven by /ryft-spike for the demo.
+// Two rate types:
+//   - NR (pay-now): a capture-now session; stamps ryftPaymentSessionId.
+//   - Flex (refundable): a zero-value card-save session (Credential-on-File
+//     mandate); stamps ryftVerifySessionId + ryftCustomerId. The card is
+//     charged off-session by the auto-charge cron once the cancel window closes.
 
 interface InitBody {
   propertyId: string;
@@ -69,13 +72,7 @@ export async function POST(req: NextRequest) {
     throw err;
   }
 
-  if (prepared.rateType !== "nr") {
-    return NextResponse.json(
-      { error: "Flex is not yet on Ryft (off-session card-save redesign pending)" },
-      { status: 422 }
-    );
-  }
-
+  const isFlex = prepared.rateType !== "nr";
   const guestEmail = body.guestEmail ?? "";
 
   // Idempotent on orderId: a re-fired init reuses the row and re-issues a
@@ -137,14 +134,27 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  let session;
+  let session: {
+    clientSecret: string;
+    paymentSessionId: string;
+    status: string;
+    customerId?: string;
+  };
   try {
-    session = await createBookingPaymentSession({
-      property: prepared.property,
-      amount: Number(prepared.grandTotal),
-      orderId: body.orderId,
-      guestEmail: guestEmail || undefined,
-    });
+    session = isFlex
+      ? await createBookingCardSave({
+          property: prepared.property,
+          orderId: body.orderId,
+          guestEmail: guestEmail || undefined,
+          guestFirst: body.guestFirst,
+          guestLast: body.guestLast,
+        })
+      : await createBookingPaymentSession({
+          property: prepared.property,
+          amount: Number(prepared.grandTotal),
+          orderId: body.orderId,
+          guestEmail: guestEmail || undefined,
+        });
   } catch (err) {
     if (err instanceof RyftSessionError) {
       return NextResponse.json({ error: err.message }, { status: err.status });
@@ -157,9 +167,18 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // NR stamps the pay-now session; Flex stamps the card-save (COF mandate)
+  // session + customer so the auto-charge cron can charge off-session later.
   await db
     .update(bookings)
-    .set({ ryftPaymentSessionId: session.paymentSessionId })
+    .set(
+      isFlex
+        ? {
+            ryftVerifySessionId: session.paymentSessionId,
+            ryftCustomerId: session.customerId,
+          }
+        : { ryftPaymentSessionId: session.paymentSessionId }
+    )
     .where(eq(bookings.id, booking.id));
 
   return NextResponse.json({

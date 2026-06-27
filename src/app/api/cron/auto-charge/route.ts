@@ -3,10 +3,16 @@ import {
   chargeBooking,
   findEligibleBookings,
 } from "@/lib/stripe/auto-charge";
+import {
+  chargeRyftBooking,
+  findEligibleRyftBookings,
+} from "@/lib/ryft/auto-charge";
 
 // Hourly auto-charge cron. Picks up Flex bookings whose cancellation window
-// has closed, creates an off-session PaymentIntent against the saved card,
-// and on success records the payment in the Cloudbeds folio.
+// has closed and charges the saved card off-session — Stripe (off-session
+// PaymentIntent) and Ryft (MIT against the saved card) sweeps run side by side,
+// disambiguated by which rail's saved-card state the booking carries. On
+// success each records the payment in the PMS folio.
 //
 // Bearer-protected with CRON_SECRET, same pattern as inventory-sync.
 export async function POST(req: NextRequest) {
@@ -26,19 +32,20 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const eligible = await findEligibleBookings();
+    const [stripeEligible, ryftEligible] = await Promise.all([
+      findEligibleBookings(),
+      findEligibleRyftBookings(),
+    ]);
     const summary = {
-      eligible: eligible.length,
+      eligible: stripeEligible.length + ryftEligible.length,
       charged: 0,
       failed: 0,
       skipped: 0,
       graceExpired: 0,
     };
     const results = [];
-    for (const booking of eligible) {
-      const result = await chargeBooking(booking);
-      results.push(result);
-      switch (result.outcome) {
+    const tally = (outcome: string) => {
+      switch (outcome) {
         case "charged":
           summary.charged++;
           break;
@@ -52,6 +59,16 @@ export async function POST(req: NextRequest) {
           summary.graceExpired++;
           break;
       }
+    };
+    for (const booking of stripeEligible) {
+      const result = await chargeBooking(booking);
+      results.push(result);
+      tally(result.outcome);
+    }
+    for (const booking of ryftEligible) {
+      const result = await chargeRyftBooking(booking);
+      results.push(result);
+      tally(result.outcome);
     }
     console.log(
       JSON.stringify({

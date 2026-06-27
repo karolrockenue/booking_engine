@@ -135,20 +135,33 @@ export interface CreatedCardSave {
   status: string;
 }
 
-// Flex / save-card: the Ryft equivalent of a Stripe SetupIntent. A zero-value
-// account-verification session (`verifyAccount: true`, `amount: 0`) saves the
-// card to a Ryft customer without taking money; the auto-charge cron later
-// charges it off-session once the cancellation window closes. The customer
-// lives on the platform account (no `Account` header) so the same saved card
-// can be charged later with platform-controlled split routing.
+// Flex / save-card: the Ryft equivalent of a Stripe SetupIntent, modelled as a
+// Credential-on-File (COF) mandate. A zero-value account-verification session
+// (`verifyAccount: true`, `amount: 0`) saves the card without taking money; the
+// auto-charge cron later charges it off-session via a Merchant-Initiated
+// Transaction once the cancellation window closes.
+//
+// Two sandbox-proven constraints drive the shape (see the Ryft migration
+// handoff):
+//   1. The mandate session AND every later MIT charge must share account scope.
+//      Both run on the hotel sub-account (the merchant of record), so the
+//      customer, the verify session, and the saved card all live there too.
+//   2. To be usable as a later `previousPayment`, this initial session must
+//      itself carry `paymentType: "Unscheduled"` — a plain Standard/verify
+//      session is rejected. `credentialOnFileUsage` flags it as the Customer-
+//      initiated Initial in the series. `platformFee`/`splits` are forbidden on
+//      verify sessions (there's no amount to split) — the fee is taken later on
+//      the MIT charge instead.
 export async function createBookingCardSave(
   args: CreateCardSaveArgs
 ): Promise<CreatedCardSave> {
   const { property, orderId, guestEmail, guestFirst, guestLast } = args;
   assertRyftActive(property);
+  const account = property.ryftAccountId!; // assertRyftActive guarantees it
 
   const customer = await ryftFetch<{ id: string }>("/customers", {
     method: "POST",
+    account,
     body: {
       email: guestEmail,
       firstName: guestFirst,
@@ -157,14 +170,17 @@ export async function createBookingCardSave(
     },
   });
 
-  const currency = property.currency ?? "GBP";
+  // Settlement currency, not property.currency (which the Cloudbeds sync can
+  // flip) — must match the later MIT charge currency.
+  const currency = property.ryftAccountCurrency ?? property.currency ?? "GBP";
   const session = await createSession(property, {
     amount: 0,
     currency,
     verifyAccount: true,
-    customerEmail: guestEmail,
-    customerDetails: customer.id ? undefined : undefined,
+    paymentType: "Unscheduled",
+    credentialOnFileUsage: { initiator: "Customer", sequence: "Initial" },
     customerId: customer.id,
+    customerEmail: guestEmail,
     metadata: { orderId, propertyId: property.id },
     ...ryftReturnUrl(),
   });
@@ -175,6 +191,69 @@ export async function createBookingCardSave(
     customerId: customer.id,
     status: session.status,
   };
+}
+
+// The saved-card payment methods on a Ryft customer (sub-account scoped). The
+// card stored during the card-save flow surfaces here as a `pmt_…` we charge
+// off-session later. We read it at finalise rather than trusting the client.
+export interface RyftPaymentMethod {
+  id: string;
+  type?: string;
+  card?: { last4?: string; scheme?: string };
+}
+
+export async function getCustomerPaymentMethods(
+  customerId: string,
+  account: string
+): Promise<RyftPaymentMethod[]> {
+  const res = await ryftFetch<{ items?: RyftPaymentMethod[] }>(
+    `/customers/${customerId}/payment-methods`,
+    { account }
+  );
+  return res.items ?? [];
+}
+
+export interface ChargeSavedCardArgs {
+  property: Property;
+  amount: number; // major units
+  orderId: string;
+  customerId: string;
+  paymentMethodId: string;
+  previousPaymentSessionId: string; // the card-save (COF mandate) session
+  guestEmail?: string;
+}
+
+// Off-session Merchant-Initiated charge against a previously saved card — the
+// Ryft analog of a Stripe off_session+confirm PaymentIntent. No customer is
+// present, so there's no SDK/3DS step: creating the session with the stored
+// `paymentMethod.id` + `paymentType: "Unscheduled"` + `previousPayment` lets
+// Ryft process the card on file under the mandate agreed at card-save time.
+// Routes to the hotel sub-account and skims the platform fee + books Ryft's
+// card fee to the hotel, exactly like the NR pay-now path.
+export async function chargeSavedCard(
+  args: ChargeSavedCardArgs
+): Promise<RyftPaymentSession> {
+  const { property, amount, orderId, customerId, paymentMethodId } = args;
+  assertRyftActive(property);
+  if (amount <= 0) throw new RyftSessionError("amount must be > 0", 400);
+
+  const currency =
+    property.ryftAccountCurrency ?? property.currency ?? "GBP";
+  const totalMinor = toMinorUnits(amount, currency);
+
+  return createSession(property, {
+    amount: totalMinor,
+    currency,
+    customerId,
+    customerEmail: args.guestEmail,
+    paymentMethod: { id: paymentMethodId },
+    paymentType: "Unscheduled",
+    previousPayment: { id: args.previousPaymentSessionId },
+    captureFlow: "Automatic",
+    platformFee: platformFeeMinor(property, totalMinor),
+    platformSettings: feeToSubAccount(property),
+    metadata: { orderId, propertyId: property.id },
+  });
 }
 
 // Set the customer email on an existing session. Ryft refuses to action a
@@ -233,6 +312,19 @@ export async function refundPaymentSession(
     `/payment-sessions/${paymentSessionId}/refunds`,
     { method: "POST", account, body }
   );
+}
+
+// Delete a saved card (sub-account scoped) so it can't be charged again — used
+// when a Flex booking is auto-cancelled after the grace window. Best-effort:
+// single-use methods can't be deleted, which is fine (they're already spent).
+export async function deletePaymentMethod(
+  paymentMethodId: string,
+  account: string
+): Promise<void> {
+  await ryftFetch(`/payment-methods/${paymentMethodId}`, {
+    method: "DELETE",
+    account,
+  });
 }
 
 // Void an authorised-but-not-captured session (cancel before settlement).

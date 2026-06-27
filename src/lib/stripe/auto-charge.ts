@@ -53,6 +53,10 @@ export async function findEligibleBookings(): Promise<Booking[]> {
       and(
         eq(bookings.rateType, "flex"),
         eq(bookings.status, "pms_synced"),
+        // Stripe rail only — a Flex booking on Ryft has a saved Ryft card but no
+        // Stripe customer, and is handled by ryft/auto-charge.ts. Keying off
+        // stripeCustomerId keeps the two sweeps from both claiming a booking.
+        isNotNull(bookings.stripeCustomerId),
         isNotNull(bookings.chargeAt),
         lte(bookings.chargeAt, sql`NOW()`)
       )

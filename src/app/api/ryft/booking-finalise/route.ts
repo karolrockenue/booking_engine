@@ -2,15 +2,24 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { bookings, properties } from "@/db/schema";
 import { eq } from "drizzle-orm";
-import { getPaymentSession } from "@/lib/ryft/sessions";
+import {
+  getPaymentSession,
+  getCustomerPaymentMethods,
+} from "@/lib/ryft/sessions";
 import { fulfilBooking } from "@/lib/pms/fulfil-booking";
 
 // Inline finalise after the guest confirms the card in the browser — the Ryft
-// analog of the Stripe submitBooking finalise. Verifies the Ryft session is
-// actually paid (never trust the client), marks the booking paid, and fulfils
-// to the PMS synchronously so the confirmation page can show the reservation.
-// The Ryft webhook (PaymentSession.approved/captured) is the durable backstop
-// if the tab dies here; fulfilBooking is idempotent so both can run safely.
+// analog of the Stripe submitBooking finalise. Verifies the Ryft session
+// server-side (never trust the client) and fulfils to the PMS synchronously so
+// the confirmation page can show the reservation. The Ryft webhook is the
+// durable backstop if the tab dies here; fulfilBooking is idempotent.
+//
+// Two rate types:
+//   - NR: the pay-now session must be Approved/Captured → mark paid → fulfil
+//     (fulfilBooking records the folio payment for NR).
+//   - Flex: the card-save (verify) session must be Approved → persist the saved
+//     pmt_ so the auto-charge cron can charge it later → fulfil (no payment
+//     recorded now; the cron does it at charge time).
 
 export async function POST(req: NextRequest) {
   const { bookingId } = (await req.json().catch(() => ({}))) as {
@@ -28,7 +37,11 @@ export async function POST(req: NextRequest) {
   if (!booking) {
     return NextResponse.json({ error: "Booking not found" }, { status: 404 });
   }
-  if (!booking.ryftPaymentSessionId) {
+  const isFlex = booking.rateType === "flex";
+  const sessionId = isFlex
+    ? booking.ryftVerifySessionId
+    : booking.ryftPaymentSessionId;
+  if (!sessionId) {
     return NextResponse.json(
       { error: "Booking has no Ryft session" },
       { status: 409 }
@@ -47,14 +60,14 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // Verify with Ryft directly — the sub-account is the merchant of record.
-  let paid = false;
+  // Verify with Ryft directly — the sub-account is the merchant of record. NR
+  // captures (Approved/Captured); a Flex card-save verification resolves to
+  // Approved (zero amount, nothing to capture).
+  let verified = false;
   try {
-    const session = await getPaymentSession(
-      booking.ryftPaymentSessionId,
-      property.ryftAccountId
-    );
-    paid = session.status === "Approved" || session.status === "Captured";
+    const session = await getPaymentSession(sessionId, property.ryftAccountId);
+    verified =
+      session.status === "Approved" || session.status === "Captured";
   } catch (err) {
     console.error("Ryft finalise: session fetch failed:", err);
     return NextResponse.json(
@@ -63,14 +76,51 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  if (!paid) {
+  if (!verified) {
     return NextResponse.json(
-      { error: "Payment not completed" },
+      { error: isFlex ? "Card was not saved" : "Payment not completed" },
       { status: 402 }
     );
   }
 
-  if (booking.status === "pending") {
+  // Flex: resolve and persist the saved card so the auto-charge cron can charge
+  // it off-session later. Without a pmt_ the booking can never be charged, so
+  // this is a hard failure (the guest must retry the card).
+  if (isFlex && !booking.ryftPaymentMethodId) {
+    if (!booking.ryftCustomerId) {
+      return NextResponse.json(
+        { error: "Card save incomplete (no customer)" },
+        { status: 409 }
+      );
+    }
+    try {
+      const methods = await getCustomerPaymentMethods(
+        booking.ryftCustomerId,
+        property.ryftAccountId
+      );
+      const pmt = methods[0]?.id;
+      if (!pmt) {
+        return NextResponse.json(
+          { error: "Card was not saved" },
+          { status: 402 }
+        );
+      }
+      await db
+        .update(bookings)
+        .set({ ryftPaymentMethodId: pmt })
+        .where(eq(bookings.id, booking.id));
+    } catch (err) {
+      console.error("Ryft finalise: payment-method fetch failed:", err);
+      return NextResponse.json(
+        { error: "Could not confirm saved card" },
+        { status: 502 }
+      );
+    }
+  }
+
+  // NR is paid now; Flex is authorised (card saved), charged later — leave its
+  // status to flow through fulfil (pms_synced) so the cron picks it up.
+  if (!isFlex && booking.status === "pending") {
     await db
       .update(bookings)
       .set({ status: "paid" })

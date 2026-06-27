@@ -13,6 +13,11 @@ import { verifyCancelToken } from "@/lib/crypto";
 import { getPmsAdapter } from "@/lib/pms";
 import { detachPaymentMethod } from "@/lib/stripe/detach";
 import { getStripe } from "@/lib/stripe/client";
+import {
+  getPaymentSession,
+  refundPaymentSession,
+  voidPaymentSession,
+} from "@/lib/ryft/sessions";
 import { sendBookingCancellationEmail } from "@/lib/email/booking-cancellation";
 
 interface CancelRequestBody {
@@ -183,13 +188,130 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // Refund branch: Flex bookings that already auto-charged (status = 'paid'
-  // before cancellation) get a Stripe refund. Pre-charge Flex (still
-  // 'payment_authorized' or 'pms_synced' with a SetupIntent) just detaches
-  // the saved card — no money was taken.
+  // Refund branch (rail-aware). Ryft first: a refundable Ryft booking with a
+  // payment session is refunded when Captured, or voided when only Approved
+  // (authorised, no money settled yet). Otherwise the legacy Stripe paths: Flex
+  // bookings that already auto-charged (status='paid') get a Stripe refund;
+  // pre-charge Flex with a saved card just detaches it — no money was taken.
   let refunded = false;
   let refundAmount: number | undefined;
-  if (booking.status === "paid" && booking.stripePaymentIntentId) {
+  if (booking.ryftPaymentSessionId && property.ryftAccountId) {
+    const account = property.ryftAccountId;
+    const sessionId = booking.ryftPaymentSessionId;
+    const refundCurrency = (
+      property.ryftAccountCurrency ?? booking.currency
+    ).toUpperCase();
+
+    // Resolve the live session so we pick void (authorised) vs refund
+    // (captured) correctly. A failed lookup leaves money un-reversed — logged,
+    // not fatal (Cloudbeds is already cancelled; Karol reconciles in Ryft).
+    const session = await getPaymentSession(sessionId, account).catch((err) => {
+      console.error(
+        `Ryft session lookup failed for booking ${booking.id} (session ${sessionId}):`,
+        err
+      );
+      return null;
+    });
+
+    if (session?.status === "Captured") {
+      try {
+        const refund = await refundPaymentSession(sessionId, account, {
+          reason: "requested_by_customer",
+          // Return our platform fee too so the guest gets the full amount back.
+          refundPlatformFee: true,
+        });
+        refunded = true;
+        refundAmount = Number(booking.grandTotal);
+        await db.insert(paymentEvents).values({
+          bookingId: booking.id,
+          type: "refund",
+          ryftId: refund.id,
+          amount: refundAmount.toFixed(2),
+          currency: refundCurrency,
+          status: refund.status ?? "Refunded",
+          payload: refund as unknown as Record<string, unknown>,
+        });
+
+        // §7.4: cancelling zeroes the room but leaves the recorded external
+        // payment on the folio, so it still reads as paid. Post a compensating
+        // reversal so the folio reconciles to Ryft. Non-fatal (Cloudbeds
+        // no-ops and returns null today).
+        try {
+          const reversal = await pms.recordRefund({
+            reservationId: booking.cloudbedsReservationId,
+            amount: refundAmount,
+            externalIdentifier: refund.id,
+            description: `Ryft refund ${refund.id}`,
+          });
+          if (reversal) {
+            await db.insert(paymentEvents).values({
+              bookingId: booking.id,
+              type: "pms_refund_recorded",
+              ryftId: refund.id,
+              amount: refundAmount.toFixed(2),
+              currency: refundCurrency,
+              status: "recorded",
+            });
+          }
+        } catch (reversalErr) {
+          console.error(
+            `Compensating PMS reversal failed for booking ${booking.id} (reservation ${booking.cloudbedsReservationId}):`,
+            reversalErr
+          );
+          await db.insert(paymentEvents).values({
+            bookingId: booking.id,
+            type: "pms_refund_failed",
+            ryftId: refund.id,
+            status: "pms_reversal_failed",
+            errorMessage:
+              reversalErr instanceof Error ? reversalErr.message : "Unknown",
+          });
+        }
+      } catch (refundErr) {
+        console.error(
+          `Ryft refund failed for booking ${booking.id} (session ${sessionId}):`,
+          refundErr
+        );
+        // Cloudbeds is already cancelled; refund failure is manual-recovery
+        // (Karol refunds from the Ryft dashboard). Carry on so the status
+        // reflects reality — guest sees "cancelled, refund pending".
+        await db.insert(paymentEvents).values({
+          bookingId: booking.id,
+          type: "auto_charge_failed",
+          status: "refund_failed",
+          errorMessage:
+            refundErr instanceof Error ? refundErr.message : "Unknown",
+        });
+      }
+    } else if (session?.status === "Approved") {
+      // Authorised but not captured — void it. No money settled, so there's no
+      // folio payment to reverse.
+      try {
+        const voided = await voidPaymentSession(sessionId, account);
+        await db.insert(paymentEvents).values({
+          bookingId: booking.id,
+          type: "payment_session_voided",
+          ryftId: voided.id,
+          status: voided.status ?? "Voided",
+          payload: voided as unknown as Record<string, unknown>,
+        });
+      } catch (voidErr) {
+        console.error(
+          `Ryft void failed for booking ${booking.id} (session ${sessionId}):`,
+          voidErr
+        );
+        await db.insert(paymentEvents).values({
+          bookingId: booking.id,
+          type: "auto_charge_failed",
+          status: "void_failed",
+          errorMessage:
+            voidErr instanceof Error ? voidErr.message : "Unknown",
+        });
+      }
+    }
+    // else: nothing captured/authorised (e.g. PendingPayment) → no charge to
+    // reverse, nothing to do.
+  } else if (booking.status === "paid" && booking.stripePaymentIntentId) {
     try {
       const stripe = getStripe();
       const refund = await stripe.refunds.create({

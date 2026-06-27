@@ -8,13 +8,11 @@ This is the handoff for replacing **Stripe Connect** with **Ryft** as the bookin
 
 ## 1. Where we are — TL;DR
 
-**The core works and is proven end-to-end.** A real guest booked on the live Portico storefront, paid via Ryft, our fee was skimmed, the card fee was booked to the hotel, and it posted into Cloudbeds — reservation + folio payment — automatically.
+**NR (pay-now) is proven end-to-end live. Flex (refundable) is built, pending a live storefront proof.**
 
-**Proof (2026-06-27), booking `order_id f80df0b5…`:**
-- Ryft session **Captured**, £108.00 GBP, `platformFee` £3.24 (3%), card fee booked to hotel sub-account.
-- Cloudbeds reservation **`5828976389743`** + folio payment **`232986678`**.
-- Booking status **`pms_synced`**.
-- Platform fees in Ryft: 2 × £3.24 = £6.48 (one real booking + one debug capture).
+- **NR — proven live (2026-06-27).** A real guest booked on the live Portico storefront, paid via Ryft, our fee was skimmed, the card fee was booked to the hotel, and it posted into Cloudbeds — reservation + folio payment — automatically. Booking `order_id f80df0b5…`: Ryft session **Captured**, £108.00 GBP, `platformFee` £3.24 (3%); Cloudbeds reservation **`5828976389743`** + folio payment **`232986678`**; status **`pms_synced`**.
+- **Flex — built (2026-06-27), not yet proven live.** Ryft has no Stripe-SetupIntent 1:1, so Flex runs as **Credential-on-File / Merchant-Initiated Transactions**: a zero-value `verifyAccount` card-save session establishes a COF mandate at checkout, and the auto-charge cron charges the saved card off-session once the cancellation window closes. Contract is sandbox-proven; the only thing left is one live booking (the sandbox forces a 3DS step that needs a real browser — same as how NR was proven). See §7 + §9.
+- **Refunds/cancellations on Ryft — done (2026-06-27).** The cancel route refunds (Captured) or voids (Approved) via Ryft, falling back to Stripe.
 
 **Migration is phased:** Stripe columns/code are kept ALONGSIDE Ryft (additive schema) so the live storefront keeps transacting. Per-property rail selection decides which rail a hotel uses. Stripe is deleted only in the final cutover pass.
 
@@ -89,17 +87,19 @@ npx next dev --experimental-https \
 
 **Ryft lib** (`src/lib/ryft/`)
 - `client.ts` — `ryftFetch` (env-aware base URL, Account header), `publicOrigin`.
-- `sessions.ts` — `createBookingPaymentSession` (NR pay-now + fee split + fee-to-hotel), `createBookingCardSave` (Flex, NOT wired), `getPaymentSession`, `updateSessionEmail` (PATCH), `capture/refund/void`.
+- `sessions.ts` — NR: `createBookingPaymentSession` (pay-now + fee split + fee-to-hotel). Flex: `createBookingCardSave` (zero-value COF mandate, `paymentType:Unscheduled`, sub-account), `getCustomerPaymentMethods` (resolve saved `pmt_`), `chargeSavedCard` (off-session MIT charge), `deletePaymentMethod`. Shared: `getPaymentSession`, `updateSessionEmail` (PATCH), `capture/refund/void`.
+- `auto-charge.ts` — Flex off-session cron logic (`findEligibleRyftBookings`, `chargeRyftBooking`, 24h grace → `autoCancelAfterGrace`). Mirrors `lib/stripe/auto-charge.ts`.
 - `accounts.ts` — `createSubAccount`, `createAccountLink`, `getAccount`, `resolveRyftAccountStatus` (active = card capability Enabled, since sandbox accounts are "Unverified" yet chargeable).
 - `webhook.ts` — signature verifier + event taxonomy.
 - `amounts.ts` — `toMinorUnits`.
 
 **API routes** (`src/app/api/ryft/`)
-- `booking-init` — NR create-before-pay: booking row + Ryft session, persists `ryftPaymentSessionId`.
-- `booking-finalise` — verifies session paid + runs `fulfilBooking` INLINE (no webhook needed for happy path).
-- `webhooks` — PaymentSession.approved/captured → fulfil (backstop); Account.* → refresh status.
+- `booking-init` — create-before-pay, **rate-aware**: NR → pay-now session, stamps `ryftPaymentSessionId`; Flex → card-save session, stamps `ryftVerifySessionId` + `ryftCustomerId`.
+- `booking-finalise` — **rate-aware**: NR verifies paid → fulfil; Flex verifies the card-save Approved, resolves + persists `ryftPaymentMethodId`, fulfils WITHOUT charging (cron charges later). Runs `fulfilBooking` INLINE (no webhook needed for happy path).
+- `webhooks` — PaymentSession.approved/captured → fulfil (backstop). **Card-save events** (amount 0 / matches `ryftVerifySessionId`) persist the saved card + fulfil but do NOT mark paid. Account.* → refresh status.
 - `connect/start` + `connect/return` — onboarding (admin).
 - `session/route.ts` — standalone spike session (used by `/ryft-spike`).
+- `../cron/auto-charge` — hourly; runs the Stripe AND Ryft Flex sweeps side by side (rails disambiguated by saved-card state).
 
 **Checkout (storefront)**
 - `src/components/checkout/RyftPaymentSection.tsx` — `@ryftpay/react` CardForm, separated fields, `confirm()` → `attemptPayment`. (Was the v2 embedded `ryft.min.js` — replaced; that was the cramped white-on-white single line.)
@@ -139,6 +139,12 @@ npx next dev --experimental-https \
 ## 8. Commit trail (ryft-migration, newest first)
 
 ```
+dba64cb Docs: Flex on Ryft built + Ryft refunds done (handoff update)
+c1a79db Ryft webhook: don't mark Flex card-save as a payment
+b6206bd Ryft Flex: un-gate refundable rates in checkout
+fcc32c0 Ryft Flex: off-session card-save + auto-charge (backend)
+89a1241 Ryft: refund/void on cancel (rail-aware refund branch)
+---- (earlier: NR proven live) ----
 a1d6299 charge in the sub-account's settlement currency (currency fix, real)
 1b4e207 db: retry transient Neon fetch failures
 055139d attach customer email to session before payment   ← the real payment unblocker
@@ -153,3 +159,16 @@ b8eec2e Ryft onboarding + wire spike to real booking
 b8136bb Ryft rail: webhook → fee split → Cloudbeds posting (backend)
 ```
 (Plus several RyftPaymentSection iteration commits — styling, validation, name-on-card.)
+
+---
+
+## 9. What's next (recommended order)
+
+1. **Prove Flex live** (the gating item — code is done, never run end-to-end). On a Ryft-active hotel, book a **refundable** rate on the storefront:
+   - Card-save: the Ryft CardForm should complete (3DS in-browser) and the confirmation page should render — booking ends `pms_synced`, `rateType=flex`, with `ryftVerifySessionId` + `ryftCustomerId` + `ryftPaymentMethodId` set and NO `ryftPaymentSessionId`. Status must NOT be `paid` yet.
+   - Off-session charge: set `chargeAt` in the past (or wait for the window) and POST `/api/cron/auto-charge` with the `CRON_SECRET` bearer. Expect a `chargeSavedCard` MIT → session `Captured`, booking `paid`, folio payment posted, `auto_charge_succeeded` event.
+   - Throwaway sandbox proof of the MIT contract lived in the scratchpad (`ryft-mit-proof.mjs`); the 3DS step is why it can't run fully headless.
+2. **Street + Editorial-Calm theme checkout branching** — copy the per-rail branch from `themes/portico/screens/Checkout.tsx` into those two theme screens (mechanical).
+3. **Production webhook** — register `/api/ryft/webhooks` on the prod HTTPS domain; store `whs_…` as `RYFT_WEBHOOK_SECRET`. Confirm the signature digest encoding against the first live delivery (verifier accepts hex+base64).
+4. **Ryft "re-enter card" page** for a failed off-session charge (the Stripe `payment-update` equivalent) — currently deferred; grace retries + auto-cancel cover it.
+5. **Cutover** — once all themes + Flex are proven live: delete Stripe (~65 files + `stripe_*` columns) and fold the ad-hoc Ryft ALTERs into drizzle migrations.

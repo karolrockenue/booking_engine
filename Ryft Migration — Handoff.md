@@ -1,0 +1,155 @@
+# Ryft Migration — Handoff
+
+Branch: `ryft-migration`. Last verified end-to-end **2026-06-27**.
+
+This is the handoff for replacing **Stripe Connect** with **Ryft** as the booking-engine payment rail (Stripe won't onboard the UAE platform to pay UK hotels; Ryft will). Read this before touching payment code.
+
+---
+
+## 1. Where we are — TL;DR
+
+**The core works and is proven end-to-end.** A real guest booked on the live Portico storefront, paid via Ryft, our fee was skimmed, the card fee was booked to the hotel, and it posted into Cloudbeds — reservation + folio payment — automatically.
+
+**Proof (2026-06-27), booking `order_id f80df0b5…`:**
+- Ryft session **Captured**, £108.00 GBP, `platformFee` £3.24 (3%), card fee booked to hotel sub-account.
+- Cloudbeds reservation **`5828976389743`** + folio payment **`232986678`**.
+- Booking status **`pms_synced`**.
+- Platform fees in Ryft: 2 × £3.24 = £6.48 (one real booking + one debug capture).
+
+**Migration is phased:** Stripe columns/code are kept ALONGSIDE Ryft (additive schema) so the live storefront keeps transacting. Per-property rail selection decides which rail a hotel uses. Stripe is deleted only in the final cutover pass.
+
+---
+
+## 2. The model (how the money flows)
+
+- **Platform = Rockenue** (main Ryft account). **Each hotel = a Ryft "sub-account"** (`ac_…`). Money settles to the hotel; we skim a platform fee.
+- Guest pays full amount → we keep `platformFee` (per-hotel `platformFeePercent`, default 3%, editable in admin) → **Ryft's card processing fee is booked to the HOTEL** via `platformSettings.paymentFees.combined.bookTo = <hotel ryftAccountId>`.
+- `combined` overrides the granular per-fee fields and works on both Blended and ICC++ pricing — the safe default. (Old `passThroughProcessingFee` boolean is deprecated.)
+- Net: hotel receives `amount − platformFee − processingFee`. Confirmed live.
+
+---
+
+## 3. How to develop / run the demo (no public tunnel needed)
+
+The app's DB (Neon) and Ryft are both cloud — you need internet, but **not** a tunnel.
+
+**Local HTTPS** (required for the card SDK / 3DS — Ryft rejects http return URLs):
+```
+npx next dev --experimental-https \
+  --experimental-https-key .certs/key.pem \
+  --experimental-https-cert .certs/cert.pem
+```
+- Cert is a self-signed openssl cert in `.certs/` (gitignored). Regenerate if missing:
+  `openssl req -x509 -newkey rsa:2048 -nodes -keyout .certs/key.pem -out .certs/cert.pem -days 60 -subj "/CN=localhost" -addext "subjectAltName=DNS:localhost,IP:127.0.0.1"`
+- Next's `--experimental-https` alone needs `mkcert` (not installed); the explicit key/cert flags avoid that.
+- Set `PUBLIC_APP_URL="https://localhost:3000"` in `.env.local`.
+- Browser will warn "not secure" (self-signed) → Advanced → Proceed. Fine; it's localhost.
+- **Do NOT use cloudflared tunnels** — they die on flaky wifi (`530 origin unregistered`). Local HTTPS is strictly better.
+
+**This machine's proxy quirk:** the shell inherits a dead `ALL_PROXY` that blocks outbound. Prefix commands with `unset ALL_PROXY HTTP_PROXY HTTPS_PROXY http_proxy https_proxy all_proxy` and run with sandbox disabled. The dev server must be started with the proxy cleared too. (See `booking-engine-dead-proxy` memory.)
+
+**Rockenue demo data:**
+- Property `15cece68-d3da-4970-8aaf-46b025274d4e`, slug `rockenue-partner-account-15cece68`, theme `portico-ivory`.
+- Ryft sub-account `ac_34d2ae56-3f0c-4835-9780-f4278e8dd6c3` (status active, GBP).
+- NR rate `7ff9bd08-a4f8-4132-925a-7048378a3cc5` (Non Ref) on room `a225e5c5-3b78-4349-8bb4-6ed6d3ebecc1` (Double Room). **Inventory is only loaded ~May 2026.**
+- Ryft sandbox keys + sub-account id are in `.env.local` (`RYFT_SECRET_KEY`, `NEXT_PUBLIC_RYFT_PUBLIC_KEY`, `RYFT_TEST_SUBACCOUNT_ID`).
+
+**Test cards (ALL Ryft sandbox cards require 3DS):**
+- Frictionless Visa: `4012000000060085` — captures without a challenge.
+- CVC: any 3 digits **except** 100/001/222/1000 (those are decline triggers). Expiry: any future (`12/30`).
+- With `customerEmail` set on the session, the frictionless card Captures with no challenge and no tunnel.
+
+---
+
+## 4. Ryft API contract (verified)
+
+- Sandbox base `https://sandbox-api.ryftpay.com/v1`, live `https://api.ryftpay.com/v1`. Inferred from key prefix (`sk_live_` → live).
+- Auth = **raw secret key** in `Authorization` (no `Bearer`). Public key (`pk_…`) used by the browser SDK / `attempt-payment`.
+- Sub-account routing = **`Account: ac_…` header** (not body). Amounts in **MINOR units**.
+- Endpoint map (Stripe → Ryft): `accounts.create` → `POST /accounts`; onboarding link → `POST /account-links`; create intent → `POST /payment-sessions`; capture → `/payment-sessions/{id}/captures`; refund → `/refunds`; void → `/voids`; **patch session** → `PATCH /payment-sessions/{id}`; **server attempt** → `POST /payment-sessions/attempt-payment`.
+- Spec source: `https://developer.ryftpay.com/_bundle/documentation/api/reference/openapi.yaml`.
+- React SDK: `@ryftpay/react` (`RyftProvider` + `CardForm`, `fieldLayout:"separated"`). Docs at web-sdk.ryftpay.com 403 to bots — read the package `index.d.ts` instead.
+- Webhooks: `Signature` header = HMAC-SHA256 of the RAW body, secret `whs_…` (returned only at creation). Events `PaymentSession.approved|captured|declined|refunded|voided`, `Account.created|updated`, etc. Signature digest encoding (hex vs base64) undocumented — verifier accepts both; confirm against first live delivery.
+
+---
+
+## 5. CRITICAL gotchas (each cost real debugging time — don't re-derive)
+
+1. **`customerEmail` MUST be on the SESSION** or every payment attempt 400s (`"customerEmail is missing… in order for payment to be actioned"`). The storefront creates the session *before* the guest types their email, so `/api/bookings/[id]/details` PATCHes the session email (`updateSessionEmail`) right before card confirm. Passing it only to the SDK's `attemptPayment` is NOT enough — it must be on the session.
+2. **Currency: Cloudbeds sandbox forces `property.currency` → USD**, but the Ryft sub-account settles **GBP only** → `currency must be one of: [GBP]`. Two-layer fix: (a) guard in `sync-hotel-details.ts` skips the currency overwrite when `ryftAccountStatus==='active'`; (b) the real fix — `createBookingPaymentSession` charges in `property.ryftAccountCurrency` (GBP, sync never touches it), not `property.currency`. **Consequence:** confirmation page still *displays* USD (cosmetic) while charging GBP.
+3. **There are TWO checkout UIs.** The live storefront renders the **theme** screen (`src/themes/<theme>/screens/Checkout.tsx`), NOT the fallback `src/app/[property]/checkout/checkout-client.tsx`. Rockenue = Portico. Any checkout change must go in the theme screen. Likewise admin has a **legacy** property editor (`/admin/properties/[id]`) AND the live one (`/admin/[propertyId]` with the Sidebar) — the live one is what's used.
+4. **Ryft return URL / account-link must be HTTPS.** On http/localhost the connect flow can't create a hosted-onboarding link; `connect/start` falls back to marking the sub-account active directly (sandbox accounts are card-enabled on creation). The payment session omits `returnUrl` on non-https origins (the SDK does 3DS inline).
+5. **All sandbox cards require 3DS** (no non-3DS card exists). Frictionless still needs the SDK to complete 3DS in-browser; works on local https once `customerEmail` is on the session.
+6. **Neon driver = one HTTP fetch per query** → flaky networks throw `TypeError: fetch failed` intermittently (random 500s). `src/db/index.ts` sets `neonConfig.fetchFunction` to retry 4× with backoff.
+7. **Long-running dev server across wifi reconnects** wedges its DB sockets → persistent `fetch failed`. Restart fixes it.
+
+---
+
+## 6. Architecture map (key files)
+
+**Ryft lib** (`src/lib/ryft/`)
+- `client.ts` — `ryftFetch` (env-aware base URL, Account header), `publicOrigin`.
+- `sessions.ts` — `createBookingPaymentSession` (NR pay-now + fee split + fee-to-hotel), `createBookingCardSave` (Flex, NOT wired), `getPaymentSession`, `updateSessionEmail` (PATCH), `capture/refund/void`.
+- `accounts.ts` — `createSubAccount`, `createAccountLink`, `getAccount`, `resolveRyftAccountStatus` (active = card capability Enabled, since sandbox accounts are "Unverified" yet chargeable).
+- `webhook.ts` — signature verifier + event taxonomy.
+- `amounts.ts` — `toMinorUnits`.
+
+**API routes** (`src/app/api/ryft/`)
+- `booking-init` — NR create-before-pay: booking row + Ryft session, persists `ryftPaymentSessionId`.
+- `booking-finalise` — verifies session paid + runs `fulfilBooking` INLINE (no webhook needed for happy path).
+- `webhooks` — PaymentSession.approved/captured → fulfil (backstop); Account.* → refresh status.
+- `connect/start` + `connect/return` — onboarding (admin).
+- `session/route.ts` — standalone spike session (used by `/ryft-spike`).
+
+**Checkout (storefront)**
+- `src/components/checkout/RyftPaymentSection.tsx` — `@ryftpay/react` CardForm, separated fields, `confirm()` → `attemptPayment`. (Was the v2 embedded `ryft.min.js` — replaced; that was the cramped white-on-white single line.)
+- `src/themes/portico/screens/Checkout.tsx` — **branched by `property.paymentRail`** (Ryft vs Stripe). ⚠️ Street + Editorial-Calm themes NOT yet branched.
+- `src/app/[property]/checkout/checkout-client.tsx` — fallback, also branched.
+- `src/lib/booking/submitBooking.ts` — `ryftInitBooking`, `ryftFinaliseBooking` helpers.
+- `src/lib/get-property.ts` — `ResolvedProperty.paymentRail` = `ryftAccountStatus==='active' ? 'ryft' : 'stripe'`.
+- `src/app/api/bookings/[id]/details/route.ts` — patches guest details AND the Ryft session email.
+
+**Admin**
+- `src/app/admin/[propertyId]/ryft/page.tsx` — Connect-to-Ryft + status. `src/components/admin/Sidebar.tsx` — "Ryft" nav item.
+
+**Fulfilment / shared**
+- `src/lib/pms/fulfil-booking.ts` — payment posting is rail-agnostic (prefers Ryft session id, falls back to Stripe).
+- `src/db/schema.ts` — additive: `ryft_account_*` on properties, `ryft_*` on bookings, `ryft_id` on paymentEvents, all ALONGSIDE the stripe_* columns. (DB columns were added via ad-hoc `ALTER TABLE … ADD COLUMN IF NOT EXISTS`; no migration file — project uses drizzle push.)
+- `src/db/index.ts` — Neon retry wrapper.
+
+---
+
+## 7. What's left before "Ryft completed"
+
+### Cosmetic (small)
+- [ ] **Currency display USD→GBP** — charge is GBP, storefront/confirmation shows USD. Fix display to use charge currency, or set the demo hotel to GBP in Cloudbeds.
+- [ ] *(optional)* re-add **name-on-card** field (stripped during debugging; `collectNameOnCard:false` in `RyftPaymentSection`).
+
+### Functional (real gaps)
+- [ ] **Flex / refundable rates** — Ryft is **NR pay-now only**. Refundable bookings show "choose a non-refundable rate." Needs the off-session saved-card redesign: Ryft has no Stripe-SetupIntent 1:1. This is the biggest piece. `createBookingCardSave` (verifyAccount/zero-value) is drafted in `sessions.ts` but unused; the Flex auto-charge cron (`lib/stripe/auto-charge.ts`) is Stripe/SetupIntent-based.
+- [ ] **Street + Editorial-Calm themes** — only Portico's checkout is branched. Hotels on those themes still get the Stripe-only checkout. Apply the same per-rail branch to `src/themes/street/screens/Checkout.tsx` and `src/themes/editorial-calm/screens/Checkout.tsx`.
+- [ ] **Cancellations / refunds on Ryft** — `api/bookings/cancel/route.ts` is Stripe-only. Wire the Ryft `refund`/`void` helpers (already in `sessions.ts`) into the cancel + Flex-window paths.
+- [ ] **Production webhook** — register `POST /api/ryft/webhooks` against a stable HTTPS prod domain (inline finalise covers the happy path; webhook is the durable backstop if the guest tab dies post-charge). Store the `whs_…` secret as `RYFT_WEBHOOK_SECRET`.
+- [ ] **Real hotel onboarding** — `connect/start` shortcuts on localhost (no hosted KYC). In prod (https), the hosted-onboarding link + `Account.updated` webhook drive real verification → active.
+- [ ] **Final Stripe removal (cutover)** — once all themes + Flex + refunds run on Ryft: delete `src/lib/stripe`, the `/api/stripe/*` routes, the admin Stripe page, and the `stripe_*` schema columns. ~65 files reference Stripe today.
+- [ ] **Migrations** — the Ryft columns were added by ad-hoc ALTERs; fold them into the project's drizzle migration workflow for other environments/prod.
+
+---
+
+## 8. Commit trail (ryft-migration, newest first)
+
+```
+a1d6299 charge in the sub-account's settlement currency (currency fix, real)
+1b4e207 db: retry transient Neon fetch failures
+055139d attach customer email to session before payment   ← the real payment unblocker
+caf4d4d RyftPaymentSection: switch to @ryftpay/react separated fields
+2279bb7 Cloudbeds sync: don't flip a Ryft-active hotel's currency
+3023ddc omit returnUrl on non-https origins
+04e5ab4 Portico theme checkout: branch by payment rail
+38bd43c Storefront checkout on Ryft (per-property rail, NR pay-now)
+80b1ec2 connect: work on localhost
+1e405cb Admin: Ryft integrations nav + onboarding page
+b8eec2e Ryft onboarding + wire spike to real booking
+b8136bb Ryft rail: webhook → fee split → Cloudbeds posting (backend)
+```
+(Plus several RyftPaymentSection iteration commits — styling, validation, name-on-card.)

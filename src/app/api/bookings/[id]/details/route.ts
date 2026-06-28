@@ -64,12 +64,11 @@ export async function POST(
   }
 
   // Ryft refuses to action a payment unless the session carries customerEmail,
-  // and the storefront creates the session before the email is typed — so push
-  // it onto the session now, just before the card is confirmed. NR uses the
-  // pay-now session; Flex uses the card-save (verify) session — patch whichever
-  // this booking has.
-  const ryftSessionId =
-    booking.ryftPaymentSessionId ?? booking.ryftVerifySessionId;
+  // and the NR pay-now session is created before the email is typed — so push
+  // it onto the session now, just before the card is confirmed. (Flex's
+  // card-save session is created later, already carrying the email, and Ryft
+  // rejects changing a customerEmail once set — so we don't patch it here.)
+  const ryftSessionId = booking.ryftPaymentSessionId;
   if (body.guestEmail && ryftSessionId && booking.propertyId) {
     try {
       const [property] = await db

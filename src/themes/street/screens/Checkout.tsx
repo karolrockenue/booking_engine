@@ -389,6 +389,7 @@ export function StreetCheckout({ t, property }: { t: StreetTokens; property: Res
                     publicKey={intent.publicKey ?? ""}
                     accountId={intent.accountId}
                     customerEmail={email}
+                    saveCard={isRefundable}
                     brand={{ accent: t.accent, ink: t.ink, rule: t.rule }}
                   />
                   <p

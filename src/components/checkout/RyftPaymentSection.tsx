@@ -44,6 +44,10 @@ interface Props {
   // created before the guest types it (themes render the card early), so we
   // attach it at attempt time instead.
   customerEmail?: string;
+  // Flex (refundable): the session is a zero-value COF mandate, so the card must
+  // be SAVED, not charged. Drives the SDK's "setup-card" usage (store: true) —
+  // without it a paymentType:Unscheduled session is rejected at attempt.
+  saveCard?: boolean;
 }
 
 function buildTheme(brand?: RyftBrand): RyftCardFormTheme {
@@ -63,7 +67,7 @@ function buildTheme(brand?: RyftBrand): RyftCardFormTheme {
 
 const RyftPaymentSection = forwardRef<RyftPaymentSectionHandle, Props>(
   function RyftPaymentSection(
-    { clientSecret, publicKey, accountId, brand, customerEmail },
+    { clientSecret, publicKey, accountId, brand, customerEmail, saveCard },
     ref
   ) {
     const cardFormRef = useRef<RyftCardFormInstance>(null);
@@ -125,6 +129,7 @@ const RyftPaymentSection = forwardRef<RyftPaymentSectionHandle, Props>(
         publicKey={publicKey}
         clientSecret={clientSecret}
         accountId={accountId ?? undefined}
+        usage={saveCard ? "setup-card" : "payment"}
         onError={(e) => setError(e?.message ?? "Payment error")}
       >
         <CardForm

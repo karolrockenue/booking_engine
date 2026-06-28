@@ -405,6 +405,7 @@ export function EditorialCalmCheckout({
                 publicKey={intent.publicKey ?? ""}
                 accountId={intent.accountId}
                 customerEmail={email}
+                saveCard={isRefundable}
                 brand={{ accent: t.forest, ink: t.ink, rule: t.line }}
               />
             </div>

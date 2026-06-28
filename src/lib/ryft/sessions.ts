@@ -262,11 +262,17 @@ export async function chargeSavedCard(
   const currency =
     property.ryftAccountCurrency ?? property.currency ?? "GBP";
   const totalMinor = toMinorUnits(amount, currency);
+  const account = property.ryftAccountId!; // assertRyftActive guarantees it
 
-  return createSession(property, {
+  // 1. Create the session for the off-session MIT (saved card + the verify
+  //    session as the previousPayment, which carries the COF mandate). This
+  //    only opens the session — it comes back PendingPayment.
+  const session = await createSession(property, {
     amount: totalMinor,
     currency,
-    customerId,
+    // Ryft requires customerDetails.id (not a top-level customerId) to charge a
+    // stored payment method — the card is tokenized against this customer.
+    customerDetails: { id: customerId },
     customerEmail: args.guestEmail,
     paymentMethod: { id: paymentMethodId },
     paymentType: "Unscheduled",
@@ -276,6 +282,30 @@ export async function chargeSavedCard(
     platformSettings: feeToSubAccount(property),
     metadata: { orderId, propertyId: property.id },
   });
+
+  // 2. Action the charge against the stored card. Creating the session doesn't
+  //    move money — attempt-payment does. It's public-key-authed (front-end
+  //    endpoint), but server-side with a stored pmt_ and no cardholder present
+  //    it runs the merchant-initiated charge; the COF mandate exempts 3DS.
+  try {
+    return await ryftFetch<RyftPaymentSession>(
+      "/payment-sessions/attempt-payment",
+      {
+        method: "POST",
+        auth: "public",
+        account,
+        body: {
+          clientSecret: session.clientSecret,
+          paymentMethod: { id: paymentMethodId },
+        },
+      }
+    );
+  } catch (err) {
+    if (err instanceof RyftError) {
+      throw new RyftSessionError(err.message, err.status);
+    }
+    throw err;
+  }
 }
 
 // Set the customer email on an existing session. Ryft refuses to action a

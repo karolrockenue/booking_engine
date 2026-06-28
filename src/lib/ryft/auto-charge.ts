@@ -149,14 +149,15 @@ export async function chargeRyftBooking(
 
     // Record the charge in the PMS folio. Best-effort — money is at Ryft; a
     // missing folio line is a reconciliation issue the hotel can fix.
+    let pmsPaymentId: string | null = null;
     try {
-      await getPmsAdapter(property).recordPayment({
+      ({ pmsPaymentId } = await getPmsAdapter(property).recordPayment({
         reservationId: booking.cloudbedsReservationId,
         amount: grandTotalNum,
         type: "credit",
         description: `Ryft ${session.id} (auto-charge)`,
         externalIdentifier: session.id,
-      });
+      }));
     } catch (payErr) {
       console.error(
         `Ryft auto-charge postPayment failed for reservation ${booking.cloudbedsReservationId}:`,
@@ -166,7 +167,11 @@ export async function chargeRyftBooking(
 
     await db
       .update(bookings)
-      .set({ status: "paid", ryftPaymentSessionId: session.id })
+      .set({
+        status: "paid",
+        ryftPaymentSessionId: session.id,
+        ...(pmsPaymentId ? { pmsPaymentId } : {}),
+      })
       .where(eq(bookings.id, booking.id));
 
     await db.insert(paymentEvents).values({

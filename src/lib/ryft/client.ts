@@ -21,6 +21,15 @@ function secretKey(): string {
   return key;
 }
 
+// A handful of endpoints (attempt-payment) are public-key-authed — they're meant
+// for the front-end, but a server-side off-session MIT actions the charge the
+// same way with the stored card instead of raw card details.
+function publicKey(): string {
+  const key = process.env.NEXT_PUBLIC_RYFT_PUBLIC_KEY;
+  if (!key) throw new Error("NEXT_PUBLIC_RYFT_PUBLIC_KEY not configured");
+  return key;
+}
+
 // Pick the base URL the same way the Stripe client transparently handles
 // test↔live: infer from the key prefix so a live key can never accidentally
 // transact against sandbox (or vice-versa). RYFT_API_BASE overrides for
@@ -35,16 +44,17 @@ interface RyftFetchOpts {
   method?: "GET" | "POST" | "PATCH" | "DELETE";
   body?: unknown;
   account?: string | null; // sub-account id for Platform Fee payments
+  auth?: "secret" | "public"; // attempt-payment is public-key-authed
 }
 
 export async function ryftFetch<T = Record<string, unknown>>(
   path: string,
-  { method = "GET", body, account }: RyftFetchOpts = {}
+  { method = "GET", body, account, auth = "secret" }: RyftFetchOpts = {}
 ): Promise<T> {
   const res = await fetch(`${baseUrl()}${path}`, {
     method,
     headers: {
-      Authorization: secretKey(),
+      Authorization: auth === "public" ? publicKey() : secretKey(),
       "Content-Type": "application/json",
       ...(account ? { Account: account } : {}),
     },

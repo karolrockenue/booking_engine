@@ -93,6 +93,15 @@ export function PorticoCheckout({ t, property }: { t: PorticoTokens; property: R
   const [intentLoading, setIntentLoading] = useState(false);
   const [intentError, setIntentError] = useState<string | null>(null);
 
+  // Debounce the email so the Flex card-save — which creates a Ryft customer at
+  // init time — fires on a settled address, not a half-typed one (the ".c" of
+  // ".com" matches the email regex and would otherwise save a truncated email).
+  const [settledEmail, setSettledEmail] = useState("");
+  useEffect(() => {
+    const id = setTimeout(() => setSettledEmail(email), 600);
+    return () => clearTimeout(id);
+  }, [email]);
+
   const totals = useMemo(() => {
     if (!draft?.result) return { extrasTotal: 0, total: 0, nights: 0 };
     const nights = draft.result.nights;
@@ -139,7 +148,7 @@ export function PorticoCheckout({ t, property }: { t: PorticoTokens; property: R
     if (
       rail === "ryft" &&
       isRefundable &&
-      !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(guestRef.current.email)
+      !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(settledEmail)
     ) {
       intentFetchedKeyRef.current = null;
       setIntentLoading(false);
@@ -202,7 +211,7 @@ export function PorticoCheckout({ t, property }: { t: PorticoTokens; property: R
         setIntentLoading(false);
         intentFetchedKeyRef.current = null;
       });
-  }, [draftHydrated, draft, isRefundable, property.id, extras, currency, rail, email]);
+  }, [draftHydrated, draft, isRefundable, property.id, extras, currency, rail, settledEmail]);
 
   async function handleSubmit() {
     if (!draft?.result || !orderIdRef.current) return;

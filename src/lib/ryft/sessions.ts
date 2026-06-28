@@ -34,6 +34,12 @@ export interface RyftPaymentSession {
     | "Captured"
     | "Voided";
   customerId?: string;
+  // Present once a card session resolves. For a Flex card-save (`verifyAccount`)
+  // session this is the card that was saved — `tokenizedDetails.id` is the pmt_,
+  // `stored` confirms it was tokenized against the customer.
+  paymentMethod?: {
+    tokenizedDetails?: { id?: string; stored?: boolean };
+  };
 }
 
 function assertRyftActive(property: Property): void {
@@ -159,16 +165,32 @@ export async function createBookingCardSave(
   assertRyftActive(property);
   const account = property.ryftAccountId!; // assertRyftActive guarantees it
 
-  const customer = await ryftFetch<{ id: string }>("/customers", {
-    method: "POST",
-    account,
-    body: {
-      email: guestEmail,
-      firstName: guestFirst,
-      lastName: guestLast,
-      metadata: { orderId, propertyId: property.id },
-    },
-  });
+  // Get-or-create: emails are unique per Ryft account, so re-saving a card for
+  // a guest who already has a customer (a repeat booker, or a re-test) 409s on
+  // create. Fall back to looking the existing customer up by email and reusing
+  // it — its saved cards live there too.
+  let customer: { id: string };
+  try {
+    customer = await ryftFetch<{ id: string }>("/customers", {
+      method: "POST",
+      account,
+      body: {
+        email: guestEmail,
+        firstName: guestFirst,
+        lastName: guestLast,
+        metadata: { orderId, propertyId: property.id },
+      },
+    });
+  } catch (err) {
+    if (!(err instanceof RyftError && err.status === 409 && guestEmail)) throw err;
+    const found = await ryftFetch<{ items?: { id: string }[] }>(
+      `/customers?email=${encodeURIComponent(guestEmail)}`,
+      { account }
+    );
+    const existing = found.items?.[0];
+    if (!existing) throw err;
+    customer = existing;
+  }
 
   // Settlement currency, not property.currency (which the Cloudbeds sync can
   // flip) — must match the later MIT charge currency.

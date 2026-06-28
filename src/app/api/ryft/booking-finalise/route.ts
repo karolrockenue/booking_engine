@@ -64,10 +64,15 @@ export async function POST(req: NextRequest) {
   // captures (Approved/Captured); a Flex card-save verification resolves to
   // Approved (zero amount, nothing to capture).
   let verified = false;
+  let savedCardId: string | undefined;
   try {
     const session = await getPaymentSession(sessionId, property.ryftAccountId);
     verified =
       session.status === "Approved" || session.status === "Captured";
+    // The verify session carries the exact card it saved — prefer it over the
+    // customer's payment-method list (a reused customer can hold several cards).
+    const tokenized = session.paymentMethod?.tokenizedDetails;
+    if (tokenized?.stored) savedCardId = tokenized.id;
   } catch (err) {
     console.error("Ryft finalise: session fetch failed:", err);
     return NextResponse.json(
@@ -94,11 +99,16 @@ export async function POST(req: NextRequest) {
       );
     }
     try {
-      const methods = await getCustomerPaymentMethods(
-        booking.ryftCustomerId,
-        property.ryftAccountId
-      );
-      const pmt = methods[0]?.id;
+      // Prefer the card the session reported; fall back to the customer's most
+      // recent saved card (Ryft lists newest-first) if the session omitted it.
+      let pmt = savedCardId;
+      if (!pmt) {
+        const methods = await getCustomerPaymentMethods(
+          booking.ryftCustomerId,
+          property.ryftAccountId
+        );
+        pmt = methods[0]?.id;
+      }
       if (!pmt) {
         return NextResponse.json(
           { error: "Card was not saved" },

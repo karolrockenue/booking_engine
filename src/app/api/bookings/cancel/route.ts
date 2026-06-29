@@ -11,12 +11,11 @@ import {
 import { eq } from "drizzle-orm";
 import { verifyCancelToken } from "@/lib/crypto";
 import { getPmsAdapter } from "@/lib/pms";
-import { detachPaymentMethod } from "@/lib/stripe/detach";
-import { getStripe } from "@/lib/stripe/client";
 import {
   getPaymentSession,
   refundPaymentSession,
   voidPaymentSession,
+  deletePaymentMethod,
 } from "@/lib/ryft/sessions";
 import { sendBookingCancellationEmail } from "@/lib/email/booking-cancellation";
 
@@ -188,11 +187,10 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // Refund branch (rail-aware). Ryft first: a refundable Ryft booking with a
-  // payment session is refunded when Captured, or voided when only Approved
-  // (authorised, no money settled yet). Otherwise the legacy Stripe paths: Flex
-  // bookings that already auto-charged (status='paid') get a Stripe refund;
-  // pre-charge Flex with a saved card just detaches it — no money was taken.
+  // Refund branch. A refundable Ryft booking with a payment session is refunded
+  // when Captured, or voided when only Approved (authorised, no money settled
+  // yet). A pre-charge Flex booking has no session — just a saved card — so we
+  // delete the card; no money was taken.
   let refunded = false;
   let refundAmount: number | undefined;
   if (booking.ryftPaymentSessionId && property.ryftAccountId) {
@@ -311,99 +309,25 @@ export async function POST(req: NextRequest) {
     }
     // else: nothing captured/authorised (e.g. PendingPayment) → no charge to
     // reverse, nothing to do.
-  } else if (booking.status === "paid" && booking.stripePaymentIntentId) {
-    try {
-      const stripe = getStripe();
-      const refund = await stripe.refunds.create({
-        payment_intent: booking.stripePaymentIntentId,
-        reason: "requested_by_customer",
-        // Refund the application fee too — guest gets the full amount back.
-        refund_application_fee: true,
-        reverse_transfer: true,
-        metadata: { bookingId: booking.id, orderId: booking.orderId },
-      });
-      refunded = true;
-      refundAmount = refund.amount / 100;
-      await db.insert(paymentEvents).values({
-        bookingId: booking.id,
-        type: "refund",
-        stripeId: refund.id,
-        amount: refundAmount.toFixed(2),
-        currency: refund.currency.toUpperCase(),
-        status: refund.status ?? "pending",
-        payload: refund as unknown as Record<string, unknown>,
-      });
-
-      // §7.4: cancelling the reservation zeroes the room but leaves the recorded
-      // external payment on the PMS folio, so it still reads as paid. Post a
-      // compensating reversal so the folio reconciles to Stripe. Non-fatal: a
-      // failed reversal is a reconciliation log, not a cancel failure (Cloudbeds
-      // no-ops and returns null).
-      try {
-        const reversal = await pms.recordRefund({
-          reservationId: booking.cloudbedsReservationId,
-          amount: refundAmount,
-          externalIdentifier: refund.id,
-          description: `Stripe refund ${refund.id}`,
-        });
-        if (reversal) {
-          await db.insert(paymentEvents).values({
-            bookingId: booking.id,
-            type: "pms_refund_recorded",
-            stripeId: refund.id,
-            amount: refundAmount.toFixed(2),
-            currency: refund.currency.toUpperCase(),
-            status: "recorded",
-          });
-        }
-      } catch (reversalErr) {
-        console.error(
-          `Compensating PMS reversal failed for booking ${booking.id} (reservation ${booking.cloudbedsReservationId}):`,
-          reversalErr
-        );
-        await db.insert(paymentEvents).values({
-          bookingId: booking.id,
-          type: "pms_refund_failed",
-          stripeId: refund.id,
-          status: "pms_reversal_failed",
-          errorMessage:
-            reversalErr instanceof Error ? reversalErr.message : "Unknown",
-        });
-      }
-    } catch (refundErr) {
+  } else if (booking.ryftPaymentMethodId && property.ryftAccountId) {
+    // Flex pre-charge: no payment session yet (no money taken), just a saved
+    // card. Delete it so the auto-charge cron can never charge it. Best-effort —
+    // a single-use or already-gone card just throws.
+    await deletePaymentMethod(
+      booking.ryftPaymentMethodId,
+      property.ryftAccountId
+    ).catch((err) =>
       console.error(
-        `Stripe refund failed for booking ${booking.id} (PI ${booking.stripePaymentIntentId}):`,
-        refundErr
-      );
-      // Cloudbeds is already cancelled; refund failure is a manual-recovery
-      // problem (Karol issues from Stripe dashboard). Carry on so the booking
-      // status reflects reality — guest sees "cancelled, refund pending".
-      await db.insert(paymentEvents).values({
-        bookingId: booking.id,
-        type: "auto_charge_failed",
-        status: "refund_failed",
-        errorMessage: refundErr instanceof Error ? refundErr.message : "Unknown",
-      });
-    }
-  } else if (booking.stripePaymentMethodId) {
-    // Flex pre-charge: detach the saved card so it can't be charged later.
-    const result = await detachPaymentMethod(booking.stripePaymentMethodId).catch(
-      (err) => {
-        console.error(
-          `Detach PM failed for booking ${booking.id} (PM ${booking.stripePaymentMethodId}):`,
-          err
-        );
-        return null;
-      }
+        `Delete saved card failed for booking ${booking.id} (pm ${booking.ryftPaymentMethodId}):`,
+        err
+      )
     );
-    if (result) {
-      await db.insert(paymentEvents).values({
-        bookingId: booking.id,
-        type: "payment_method_detached",
-        stripeId: booking.stripePaymentMethodId,
-        status: result.alreadyDetached ? "already_detached" : "detached",
-      });
-    }
+    await db.insert(paymentEvents).values({
+      bookingId: booking.id,
+      type: "payment_method_detached",
+      ryftId: booking.ryftPaymentMethodId,
+      status: "deleted_on_cancel",
+    });
   }
 
   await db

@@ -34,9 +34,9 @@ interface Booking {
   applicationFee: string | null;
   grandTotal: string;
   currency: string;
-  stripePaymentIntentId: string | null;
-  stripeSetupIntentId: string | null;
-  stripeCustomerId: string | null;
+  ryftPaymentSessionId: string | null;
+  ryftVerifySessionId: string | null;
+  ryftCustomerId: string | null;
   cancellationPolicySnapshot: unknown;
   rateType: string | null;
   status: string;
@@ -357,11 +357,6 @@ function DetailPane({
         (24 * 60 * 60 * 1000)
     )
   );
-  const stripeUrl = b.stripePaymentIntentId
-    ? `https://dashboard.stripe.com/payments/${b.stripePaymentIntentId}`
-    : b.stripeSetupIntentId
-      ? `https://dashboard.stripe.com/setup_intents/${b.stripeSetupIntentId}`
-      : null;
 
   return (
     <>
@@ -481,17 +476,17 @@ function DetailPane({
                 ? "Flex (card on file)"
                 : "—"}
           </Kv>
-          {b.stripePaymentIntentId && (
-            <Kv k="Stripe PI">
+          {b.ryftPaymentSessionId && (
+            <Kv k="Ryft session">
               <span className="font-jbm">
-                {b.stripePaymentIntentId.slice(0, 12)}…
+                {b.ryftPaymentSessionId.slice(0, 16)}…
               </span>
             </Kv>
           )}
-          {b.stripeSetupIntentId && (
-            <Kv k="Stripe SI">
+          {b.ryftVerifySessionId && (
+            <Kv k="Ryft card-save">
               <span className="font-jbm">
-                {b.stripeSetupIntentId.slice(0, 12)}…
+                {b.ryftVerifySessionId.slice(0, 16)}…
               </span>
             </Kv>
           )}
@@ -523,11 +518,6 @@ function DetailPane({
           >
             Resend confirmation
           </Btn>
-          {stripeUrl && (
-            <Btn size="sm" href={stripeUrl} newTab>
-              View on Stripe ↗
-            </Btn>
-          )}
           <Btn
             size="sm"
             variant="danger"

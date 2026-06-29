@@ -145,11 +145,11 @@ export async function GET(
         : undefined,
     },
     {
-      id: "stripe_connect",
-      label: "Stripe Connect onboarded",
-      done: property.stripeAccountStatus === "active",
-      meta: property.stripeAccountStatus
-        ? `status ${property.stripeAccountStatus}`
+      id: "ryft_connect",
+      label: "Ryft onboarded",
+      done: property.ryftAccountStatus === "active",
+      meta: property.ryftAccountStatus
+        ? `status ${property.ryftAccountStatus}`
         : "not started",
     },
     {
@@ -172,14 +172,14 @@ export async function GET(
   // ─── alerts (basic derivations until the alerts engine lands) ───
   const alerts: AlertItem[] = [];
 
-  if (property.stripeAccountStatus === "restricted") {
+  if (property.ryftAccountStatus === "restricted") {
     alerts.push({
-      id: "stripe_restricted",
+      id: "ryft_restricted",
       kind: "danger",
-      title: "Stripe account is restricted",
+      title: "Ryft account is restricted",
       desc:
-        "Stripe has restricted this connected account. Charges may fail. Open Stripe to resolve outstanding requirements.",
-      cta: { label: "Open in Stripe ↗" },
+        "Ryft has restricted this sub-account. Charges may fail. Open Ryft to resolve outstanding requirements.",
+      cta: { label: "Open in Ryft ↗" },
     });
   }
 
@@ -217,7 +217,7 @@ export async function GET(
       id: "failed_bookings",
       kind: "warn",
       title: `${failed7d} failed booking${failed7d === 1 ? "" : "s"} in 7 days`,
-      desc: "Stripe verification or postReservation failed. Review on Bookings tab.",
+      desc: "Payment verification or postReservation failed. Review on Bookings tab.",
     });
   }
 
@@ -229,8 +229,8 @@ export async function GET(
       domain: property.domain,
       currency: property.currency,
       status: property.status,
-      stripeAccountId: property.stripeAccountId,
-      stripeAccountStatus: property.stripeAccountStatus,
+      ryftAccountId: property.ryftAccountId,
+      ryftAccountStatus: property.ryftAccountStatus,
       cloudbedsConnected: !!property.cloudbedsAccessToken,
       cloudbedsPropertyId: property.cloudbedsPropertyId,
     },

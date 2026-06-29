@@ -211,7 +211,7 @@ export default function MewsPage() {
 
                 <div>
                   <label className="text-[11px] uppercase tracking-wider block mb-1" style={{ color: "var(--a-muted)" }}>
-                    External payment type (for recording the Stripe charge)
+                    External payment type (for recording the Ryft charge)
                   </label>
                   <select
                     value={paymentType}

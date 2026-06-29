@@ -27,7 +27,7 @@ import { fulfilBooking } from "../lib/pms/fulfil-booking";
     rateType: "nr", checkIn: ci, checkOut: co, adults: 1, children: 0,
     guestFirst: "Fulfil", guestLast: "Smoke", guestEmail: "fulfil-smoke@example.com", guestCountry: "GB",
     roomTotal: opt.totalPrice.toFixed(2), extrasTotal: (extra.priceMinorUnits/100).toFixed(2), grandTotal: (opt.totalPrice + extra.priceMinorUnits/100).toFixed(2),
-    currency: "GBP", stripePaymentIntentId: "pi_fulfil_smoke_fake", status: "paid",
+    currency: "GBP", ryftPaymentSessionId: "ps_fulfil_smoke_fake", status: "paid",
   }).returning();
   await db.insert(bookingDayRates).values(opt.nightlyRates.map((n: any) => ({ bookingId: b.id, date: n.date, rate: n.rate.toFixed(2) })));
   await db.insert(bookingExtras).values({

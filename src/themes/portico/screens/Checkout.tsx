@@ -11,8 +11,6 @@ import {
   extrasSubtotal,
   loadPersistedDraft,
   savePersistedConfirmation,
-  submitBooking,
-  initBooking,
   ryftInitBooking,
   ryftFinaliseBooking,
   patchBookingDetails,
@@ -20,10 +18,6 @@ import {
   useExtras,
   type PersistedBookingDraft,
 } from "@/lib/booking";
-import StripePaymentSection, {
-  type IntentKind,
-  type StripePaymentSectionHandle,
-} from "@/components/checkout/StripePaymentSection";
 import RyftPaymentSection, {
   type RyftPaymentSectionHandle,
 } from "@/components/checkout/RyftPaymentSection";
@@ -34,14 +28,9 @@ import { PorticoShell } from "../PorticoShell";
 import { BookingNav } from "../components/Nav";
 import { Btn, Input, Select } from "../components/primitives";
 import { COUNTRIES } from "@/lib/countries";
-import { porticoStripeAppearance } from "../stripe-appearance";
 
 interface CreatedIntent {
-  kind: IntentKind;
   clientSecret: string;
-  paymentIntentId?: string;
-  setupIntentId?: string;
-  customerId?: string;
   // Ryft rail only.
   paymentSessionId?: string;
   accountId?: string | null;
@@ -82,9 +71,7 @@ export function PorticoCheckout({ t, property }: { t: PorticoTokens; property: R
     orderIdRef.current = crypto.randomUUID();
   }
 
-  const stripeFormRef = useRef<StripePaymentSectionHandle | null>(null);
   const ryftFormRef = useRef<RyftPaymentSectionHandle | null>(null);
-  const rail = property.paymentRail;
   const intentFetchedKeyRef = useRef<string | null>(null);
   // Booking row id from initBooking() — created before the card is confirmed.
   const bookingIdRef = useRef<string | null>(null);
@@ -122,8 +109,9 @@ export function PorticoCheckout({ t, property }: { t: PorticoTokens; property: R
   const isRefundable = draft?.result?.ratePlan.isRefundable ?? true;
   const intentReady = !!intent && !intentLoading;
 
-  // Create-before-pay: persist the booking row + extras intent + Stripe intent
-  // server-side via initBooking(). Fires once per (orderId, ratePlanId). Email
+  // Create-before-pay: persist the booking row + extras intent + Ryft payment
+  // session server-side via ryftInitBooking(). Fires once per (orderId,
+  // ratePlanId). Email
   // may still be empty here (this theme renders the card before it's typed) —
   // init stores "" and the details-patch backfills it before any charge.
   useEffect(() => {
@@ -137,7 +125,6 @@ export function PorticoCheckout({ t, property }: { t: PorticoTokens; property: R
     if (intentFetchedKeyRef.current === fetchKey) return;
     intentFetchedKeyRef.current = fetchKey;
 
-    const kind: IntentKind = isRefundable ? "setup" : "payment";
     const guest = guestRef.current;
     const selectedExtras = extras.filter((e) => draft.extras.includes(e.id));
 
@@ -146,7 +133,6 @@ export function PorticoCheckout({ t, property }: { t: PorticoTokens; property: R
     // before the email is typed, so wait for it — the effect re-runs when the
     // email is entered. (NR has no customer, so it can init immediately.)
     if (
-      rail === "ryft" &&
       isRefundable &&
       !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(settledEmail)
     ) {
@@ -175,28 +161,15 @@ export function PorticoCheckout({ t, property }: { t: PorticoTokens; property: R
       currency,
     };
 
-    const initPromise =
-      rail === "ryft"
-        ? ryftInitBooking(initArgs).then((init) => {
-            bookingIdRef.current = init.bookingId;
-            setIntent({
-              kind: "payment",
-              clientSecret: init.clientSecret,
-              paymentSessionId: init.paymentSessionId,
-              accountId: init.accountId,
-              publicKey: init.publicKey,
-            });
-          })
-        : initBooking(initArgs).then((init) => {
-            bookingIdRef.current = init.bookingId;
-            setIntent({
-              kind,
-              clientSecret: init.clientSecret,
-              paymentIntentId: init.paymentIntentId,
-              setupIntentId: init.setupIntentId,
-              customerId: init.customerId,
-            });
-          });
+    const initPromise = ryftInitBooking(initArgs).then((init) => {
+      bookingIdRef.current = init.bookingId;
+      setIntent({
+        clientSecret: init.clientSecret,
+        paymentSessionId: init.paymentSessionId,
+        accountId: init.accountId,
+        publicKey: init.publicKey,
+      });
+    });
 
     initPromise
       .then(() => setIntentLoading(false))
@@ -211,12 +184,11 @@ export function PorticoCheckout({ t, property }: { t: PorticoTokens; property: R
         setIntentLoading(false);
         intentFetchedKeyRef.current = null;
       });
-  }, [draftHydrated, draft, isRefundable, property.id, extras, currency, rail, settledEmail]);
+  }, [draftHydrated, draft, isRefundable, property.id, extras, currency, settledEmail]);
 
   async function handleSubmit() {
     if (!draft?.result || !orderIdRef.current) return;
-    const activeFormRef = rail === "ryft" ? ryftFormRef : stripeFormRef;
-    if (!intent || !activeFormRef.current) {
+    if (!intent || !ryftFormRef.current) {
       setError("Payment form is still loading. Try again in a moment.");
       return;
     }
@@ -242,49 +214,20 @@ export function PorticoCheckout({ t, property }: { t: PorticoTokens; property: R
 
       const selectedExtras = extras.filter((e) => draft.extras.includes(e.id));
 
-      let result: {
-        orderId: string;
-        bookingId: string;
-        cloudbedsReservationId?: string | null;
-        cancelUrl?: string;
+      // Confirm the card via the Ryft SDK, then finalise server-side
+      // (verify paid + fulfil to the PMS). Webhook is the async backstop.
+      await ryftFormRef.current!.confirm();
+      const finalised = await ryftFinaliseBooking(bookingIdRef.current!);
+      const result = {
+        orderId: orderIdRef.current,
+        bookingId: bookingIdRef.current!,
+        cloudbedsReservationId: finalised.cloudbedsReservationId,
       };
-
-      if (rail === "ryft") {
-        // Confirm the card via the Ryft SDK, then finalise server-side
-        // (verify paid + fulfil to the PMS). Webhook is the async backstop.
-        await ryftFormRef.current!.confirm();
-        const finalised = await ryftFinaliseBooking(bookingIdRef.current!);
-        result = {
-          orderId: orderIdRef.current,
-          bookingId: bookingIdRef.current!,
-          cloudbedsReservationId: finalised.cloudbedsReservationId,
-        };
-      } else {
-        const stripeResult = await stripeFormRef.current!.confirm();
-        result = await submitBooking({
-          propertyId: property.id,
-          orderId: orderIdRef.current,
-          result: draft.result,
-          extras: selectedExtras,
-          extrasConfig: draft.extrasConfig,
-          guest,
-          checkIn: draft.checkIn,
-          checkOut: draft.checkOut,
-          adults: draft.adults,
-          children: draft.children,
-          currency,
-          paymentIntentId: stripeResult.paymentIntentId,
-          setupIntentId: stripeResult.setupIntentId,
-          paymentMethodId: stripeResult.paymentMethodId,
-          customerId: intent.customerId,
-        });
-      }
 
       savePersistedConfirmation({
         orderId: result.orderId,
         bookingId: result.bookingId,
         cloudbedsReservationId: result.cloudbedsReservationId ?? undefined,
-        cancelUrl: result.cancelUrl,
         firstName: first,
         lastName: last,
         email,
@@ -413,7 +356,7 @@ export function PorticoCheckout({ t, property }: { t: PorticoTokens; property: R
             {intentError && (
               <p style={{ fontSize: 12, color: "#c25a4d", margin: 0 }}>{intentError}</p>
             )}
-            {intent && rail === "ryft" && (
+            {intent && (
               <div style={{ marginTop: 8, maxWidth: 460 }}>
                 <RyftPaymentSection
                   ref={ryftFormRef}
@@ -436,16 +379,6 @@ export function PorticoCheckout({ t, property }: { t: PorticoTokens; property: R
                 >
                   Secured by Ryft · 256-bit encryption
                 </p>
-              </div>
-            )}
-            {intent && rail === "stripe" && (
-              <div style={{ marginTop: 8 }}>
-                <StripePaymentSection
-                  ref={stripeFormRef}
-                  kind={intent.kind}
-                  clientSecret={intent.clientSecret}
-                  appearance={porticoStripeAppearance(t)}
-                />
               </div>
             )}
           </Section>

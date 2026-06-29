@@ -14,8 +14,8 @@ interface OverviewData {
     domain: string | null;
     currency: string | null;
     status: string | null;
-    stripeAccountId: string | null;
-    stripeAccountStatus: string | null;
+    ryftAccountId: string | null;
+    ryftAccountStatus: string | null;
     cloudbedsConnected: boolean;
     cloudbedsPropertyId: string | null;
   };
@@ -111,9 +111,9 @@ export default function OverviewPage() {
 
   const { property: p, stats, recentBookings, checklist, alerts } = data;
   const currency = p.currency ?? "GBP";
-  const stripeUrl = p.stripeAccountId
-    ? `https://dashboard.stripe.com/connect/accounts/${p.stripeAccountId}`
-    : undefined;
+  // Ryft has no per-account deep link we can rely on; point at our own admin
+  // Ryft page, which surfaces onboarding/connection status.
+  const ryftUrl = `/admin/${propertyId}/ryft`;
   const siteUrl = p.domain ? `https://${p.domain}` : `/?property=${p.slug}`;
 
   return (
@@ -176,14 +176,14 @@ export default function OverviewPage() {
       <div className="grid grid-cols-1 lg:grid-cols-[1.6fr_1fr] gap-4">
         <div className="flex flex-col gap-4">
           <RecentBookingsCard bookings={recentBookings} propertyId={p.id} />
-          <NeedsAttentionCard alerts={alerts} stripeUrl={stripeUrl} propertyId={p.id} />
+          <NeedsAttentionCard alerts={alerts} ryftUrl={ryftUrl} propertyId={p.id} />
         </div>
         <div className="flex flex-col gap-4">
           <ChecklistCard checklist={checklist} />
           <QuickActionsCard
             propertyId={p.id}
             siteUrl={siteUrl}
-            stripeUrl={stripeUrl}
+            ryftUrl={ryftUrl}
           />
         </div>
       </div>
@@ -323,11 +323,11 @@ function RecentBookingsCard({
 
 function NeedsAttentionCard({
   alerts,
-  stripeUrl,
+  ryftUrl,
   propertyId,
 }: {
   alerts: OverviewData["alerts"];
-  stripeUrl?: string;
+  ryftUrl: string;
   propertyId: string;
 }) {
   return (
@@ -402,10 +402,9 @@ function NeedsAttentionCard({
             {a.cta && (
               <Btn
                 size="sm"
-                newTab={a.id === "stripe_restricted"}
                 href={
-                  a.id === "stripe_restricted" && stripeUrl
-                    ? stripeUrl
+                  a.id === "ryft_restricted"
+                    ? ryftUrl
                     : a.id === "cloudbeds_reauth"
                       ? `/admin/${propertyId}/cloudbeds`
                       : undefined
@@ -495,17 +494,15 @@ function ChecklistCard({
 function QuickActionsCard({
   propertyId,
   siteUrl,
-  stripeUrl,
+  ryftUrl,
 }: {
   propertyId: string;
   siteUrl: string;
-  stripeUrl?: string;
+  ryftUrl: string;
 }) {
   const items: Array<{ label: string; href?: string }> = [
     { label: "Sync inventory", href: `/admin/${propertyId}/cloudbeds` },
-    stripeUrl
-      ? { label: "Open in Stripe ↗", href: stripeUrl }
-      : { label: "Stripe not connected" },
+    { label: "Manage Ryft", href: ryftUrl },
     { label: "Send test email" },
     { label: "Preview booking flow", href: siteUrl },
   ];

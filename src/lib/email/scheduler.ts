@@ -12,7 +12,7 @@ import { and, eq, inArray } from "drizzle-orm";
 import { sendTemplate } from "./send-template";
 import type { VariableContext } from "./variables";
 import { signCancelToken } from "@/lib/crypto";
-import { publicOrigin } from "@/lib/stripe/client";
+import { publicOrigin } from "@/lib/ryft/client";
 
 // Returns YYYY-MM-DD in the given timezone for `at`.
 function dateInTz(at: Date, timezone: string): string {

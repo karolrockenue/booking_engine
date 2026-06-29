@@ -52,7 +52,7 @@ const NEW = new Date(); // now
   await db.insert(paymentEvents).values({
     bookingId: d.id,
     type: "payment_intent_succeeded",
-    stripeId: "pi_sweep_smoke",
+    ryftId: "ps_sweep_smoke",
     amount: "100.00",
     currency: "gbp",
     status: "succeeded",

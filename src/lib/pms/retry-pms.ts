@@ -1,11 +1,10 @@
 import { db } from "@/db";
-import { bookings, paymentEvents } from "@/db/schema";
+import { bookings, paymentEvents, properties } from "@/db/schema";
 import { and, eq, inArray, isNull, lt, sql } from "drizzle-orm";
-import { getStripe } from "@/lib/stripe/client";
-import { detachPaymentMethod } from "@/lib/stripe/detach";
+import { refundPaymentSession, deletePaymentMethod } from "@/lib/ryft/sessions";
 import { fulfilBooking } from "./fulfil-booking";
 
-// PMS-agnostic recovery path for bookings where Stripe charged (NR) or saved a
+// PMS-agnostic recovery path for bookings where Ryft charged (NR) or saved a
 // card (Flex) but the inline PMS createReservation failed. The /api/bookings
 // handler returns 502 and leaves a stuck row with status in
 // ('paid','payment_authorized') and cloudbedsReservationId (our neutral PMS
@@ -71,7 +70,7 @@ export async function retryPmsForBooking(
 
   // Delegate to the shared idempotent fulfilment unit (create-or-adopt +
   // extras + external payment + confirmation email + status). It claim-locks
-  // the booking, so this never races the inline path or the Stripe webhook.
+  // the booking, so this never races the inline path or the Ryft webhook.
   const result = await fulfilBooking(booking.id);
   switch (result.outcome) {
     case "synced":
@@ -101,27 +100,31 @@ export async function retryPmsForBooking(
 }
 
 async function giveUpAndUnwind(booking: Booking): Promise<PmsRetryResult> {
-  const stripe = getStripe();
+  // Unwind the payment side on the hotel sub-account: full-refund an NR charge
+  // (including the platform fee — the stay never materialised) or delete a saved
+  // Flex card so the auto-charge cron can never charge it.
+  const [property] = booking.propertyId
+    ? await db
+        .select()
+        .from(properties)
+        .where(eq(properties.id, booking.propertyId))
+        .limit(1)
+    : [undefined];
+  const account = property?.ryftAccountId;
 
-  if (booking.rateType === "nr" && booking.stripePaymentIntentId) {
+  if (account && booking.rateType === "nr" && booking.ryftPaymentSessionId) {
     try {
-      const refund = await stripe.refunds.create({
-        payment_intent: booking.stripePaymentIntentId,
-        reason: "requested_by_customer",
-        refund_application_fee: true,
-        reverse_transfer: true,
-        metadata: {
-          bookingId: booking.id,
-          orderId: booking.orderId,
-          reason: "pms_giveup",
-        },
-      });
+      const refund = await refundPaymentSession(
+        booking.ryftPaymentSessionId,
+        account,
+        { reason: "pms_giveup", refundPlatformFee: true }
+      );
       await db.insert(paymentEvents).values({
         bookingId: booking.id,
         type: "refund",
-        stripeId: refund.id,
-        amount: (refund.amount / 100).toFixed(2),
-        currency: refund.currency.toUpperCase(),
+        ryftId: refund.id,
+        amount: Number(booking.grandTotal).toFixed(2),
+        currency: property?.ryftAccountCurrency ?? booking.currency,
         status: refund.status ?? "pending",
         payload: refund as unknown as Record<string, unknown>,
       });
@@ -138,23 +141,16 @@ async function giveUpAndUnwind(booking: Booking): Promise<PmsRetryResult> {
           refundErr instanceof Error ? refundErr.message : "Unknown",
       });
     }
-  } else if (booking.stripePaymentMethodId) {
-    const result = await detachPaymentMethod(
-      booking.stripePaymentMethodId
-    ).catch((e) => {
-      console.error(`PMS-giveup detach failed for booking ${booking.id}:`, e);
-      return null;
+  } else if (account && booking.ryftPaymentMethodId) {
+    await deletePaymentMethod(booking.ryftPaymentMethodId, account).catch((e) => {
+      console.error(`PMS-giveup card delete failed for booking ${booking.id}:`, e);
     });
-    if (result) {
-      await db.insert(paymentEvents).values({
-        bookingId: booking.id,
-        type: "payment_method_detached",
-        stripeId: booking.stripePaymentMethodId,
-        status: result.alreadyDetached
-          ? "already_detached_at_pms_giveup"
-          : "detached_at_pms_giveup",
-      });
-    }
+    await db.insert(paymentEvents).values({
+      bookingId: booking.id,
+      type: "payment_method_detached",
+      ryftId: booking.ryftPaymentMethodId,
+      status: "deleted_at_pms_giveup",
+    });
   }
 
   await db

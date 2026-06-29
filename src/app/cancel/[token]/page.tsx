@@ -112,7 +112,7 @@ export default async function CancelPage({
     // Refund only if money was already taken (Flex auto-charged earlier).
     eligibility = {
       kind: "eligible",
-      willRefund: booking.status === "paid" && Boolean(booking.stripePaymentIntentId),
+      willRefund: booking.status === "paid" && Boolean(booking.ryftPaymentSessionId),
     };
   }
 

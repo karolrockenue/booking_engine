@@ -10,8 +10,6 @@ import {
   extrasSubtotal,
   loadPersistedDraft,
   savePersistedConfirmation,
-  submitBooking,
-  initBooking,
   ryftInitBooking,
   ryftFinaliseBooking,
   patchBookingDetails,
@@ -19,10 +17,6 @@ import {
   useExtras,
   type PersistedBookingDraft,
 } from "@/lib/booking";
-import StripePaymentSection, {
-  type IntentKind,
-  type StripePaymentSectionHandle,
-} from "@/components/checkout/StripePaymentSection";
 import RyftPaymentSection, {
   type RyftPaymentSectionHandle,
 } from "@/components/checkout/RyftPaymentSection";
@@ -34,20 +28,14 @@ import { EditorialCalmShell } from "../EditorialCalmShell";
 import { Nav } from "../components/Nav";
 import { StepBar, StepDots, PageHeading } from "../components/BookingChrome";
 import { CTA, Mono, Bracket, Field, SelectField } from "../components/primitives";
-import { editorialCalmStripeAppearance } from "../stripe-appearance";
 import { FineFooter } from "./RoomSelect";
 
-// Screen 3 · Confirm & pay — guest details + Stripe-secured card on the
+// Screen 3 · Confirm & pay — guest details + Ryft-secured card on the
 // left, the booking summary rail on the right. Same create-before-pay
-// contract as the Street checkout (initBooking → patch details → confirm).
+// contract as the Street checkout (ryftInitBooking → patch details → confirm).
 
 interface CreatedIntent {
-  kind: IntentKind;
   clientSecret: string;
-  paymentIntentId?: string;
-  setupIntentId?: string;
-  customerId?: string;
-  // Ryft rail only.
   paymentSessionId?: string;
   accountId?: string | null;
   publicKey?: string | null;
@@ -93,9 +81,7 @@ export function EditorialCalmCheckout({
     orderIdRef.current = crypto.randomUUID();
   }
 
-  const stripeFormRef = useRef<StripePaymentSectionHandle | null>(null);
   const ryftFormRef = useRef<RyftPaymentSectionHandle | null>(null);
-  const rail = property.paymentRail;
   const intentFetchedKeyRef = useRef<string | null>(null);
   const bookingIdRef = useRef<string | null>(null);
 
@@ -139,7 +125,6 @@ export function EditorialCalmCheckout({
     if (intentFetchedKeyRef.current === fetchKey) return;
     intentFetchedKeyRef.current = fetchKey;
 
-    const kind: IntentKind = isRefundable ? "setup" : "payment";
     const guest = guestRef.current;
     const selectedExtras = extras.filter((e) => draft.extras.includes(e.id));
 
@@ -148,7 +133,6 @@ export function EditorialCalmCheckout({
     // before the email is typed, so wait for it — the effect re-runs when the
     // email is entered. (NR has no customer, so it can init immediately.)
     if (
-      rail === "ryft" &&
       isRefundable &&
       !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(settledEmail)
     ) {
@@ -177,28 +161,15 @@ export function EditorialCalmCheckout({
       currency,
     };
 
-    const initPromise =
-      rail === "ryft"
-        ? ryftInitBooking(initArgs).then((init) => {
-            bookingIdRef.current = init.bookingId;
-            setIntent({
-              kind: "payment",
-              clientSecret: init.clientSecret,
-              paymentSessionId: init.paymentSessionId,
-              accountId: init.accountId,
-              publicKey: init.publicKey,
-            });
-          })
-        : initBooking(initArgs).then((init) => {
-            bookingIdRef.current = init.bookingId;
-            setIntent({
-              kind,
-              clientSecret: init.clientSecret,
-              paymentIntentId: init.paymentIntentId,
-              setupIntentId: init.setupIntentId,
-              customerId: init.customerId,
-            });
-          });
+    const initPromise = ryftInitBooking(initArgs).then((init) => {
+      bookingIdRef.current = init.bookingId;
+      setIntent({
+        clientSecret: init.clientSecret,
+        paymentSessionId: init.paymentSessionId,
+        accountId: init.accountId,
+        publicKey: init.publicKey,
+      });
+    });
 
     initPromise
       .then(() => setIntentLoading(false))
@@ -213,12 +184,11 @@ export function EditorialCalmCheckout({
         setIntentLoading(false);
         intentFetchedKeyRef.current = null;
       });
-  }, [draftHydrated, draft, isRefundable, property.id, extras, currency, rail, settledEmail]);
+  }, [draftHydrated, draft, isRefundable, property.id, extras, currency, settledEmail]);
 
   async function handleSubmit() {
     if (!draft?.result || !orderIdRef.current) return;
-    const activeFormRef = rail === "ryft" ? ryftFormRef : stripeFormRef;
-    if (!intent || !activeFormRef.current) {
+    if (!intent || !ryftFormRef.current) {
       setError("Payment form is still loading. Try again in a moment.");
       return;
     }
@@ -243,43 +213,20 @@ export function EditorialCalmCheckout({
 
       const selectedExtras = extras.filter((e) => draft.extras.includes(e.id));
 
-      let result: {
+      // Confirm the card via the Ryft SDK, then finalise server-side
+      // (verify + fulfil to the PMS). Webhook is the async backstop.
+      await ryftFormRef.current!.confirm();
+      const finalised = await ryftFinaliseBooking(bookingIdRef.current!);
+      const result: {
         orderId: string;
         bookingId: string;
         cloudbedsReservationId?: string | null;
         cancelUrl?: string;
+      } = {
+        orderId: orderIdRef.current,
+        bookingId: bookingIdRef.current!,
+        cloudbedsReservationId: finalised.cloudbedsReservationId,
       };
-
-      if (rail === "ryft") {
-        // Confirm the card via the Ryft SDK, then finalise server-side
-        // (verify + fulfil to the PMS). Webhook is the async backstop.
-        await ryftFormRef.current!.confirm();
-        const finalised = await ryftFinaliseBooking(bookingIdRef.current!);
-        result = {
-          orderId: orderIdRef.current,
-          bookingId: bookingIdRef.current!,
-          cloudbedsReservationId: finalised.cloudbedsReservationId,
-        };
-      } else {
-        const stripeResult = await stripeFormRef.current!.confirm();
-        result = await submitBooking({
-          propertyId: property.id,
-          orderId: orderIdRef.current,
-          result: draft.result,
-          extras: selectedExtras,
-          extrasConfig: draft.extrasConfig,
-          guest,
-          checkIn: draft.checkIn,
-          checkOut: draft.checkOut,
-          adults: draft.adults,
-          children: draft.children,
-          currency,
-          paymentIntentId: stripeResult.paymentIntentId,
-          setupIntentId: stripeResult.setupIntentId,
-          paymentMethodId: stripeResult.paymentMethodId,
-          customerId: intent.customerId,
-        });
-      }
 
       savePersistedConfirmation({
         orderId: result.orderId,
@@ -401,12 +348,12 @@ export function EditorialCalmCheckout({
             <Bracket t={t} size={11}>PAYMENT</Bracket>
             <Mono t={t} size={10} style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
               <span style={{ width: 6, height: 6, borderRadius: 6, background: t.forest, display: "inline-block" }} />
-              SECURED BY {rail === "ryft" ? "RYFT" : "STRIPE"}
+              SECURED BY RYFT
             </Mono>
           </div>
           {intentLoading && !intent && <Mono t={t} size={10.5}>PREPARING SECURE PAYMENT…</Mono>}
           {intentError && <p style={{ fontSize: 13, color: "#B82626", fontFamily: "var(--ec-sans)", margin: 0 }}>{intentError}</p>}
-          {intent && rail === "ryft" && (
+          {intent && (
             <div style={{ marginTop: 8, maxWidth: 460 }}>
               <RyftPaymentSection
                 ref={ryftFormRef}
@@ -416,16 +363,6 @@ export function EditorialCalmCheckout({
                 customerEmail={email}
                 saveCard={isRefundable}
                 brand={{ accent: t.forest, ink: t.ink, rule: t.line }}
-              />
-            </div>
-          )}
-          {intent && rail === "stripe" && (
-            <div style={{ marginTop: 8 }}>
-              <StripePaymentSection
-                ref={stripeFormRef}
-                kind={intent.kind}
-                clientSecret={intent.clientSecret}
-                appearance={editorialCalmStripeAppearance(t)}
               />
             </div>
           )}
@@ -491,7 +428,7 @@ export function EditorialCalmCheckout({
               </CTA>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginTop: 16 }}>
                 <span style={{ width: 6, height: 6, borderRadius: 6, background: t.forest, display: "inline-block" }} />
-                <Mono t={t} size={9.5}>SECURED BY {rail === "ryft" ? "RYFT" : "STRIPE"} · PCI-DSS</Mono>
+                <Mono t={t} size={9.5}>SECURED BY RYFT · PCI-DSS</Mono>
               </div>
               <div style={{ textAlign: "center", marginTop: 16 }}>
                 <Link

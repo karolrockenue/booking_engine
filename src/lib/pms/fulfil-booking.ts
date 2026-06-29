@@ -5,7 +5,7 @@
 // to live inline in /api/bookings and (minus extras) in the retry cron. It now
 // lives here so all THREE triggers run the exact same path:
 //   1. /api/bookings — inline, the happy path (awaited; returns the reservation #)
-//   2. the Stripe webhook — durable backstop if the browser never returns
+//   2. the Ryft webhook — durable backstop if the browser never returns
 //   3. cron/pms-retry — sweeps anything still unsynced, then gives up + unwinds
 //
 // Safety:
@@ -35,7 +35,7 @@ import { getPmsAdapter } from "@/lib/pms";
 import { PmsSoldOutError } from "@/lib/pms/errors";
 import { sendBookingConfirmationEmail } from "@/lib/email/booking-confirmation";
 import { signCancelToken } from "@/lib/crypto";
-import { publicOrigin } from "@/lib/stripe/client";
+import { publicOrigin } from "@/lib/ryft/client";
 import { format, parseISO } from "date-fns";
 
 const LOCK_STALE_MS = 2 * 60 * 1000; // a claim older than this is abandoned
@@ -300,13 +300,9 @@ export async function fulfilBooking(bookingId: string): Promise<FulfilResult> {
 
     // 4. Record the external payment for NR (paid at checkout). Flex records it
     //    later at auto-charge. Guarded by pmsPaymentId so a re-run can't double.
-    //    Rail-agnostic: prefer the Ryft session id, fall back to the legacy
-    //    Stripe PaymentIntent during the phased migration.
     const paymentRef = booking.ryftPaymentSessionId
       ? { id: booking.ryftPaymentSessionId, label: `Ryft ${booking.ryftPaymentSessionId}` }
-      : booking.stripePaymentIntentId
-        ? { id: booking.stripePaymentIntentId, label: `Stripe ${booking.stripePaymentIntentId}` }
-        : null;
+      : null;
     if (booking.rateType === "nr" && paymentRef && !booking.pmsPaymentId) {
       try {
         const { pmsPaymentId } = await pms.recordPayment({

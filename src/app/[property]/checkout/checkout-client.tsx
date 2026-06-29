@@ -19,8 +19,6 @@ import {
   extrasSubtotal,
   loadPersistedDraft,
   savePersistedConfirmation,
-  submitBooking,
-  initBooking,
   ryftInitBooking,
   ryftFinaliseBooking,
   patchBookingDetails,
@@ -28,20 +26,12 @@ import {
   type PersistedBookingDraft,
 } from "@/lib/booking";
 import { useExtras } from "@/lib/booking";
-import StripePaymentSection, {
-  type StripePaymentSectionHandle,
-  type IntentKind,
-} from "@/components/checkout/StripePaymentSection";
 import RyftPaymentSection, {
   type RyftPaymentSectionHandle,
 } from "@/components/checkout/RyftPaymentSection";
 
 interface CreatedIntent {
-  kind: IntentKind;
   clientSecret: string;
-  paymentIntentId?: string;
-  setupIntentId?: string;
-  customerId?: string;
   // Ryft rail only.
   paymentSessionId?: string;
   accountId?: string | null;
@@ -80,18 +70,16 @@ export function CheckoutClient({ property }: { property: ResolvedProperty }) {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Stable orderId for the entire checkout session — used as Stripe
+  // Stable orderId for the entire checkout session — used as the
   // idempotency key + the booking's orderId.
   const orderIdRef = useRef<string | null>(null);
   if (orderIdRef.current === null && typeof window !== "undefined") {
     orderIdRef.current = crypto.randomUUID();
   }
 
-  const stripeFormRef = useRef<StripePaymentSectionHandle | null>(null);
   const ryftFormRef = useRef<RyftPaymentSectionHandle | null>(null);
-  const rail = property.paymentRail;
 
-  // Booking row id returned by initBooking() — the row exists server-side before
+  // Booking row id returned by ryftInitBooking() — the row exists server-side before
   // the card is confirmed (create-before-pay), so the patch + finalise calls and
   // the Stripe webhook can all reference it.
   const bookingIdRef = useRef<string | null>(null);
@@ -133,7 +121,7 @@ export function CheckoutClient({ property }: { property: ResolvedProperty }) {
   const intentReady = !!intent && !intentLoading;
 
   // Create-before-pay: once we have draft + email, persist the booking row +
-  // extras intent + Stripe intent server-side via initBooking(). One-shot per
+  // extras intent + Ryft payment session server-side via ryftInitBooking(). One-shot per
   // (orderId, ratePlanId): once fired we never re-fire, so subsequent edits to
   // email/name/extras don't race with an in-flight call.
   useEffect(() => {
@@ -147,7 +135,6 @@ export function CheckoutClient({ property }: { property: ResolvedProperty }) {
     if (intentFetchedKeyRef.current === fetchKey) return;
     intentFetchedKeyRef.current = fetchKey;
 
-    const kind: IntentKind = isRefundable ? "setup" : "payment";
     const guest = guestDetailsRef.current;
     const selectedExtras = extras.filter((e) => draft.extras.includes(e.id));
 
@@ -170,28 +157,15 @@ export function CheckoutClient({ property }: { property: ResolvedProperty }) {
       currency,
     };
 
-    const initPromise =
-      rail === "ryft"
-        ? ryftInitBooking(initArgs).then((init) => {
-            bookingIdRef.current = init.bookingId;
-            setIntent({
-              kind: "payment",
-              clientSecret: init.clientSecret,
-              paymentSessionId: init.paymentSessionId,
-              accountId: init.accountId,
-              publicKey: init.publicKey,
-            });
-          })
-        : initBooking(initArgs).then((init) => {
-            bookingIdRef.current = init.bookingId;
-            setIntent({
-              kind,
-              clientSecret: init.clientSecret,
-              paymentIntentId: init.paymentIntentId,
-              setupIntentId: init.setupIntentId,
-              customerId: init.customerId,
-            });
-          });
+    const initPromise = ryftInitBooking(initArgs).then((init) => {
+      bookingIdRef.current = init.bookingId;
+      setIntent({
+        clientSecret: init.clientSecret,
+        paymentSessionId: init.paymentSessionId,
+        accountId: init.accountId,
+        publicKey: init.publicKey,
+      });
+    });
 
     initPromise
       .then(() => setIntentLoading(false))
@@ -207,12 +181,11 @@ export function CheckoutClient({ property }: { property: ResolvedProperty }) {
         // Allow a retry on next email change since the call failed.
         intentFetchedKeyRef.current = null;
       });
-  }, [draftHydrated, draft, emailReady, isRefundable, property.id, extras, currency, rail]);
+  }, [draftHydrated, draft, emailReady, isRefundable, property.id, extras, currency]);
 
   async function handleSubmit() {
     if (!draft?.result || !orderIdRef.current) return;
-    const activeFormRef = rail === "ryft" ? ryftFormRef : stripeFormRef;
-    if (!intent || !activeFormRef.current) {
+    if (!intent || !ryftFormRef.current) {
       setError("Payment form is not ready yet.");
       return;
     }
@@ -237,41 +210,15 @@ export function CheckoutClient({ property }: { property: ResolvedProperty }) {
 
       const selectedExtras = extras.filter((e) => draft.extras.includes(e.id));
 
-      let result: {
-        orderId: string;
-        bookingId: string;
-        cloudbedsReservationId?: string | null;
+      // Confirm the card via the Ryft SDK, then finalise server-side
+      // (verify paid + fulfil to the PMS). Webhook is the async backstop.
+      await ryftFormRef.current!.confirm();
+      const finalised = await ryftFinaliseBooking(bookingIdRef.current!);
+      const result = {
+        orderId: orderIdRef.current,
+        bookingId: bookingIdRef.current!,
+        cloudbedsReservationId: finalised.cloudbedsReservationId,
       };
-
-      if (rail === "ryft") {
-        // Confirm the card via the Ryft SDK, then finalise server-side
-        // (verify paid + fulfil to the PMS). Webhook is the async backstop.
-        await ryftFormRef.current!.confirm();
-        const finalised = await ryftFinaliseBooking(bookingIdRef.current!);
-        result = {
-          orderId: orderIdRef.current,
-          bookingId: bookingIdRef.current!,
-          cloudbedsReservationId: finalised.cloudbedsReservationId,
-        };
-      } else {
-        const confirmResult = await stripeFormRef.current!.confirm();
-        result = await submitBooking({
-          propertyId: property.id,
-          orderId: orderIdRef.current,
-          result: draft.result,
-          extras: selectedExtras,
-          guest,
-          checkIn: draft.checkIn,
-          checkOut: draft.checkOut,
-          adults: draft.adults,
-          children: draft.children,
-          currency,
-          paymentIntentId: confirmResult.paymentIntentId,
-          setupIntentId: confirmResult.setupIntentId,
-          paymentMethodId: confirmResult.paymentMethodId,
-          customerId: intent.customerId,
-        });
-      }
 
       savePersistedConfirmation({
         orderId: result.orderId,
@@ -540,21 +487,13 @@ export function CheckoutClient({ property }: { property: ResolvedProperty }) {
                     </div>
                   )}
 
-                  {emailReady && intent && rail === "ryft" && (
+                  {emailReady && intent && (
                     <RyftPaymentSection
                       ref={ryftFormRef}
                       clientSecret={intent.clientSecret}
                       publicKey={intent.publicKey ?? ""}
                       accountId={intent.accountId}
                       customerEmail={guestDetails.email}
-                    />
-                  )}
-
-                  {emailReady && intent && rail === "stripe" && (
-                    <StripePaymentSection
-                      ref={stripeFormRef}
-                      kind={intent.kind}
-                      clientSecret={intent.clientSecret}
                     />
                   )}
 
@@ -570,7 +509,7 @@ export function CheckoutClient({ property }: { property: ResolvedProperty }) {
                       className="text-[11px]"
                       style={{ color: "var(--color-text-muted)" }}
                     >
-                      Secured by {rail === "ryft" ? "Ryft" : "Stripe"} · 256-bit SSL encryption
+                      Secured by Ryft · 256-bit SSL encryption
                     </p>
                   </div>
                 </div>

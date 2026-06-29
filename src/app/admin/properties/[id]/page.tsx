@@ -20,9 +20,6 @@ interface Property {
   cloudbedsPropertyId: string | null;
   cloudbedsConnected: boolean;
   cloudbedsTokenExpiresAt: string | null;
-  stripeAccountId: string | null;
-  stripeAccountStatus: string | null;
-  stripeAccountCurrency: string | null;
   ryftAccountId: string | null;
   ryftAccountStatus: string | null;
   ryftAccountCurrency: string | null;
@@ -85,7 +82,6 @@ export default function PropertyDetailPage({
 
   // Cloudbeds OAuth
   const [connecting, setConnecting] = useState(false);
-  const [connectingStripe, setConnectingStripe] = useState(false);
   const [connectingRyft, setConnectingRyft] = useState(false);
 
   async function handleConnectCloudbeds() {
@@ -112,30 +108,6 @@ export default function PropertyDetailPage({
     }
   }
 
-  async function handleConnectStripe() {
-    setConnectingStripe(true);
-    try {
-      const res = await fetch("/api/stripe/connect/start", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ propertyId: id }),
-      });
-      const data = await res.json();
-      if (!res.ok || !data.onboardingUrl) {
-        alert(data.error ?? "Failed to start Stripe onboarding");
-        setConnectingStripe(false);
-        return;
-      }
-      window.location.href = data.onboardingUrl;
-    } catch {
-      alert("Failed to start Stripe onboarding");
-      setConnectingStripe(false);
-    }
-  }
-
   async function handleConnectRyft() {
     setConnectingRyft(true);
     try {
@@ -148,12 +120,21 @@ export default function PropertyDetailPage({
         body: JSON.stringify({ propertyId: id }),
       });
       const data = await res.json();
-      if (!res.ok || !data.onboardingUrl) {
+      if (!res.ok) {
         alert(data.error ?? "Failed to start Ryft onboarding");
         setConnectingRyft(false);
         return;
       }
-      window.location.href = data.onboardingUrl;
+      // Route returns a hosted-onboarding link when KYC is still needed…
+      if (data.onboardingUrl) {
+        window.location.href = data.onboardingUrl;
+        return;
+      }
+      // …otherwise the sub-account is already chargeable (active) or pending
+      // without an HTTPS origin for hosted onboarding — just reload the status.
+      if (data.message) alert(data.message);
+      setConnectingRyft(false);
+      fetchProperty();
     } catch {
       alert("Failed to start Ryft onboarding");
       setConnectingRyft(false);
@@ -381,7 +362,7 @@ export default function PropertyDetailPage({
             </div>
           </div>
 
-          {/* Connection status. Cloudbeds tokens set by OAuth (Step 4); Stripe
+          {/* Connection status. Cloudbeds tokens set by OAuth (Step 4); Ryft
               status set by Connect onboarding (Step 9). */}
           <div className="mt-6 grid gap-4 md:grid-cols-2 text-xs">
             <div className="flex items-center gap-3 flex-wrap">
@@ -409,51 +390,6 @@ export default function PropertyDetailPage({
               </button>
             </div>
             <div className="flex items-center gap-3 flex-wrap">
-              <span className="text-gray-500">Stripe:</span>
-              <span
-                className={`px-2 py-0.5 rounded-full font-medium ${
-                  property.stripeAccountStatus === "active"
-                    ? "bg-green-100 text-green-700"
-                    : property.stripeAccountStatus === "restricted"
-                      ? "bg-red-100 text-red-700"
-                      : property.stripeAccountId
-                        ? "bg-yellow-100 text-yellow-700"
-                        : "bg-gray-100 text-gray-500"
-                }`}
-              >
-                {property.stripeAccountId
-                  ? (property.stripeAccountStatus ?? "pending")
-                  : "not connected"}
-              </span>
-              {property.stripeAccountCurrency && (
-                <span className="text-gray-400">
-                  · {property.stripeAccountCurrency.toUpperCase()}
-                </span>
-              )}
-              {property.stripeAccountCurrency &&
-                property.currency &&
-                property.stripeAccountCurrency.toLowerCase() !==
-                  property.currency.toLowerCase() && (
-                  <span className="text-red-600 text-xs">
-                    ⚠ currency mismatch ({property.currency})
-                  </span>
-                )}
-              <button
-                type="button"
-                onClick={handleConnectStripe}
-                disabled={connectingStripe}
-                className="text-xs px-2 py-0.5 border rounded hover:bg-gray-50 disabled:opacity-50"
-              >
-                {connectingStripe
-                  ? "Redirecting..."
-                  : property.stripeAccountStatus === "active"
-                    ? "Manage in Stripe"
-                    : property.stripeAccountId
-                      ? "Resume onboarding"
-                      : "Connect to Stripe"}
-              </button>
-            </div>
-            <div className="flex items-center gap-3 flex-wrap">
               <span className="text-gray-500">Ryft:</span>
               <span
                 className={`px-2 py-0.5 rounded-full font-medium ${
@@ -475,6 +411,14 @@ export default function PropertyDetailPage({
                   · {property.ryftAccountCurrency.toUpperCase()}
                 </span>
               )}
+              {property.ryftAccountCurrency &&
+                property.currency &&
+                property.ryftAccountCurrency.toLowerCase() !==
+                  property.currency.toLowerCase() && (
+                  <span className="text-red-600 text-xs">
+                    ⚠ currency mismatch ({property.currency})
+                  </span>
+                )}
               <button
                 type="button"
                 onClick={handleConnectRyft}

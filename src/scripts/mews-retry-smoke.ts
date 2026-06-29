@@ -190,7 +190,7 @@ async function insertStuckBooking(opts: {
       extrasTotal: "0.00",
       grandTotal: opts.total.toFixed(2),
       currency: opts.currency,
-      stripePaymentIntentId: `pi_retry_smoke_${Date.now()}`,
+      ryftPaymentSessionId: `ps_retry_smoke_${Date.now()}`,
       // Backdate so the eligibility age filter (createdAt < now-60s) would pass.
       createdAt: new Date(Date.now() - 3600_000),
       status: "paid",

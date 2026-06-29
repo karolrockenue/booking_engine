@@ -15,7 +15,7 @@ const HAIR = "rgba(255,255,255,0.08)";
 const FEATURES: Array<[string, string]> = [
   ["Conversion-first", "Booking pages built to win the direct booking — not a widget bolted onto a website."],
   ["Real-time sync", "Live rooms, rates and extras from the hotel's PMS, always accurate."],
-  ["Direct payouts", "Stripe Connect sends each booking straight to the hotel's own account."],
+  ["Direct payouts", "Ryft settles each booking straight to the hotel's own account."],
 ];
 
 export function RockenueLanding() {

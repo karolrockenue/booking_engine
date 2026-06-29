@@ -14,8 +14,8 @@ interface Property {
   currency: string | null;
   cloudbedsConnected: boolean;
   cloudbedsPropertyId: string | null;
-  stripeAccountId: string | null;
-  stripeAccountStatus: string | null;
+  ryftAccountId: string | null;
+  ryftAccountStatus: string | null;
   bookings7d: number;
   revenue7d: number;
 }
@@ -247,13 +247,13 @@ function derivePills(p: Property): Array<{ tone: PillTone; text: string }> {
   if (p.cloudbedsConnected) pills.push({ tone: "green", text: "cloudbeds" });
   else pills.push({ tone: "gray", text: "cloudbeds —" });
 
-  // Stripe
-  if (p.stripeAccountStatus === "active") pills.push({ tone: "green", text: "stripe" });
-  else if (p.stripeAccountStatus === "restricted")
-    pills.push({ tone: "amber", text: "stripe restricted" });
-  else if (p.stripeAccountStatus === "pending" && p.stripeAccountId)
-    pills.push({ tone: "amber", text: "stripe pending" });
-  else pills.push({ tone: "gray", text: "stripe —" });
+  // Ryft
+  if (p.ryftAccountStatus === "active") pills.push({ tone: "green", text: "ryft" });
+  else if (p.ryftAccountStatus === "restricted")
+    pills.push({ tone: "amber", text: "ryft restricted" });
+  else if (p.ryftAccountStatus === "pending" && p.ryftAccountId)
+    pills.push({ tone: "amber", text: "ryft pending" });
+  else pills.push({ tone: "gray", text: "ryft —" });
 
   return pills;
 }
@@ -263,9 +263,9 @@ function isLive(p: Property): boolean {
 }
 
 function needsAttention(p: Property): boolean {
-  // Live property whose Stripe is restricted, or any property where cloudbeds is meant to be connected
+  // Live property whose Ryft is restricted, or any property where cloudbeds is meant to be connected
   // but token presence is missing while a property ID is set (re-auth required).
-  if (p.stripeAccountStatus === "restricted") return true;
+  if (p.ryftAccountStatus === "restricted") return true;
   if (p.cloudbedsPropertyId && !p.cloudbedsConnected) return true;
   return false;
 }

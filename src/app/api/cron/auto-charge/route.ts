@@ -1,18 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
-  chargeBooking,
-  findEligibleBookings,
-} from "@/lib/stripe/auto-charge";
-import {
   chargeRyftBooking,
   findEligibleRyftBookings,
 } from "@/lib/ryft/auto-charge";
 
-// Hourly auto-charge cron. Picks up Flex bookings whose cancellation window
-// has closed and charges the saved card off-session — Stripe (off-session
-// PaymentIntent) and Ryft (MIT against the saved card) sweeps run side by side,
-// disambiguated by which rail's saved-card state the booking carries. On
-// success each records the payment in the PMS folio.
+// Hourly auto-charge cron. Picks up Flex bookings whose cancellation window has
+// closed and charges the saved card off-session via a Ryft MIT against the
+// saved card. On success it records the payment in the PMS folio.
 //
 // Bearer-protected with CRON_SECRET, same pattern as inventory-sync.
 export async function POST(req: NextRequest) {
@@ -32,12 +26,9 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const [stripeEligible, ryftEligible] = await Promise.all([
-      findEligibleBookings(),
-      findEligibleRyftBookings(),
-    ]);
+    const ryftEligible = await findEligibleRyftBookings();
     const summary = {
-      eligible: stripeEligible.length + ryftEligible.length,
+      eligible: ryftEligible.length,
       charged: 0,
       failed: 0,
       skipped: 0,
@@ -60,11 +51,6 @@ export async function POST(req: NextRequest) {
           break;
       }
     };
-    for (const booking of stripeEligible) {
-      const result = await chargeBooking(booking);
-      results.push(result);
-      tally(result.outcome);
-    }
     for (const booking of ryftEligible) {
       const result = await chargeRyftBooking(booking);
       results.push(result);

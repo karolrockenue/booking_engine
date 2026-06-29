@@ -2,9 +2,7 @@ import { db } from "@/db";
 import { bookings, properties, roomTypes, ratePlans } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { verifyPaymentUpdateToken } from "@/lib/crypto";
-import { getStripe } from "@/lib/stripe/client";
 import { createBookingCardSave, RyftSessionError } from "@/lib/ryft/sessions";
-import { PaymentUpdateClient } from "./payment-update-client";
 import { RyftPaymentUpdateClient } from "./ryft-payment-update-client";
 
 function formatDate(iso: string): string {
@@ -196,69 +194,13 @@ export default async function PaymentUpdatePage({
     );
   }
 
-  if (!booking.stripeCustomerId) {
-    return (
-      <ErrorShell
-        title="Card update not available"
-        message="We can't update the card on this booking automatically. Please reply to your most recent email and we'll help."
-      />
-    );
-  }
-
-  // Mint a fresh SetupIntent attached to the same customer. usage:'off_session'
-  // so the next cron-driven PaymentIntent can charge without guest presence.
-  const stripe = getStripe();
-  let clientSecret: string;
-  let setupIntentId: string;
-  try {
-    const setupIntent = await stripe.setupIntents.create({
-      customer: booking.stripeCustomerId,
-      usage: "off_session",
-      automatic_payment_methods: { enabled: true },
-      metadata: {
-        bookingId: booking.id,
-        orderId: booking.orderId,
-        flow: "payment_update",
-      },
-    });
-    clientSecret = setupIntent.client_secret ?? "";
-    setupIntentId = setupIntent.id;
-    if (!clientSecret) throw new Error("SetupIntent missing client_secret");
-  } catch (err) {
-    console.error(
-      `payment-update: failed to create SetupIntent for booking ${booking.id}:`,
-      err
-    );
-    return (
-      <ErrorShell
-        title="Couldn't start card update"
-        message="We hit a problem preparing the form. Please reload the page in a few minutes, or reply to your most recent email if it keeps happening."
-      />
-    );
-  }
-
+  // Not a Ryft-active property → no rail to update the card on (Ryft is the only
+  // payment rail). Nothing actionable for the guest here.
   return (
-    <Shell hotelName={hotelName}>
-      <h1 style={titleStyle}>Update card</h1>
-      <p style={bodyStyle}>
-        We tried to take payment for your stay at <strong>{hotelName}</strong>{" "}
-        but the bank wouldn&rsquo;t authorise it. Save a new card below and
-        we&rsquo;ll retry the charge automatically.
-      </p>
-      <Summary
-        reservationId={booking.cloudbedsReservationId ?? booking.orderId}
-        roomName={room?.name ?? "Room"}
-        rateName={rate?.name ?? "Rate"}
-        checkIn={booking.checkIn}
-        checkOut={booking.checkOut}
-        grandTotal={grandTotal}
-      />
-      <PaymentUpdateClient
-        token={token}
-        clientSecret={clientSecret}
-        setupIntentId={setupIntentId}
-      />
-    </Shell>
+    <ErrorShell
+      title="Card update not available"
+      message="We can't update the card on this booking automatically. Please reply to your most recent email and we'll help."
+    />
   );
 }
 

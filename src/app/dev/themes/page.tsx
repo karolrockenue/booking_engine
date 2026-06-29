@@ -69,7 +69,7 @@ export default async function DevThemesPage() {
             </>
           ) : (
             <>
-              {" "}Backend, Cloudbeds, and Stripe are identical across every theme.
+              {" "}Backend, Cloudbeds, and Ryft are identical across every theme.
             </>
           )}
         </p>

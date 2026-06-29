@@ -8,16 +8,16 @@
  *
  * --run: actually POSTs to the cron route on http://localhost:3000 so you can
  *   step through the real charge path with the dev server running. Hits real
- *   Stripe + Cloudbeds against whatever environment .env.local points at.
+ *   Ryft + Cloudbeds against whatever environment .env.local points at.
  */
 
-import { findEligibleBookings } from "../lib/stripe/auto-charge";
+import { findEligibleRyftBookings } from "../lib/ryft/auto-charge";
 
 async function main() {
   const args = process.argv.slice(2);
   const shouldRun = args.includes("--run");
 
-  const eligible = await findEligibleBookings();
+  const eligible = await findEligibleRyftBookings();
   console.log(`Eligible Flex bookings hitting chargeAt: ${eligible.length}`);
   for (const b of eligible) {
     console.log(

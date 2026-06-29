@@ -71,12 +71,12 @@ export async function ryftFetch<T = Record<string, unknown>>(
   return data as T;
 }
 
-// Origin used for 3DS/redirect returnUrls. Mirrors the resolution the Stripe
-// client used so both rails point at the same public host.
+// Origin used for 3DS/redirect returnUrls and the guest cancel/payment-update
+// links. PUBLIC_APP_URL is the canonical public host; fall back to the Cloudbeds
+// redirect origin, then localhost for dev.
 export function publicOrigin(): string {
   return (
     process.env.PUBLIC_APP_URL ??
-    process.env.STRIPE_RETURN_ORIGIN ??
     process.env.CLOUDBEDS_REDIRECT_URI?.split("/api/")[0] ??
     "http://localhost:3000"
   );

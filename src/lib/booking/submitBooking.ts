@@ -159,6 +159,7 @@ export async function ryftFinaliseBooking(bookingId: string): Promise<{
   orderId?: string;
   cloudbedsReservationId?: string | null;
   outcome?: string;
+  cancelUrl?: string; // Flex self-cancel link, for the confirmation screen
 }> {
   const res = await fetch("/api/ryft/booking-finalise", {
     method: "POST",
@@ -170,6 +171,7 @@ export async function ryftFinaliseBooking(bookingId: string): Promise<{
     orderId?: string;
     cloudbedsReservationId?: string | null;
     outcome?: string;
+    cancelUrl?: string;
   };
   if (!res.ok) {
     throw new SubmitBookingError(

@@ -218,12 +218,14 @@ export function CheckoutClient({ property }: { property: ResolvedProperty }) {
         orderId: orderIdRef.current,
         bookingId: bookingIdRef.current!,
         cloudbedsReservationId: finalised.cloudbedsReservationId,
+        cancelUrl: finalised.cancelUrl,
       };
 
       savePersistedConfirmation({
         orderId: result.orderId,
         bookingId: result.bookingId,
         cloudbedsReservationId: result.cloudbedsReservationId ?? undefined,
+        cancelUrl: result.cancelUrl,
         firstName: guestDetails.firstName,
         lastName: guestDetails.lastName,
         email: guestDetails.email,

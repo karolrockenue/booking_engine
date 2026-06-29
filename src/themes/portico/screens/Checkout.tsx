@@ -222,12 +222,14 @@ export function PorticoCheckout({ t, property }: { t: PorticoTokens; property: R
         orderId: orderIdRef.current,
         bookingId: bookingIdRef.current!,
         cloudbedsReservationId: finalised.cloudbedsReservationId,
+        cancelUrl: finalised.cancelUrl,
       };
 
       savePersistedConfirmation({
         orderId: result.orderId,
         bookingId: result.bookingId,
         cloudbedsReservationId: result.cloudbedsReservationId ?? undefined,
+        cancelUrl: result.cancelUrl,
         firstName: first,
         lastName: last,
         email,

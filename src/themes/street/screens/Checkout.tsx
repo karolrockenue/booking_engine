@@ -230,6 +230,7 @@ export function StreetCheckout({ t, property }: { t: StreetTokens; property: Res
         orderId: orderIdRef.current,
         bookingId: bookingIdRef.current!,
         cloudbedsReservationId: finalised.cloudbedsReservationId,
+        cancelUrl: finalised.cancelUrl,
       };
 
       savePersistedConfirmation({

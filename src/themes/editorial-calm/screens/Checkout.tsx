@@ -226,6 +226,7 @@ export function EditorialCalmCheckout({
         orderId: orderIdRef.current,
         bookingId: bookingIdRef.current!,
         cloudbedsReservationId: finalised.cloudbedsReservationId,
+        cancelUrl: finalised.cancelUrl,
       };
 
       savePersistedConfirmation({

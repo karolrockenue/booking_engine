@@ -7,6 +7,8 @@ import {
   getCustomerPaymentMethods,
 } from "@/lib/ryft/sessions";
 import { fulfilBooking } from "@/lib/pms/fulfil-booking";
+import { signCancelToken } from "@/lib/crypto";
+import { publicOrigin } from "@/lib/ryft/client";
 
 // Inline finalise after the guest confirms the card in the browser — the Ryft
 // analog of the Stripe submitBooking finalise. Verifies the Ryft session
@@ -139,10 +141,17 @@ export async function POST(req: NextRequest) {
 
   const result = await fulfilBooking(booking.id);
 
+  // Flex bookings can self-cancel within the free window — hand the signed
+  // cancel link back so the confirmation screen can show it (it's also emailed).
+  const cancelUrl = isFlex
+    ? `${publicOrigin()}/cancel/${signCancelToken(booking.id)}`
+    : undefined;
+
   return NextResponse.json({
     bookingId: booking.id,
     orderId: booking.orderId,
     outcome: result.outcome,
     cloudbedsReservationId: result.pmsReservationId ?? null,
+    cancelUrl,
   });
 }

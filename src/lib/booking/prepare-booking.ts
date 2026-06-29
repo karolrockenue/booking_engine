@@ -300,7 +300,15 @@ export async function prepareBooking(
     extrasTotal: extrasTotalNum.toFixed(2),
     grandTotal: grandTotalNum.toFixed(2),
     applicationFee: ((grandTotalNum * feePercent) / 100).toFixed(2),
-    currency: input.currency ?? property.currency ?? "GBP",
+    // A Ryft-active property settles in its sub-account currency, and every Ryft
+    // money path (pay-now, card-save, auto-charge) charges in ryftAccountCurrency
+    // regardless of property.currency (which the Cloudbeds sync can flip to USD).
+    // Denominate the booking in that same currency so the stored row, the
+    // confirmation page, and the email all match what's actually charged.
+    currency:
+      property.ryftAccountStatus === "active" && property.ryftAccountCurrency
+        ? property.ryftAccountCurrency
+        : input.currency ?? property.currency ?? "GBP",
     cancellationPolicySnapshot,
     chargeAt,
     extraIntentRows,

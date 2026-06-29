@@ -8,9 +8,11 @@ import {
 } from "@/db/schema";
 import { and, eq, isNotNull, lte, sql } from "drizzle-orm";
 import { chargeSavedCard, deletePaymentMethod } from "@/lib/ryft/sessions";
-import { RyftError } from "@/lib/ryft/client";
+import { RyftError, publicOrigin } from "@/lib/ryft/client";
 import { getPmsAdapter } from "@/lib/pms";
 import { sendBookingCancellationEmail } from "@/lib/email/booking-cancellation";
+import { signPaymentUpdateToken } from "@/lib/crypto";
+import { sendPaymentUpdateEmail } from "@/lib/email/payment-update";
 
 // Ryft auto-charge — the Ryft analog of stripe/auto-charge.ts. Cron picks up
 // Flex bookings whose cancellation window has closed (chargeAt <= now) and
@@ -214,10 +216,16 @@ export async function chargeRyftBooking(
       `Ryft auto-charge attempt ${nextAttempt} failed for booking ${booking.id}: ${errorCode} — ${errorMessage}`
     );
 
-    // NOTE: a guest-facing "re-enter your card" email (the Stripe path's
-    // sendReAuthEmail / payment-update page) needs a Ryft card-save update page,
-    // which doesn't exist yet — deferred. The 24h grace retries + auto-cancel
-    // still resolve the booking without it.
+    // Email the guest a "re-enter your card" link on the FIRST failure (guarded
+    // by the absence of a prior firstAutoChargeFailureAt at entry). A saved-card
+    // MIT decline usually means the card needs replacing, so unlike the Stripe
+    // path (which only mails on authentication_required) we send on any first
+    // decline; the 24h grace keeps retrying the old card meanwhile.
+    if (!booking.firstAutoChargeFailureAt) {
+      void sendReEnterCardEmail(booking).catch((e) =>
+        console.error(`Ryft re-enter-card email failed for booking ${booking.id}:`, e)
+      );
+    }
 
     return {
       bookingId: booking.id,
@@ -345,4 +353,37 @@ async function autoCancelAfterGrace(
     outcome: "grace_expired",
     reason: "cancelled_after_grace",
   };
+}
+
+// Mail the guest a signed link to the rail-aware /payment-update page, where a
+// Ryft-active property renders the Ryft CardForm to re-save a card. Mirrors the
+// Stripe path's sendReAuthEmail; the email template is rail-agnostic.
+async function sendReEnterCardEmail(booking: Booking): Promise<void> {
+  const [property] = booking.propertyId
+    ? await db
+        .select()
+        .from(properties)
+        .where(eq(properties.id, booking.propertyId))
+        .limit(1)
+    : [];
+  if (!property) return;
+
+  const token = signPaymentUpdateToken(booking.id);
+  await sendPaymentUpdateEmail({
+    to: booking.guestEmail,
+    guestFirstName: booking.guestFirst,
+    hotelName: property.name,
+    cloudbedsReservationId: booking.cloudbedsReservationId ?? booking.orderId,
+    checkIn: booking.checkIn,
+    checkOut: booking.checkOut,
+    currency: booking.currency,
+    grandTotal: Number(booking.grandTotal),
+    paymentUpdateUrl: `${publicOrigin()}/payment-update/${token}`,
+  });
+
+  await db.insert(paymentEvents).values({
+    bookingId: booking.id,
+    type: "auto_charge_failed",
+    status: "re_auth_email_sent",
+  });
 }

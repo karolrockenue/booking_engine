@@ -3,7 +3,9 @@ import { bookings, properties, roomTypes, ratePlans } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { verifyPaymentUpdateToken } from "@/lib/crypto";
 import { getStripe } from "@/lib/stripe/client";
+import { createBookingCardSave, RyftSessionError } from "@/lib/ryft/sessions";
 import { PaymentUpdateClient } from "./payment-update-client";
+import { RyftPaymentUpdateClient } from "./ryft-payment-update-client";
 
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString("en-GB", {
@@ -128,6 +130,72 @@ export default async function PaymentUpdatePage({
       />
     );
   }
+
+  // Rail branch: a Ryft-active property's Flex booking saves a new card via a
+  // fresh zero-value card-save (COF mandate) session; the legacy Stripe path
+  // below mints a SetupIntent. Resolution mirrors get-property's paymentRail.
+  if (property?.ryftAccountStatus === "active") {
+    if (!booking.ryftCustomerId) {
+      return (
+        <ErrorShell
+          title="Card update not available"
+          message="We can't update the card on this booking automatically. Please reply to your most recent email and we'll help."
+        />
+      );
+    }
+    // Mint a fresh card-save session against the same customer (get-or-create by
+    // email reuses it). The new mandate replaces the old one server-side once
+    // the guest saves a card.
+    let cardSave;
+    try {
+      cardSave = await createBookingCardSave({
+        property,
+        orderId: booking.orderId,
+        guestEmail: booking.guestEmail || undefined,
+        guestFirst: booking.guestFirst || undefined,
+        guestLast: booking.guestLast || undefined,
+      });
+    } catch (err) {
+      console.error(
+        `payment-update: failed to create Ryft card-save for booking ${booking.id}:`,
+        err instanceof RyftSessionError ? err.message : err
+      );
+      return (
+        <ErrorShell
+          title="Couldn't start card update"
+          message="We hit a problem preparing the form. Please reload the page in a few minutes, or reply to your most recent email if it keeps happening."
+        />
+      );
+    }
+
+    return (
+      <Shell hotelName={hotelName}>
+        <h1 style={titleStyle}>Update card</h1>
+        <p style={bodyStyle}>
+          We tried to take payment for your stay at <strong>{hotelName}</strong>{" "}
+          but the bank wouldn&rsquo;t authorise it. Save a new card below and
+          we&rsquo;ll retry the charge automatically.
+        </p>
+        <Summary
+          reservationId={booking.cloudbedsReservationId ?? booking.orderId}
+          roomName={room?.name ?? "Room"}
+          rateName={rate?.name ?? "Rate"}
+          checkIn={booking.checkIn}
+          checkOut={booking.checkOut}
+          grandTotal={grandTotal}
+        />
+        <RyftPaymentUpdateClient
+          token={token}
+          clientSecret={cardSave.clientSecret}
+          verifySessionId={cardSave.paymentSessionId}
+          accountId={property.ryftAccountId}
+          publicKey={process.env.NEXT_PUBLIC_RYFT_PUBLIC_KEY ?? ""}
+          customerEmail={booking.guestEmail || undefined}
+        />
+      </Shell>
+    );
+  }
+
   if (!booking.stripeCustomerId) {
     return (
       <ErrorShell

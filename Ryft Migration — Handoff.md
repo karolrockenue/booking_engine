@@ -1,20 +1,23 @@
 # Ryft Migration — Handoff
 
-Branch: `ryft-migration`. Last verified end-to-end **2026-06-28** (Flex fully proven live).
+Status: **CUTOVER COMPLETE — Ryft is the sole payment rail.** Merged to `main` (tip `80c50f5`) and deploying to Railway (app.rockenue.tech) on **sandbox** keys, **2026-06-29/30**. Pre-launch: no live Ryft account, no live hotels, no real bookings yet.
 
-This is the handoff for replacing **Stripe Connect** with **Ryft** as the booking-engine payment rail (Stripe won't onboard the UAE platform to pay UK hotels; Ryft will). Read this before touching payment code.
+This is the handoff for the migration that replaced **Stripe Connect** with **Ryft** as the booking-engine payment rail (Stripe won't onboard the UAE platform to pay UK hotels; Ryft will). Read this before touching payment code.
 
 ---
 
 ## 1. Where we are — TL;DR
 
-**Both NR (pay-now) and Flex (refundable) are now proven end-to-end live.**
+**Stripe is fully deleted. Ryft is the only rail, end-to-end, code-complete and sandbox-proven on both Cloudbeds and Mews. Merged to `main`; Railway deploys it on sandbox keys.**
 
-- **NR — proven live (2026-06-27).** A real guest booked on the live Portico storefront, paid via Ryft, our fee was skimmed, the card fee was booked to the hotel, and it posted into Cloudbeds — reservation + folio payment — automatically. Booking `order_id f80df0b5…`: Ryft session **Captured**, £108.00 GBP, `platformFee` £3.24 (3%); Cloudbeds reservation **`5828976389743`** + folio payment **`232986678`**; status **`pms_synced`**.
-- **Flex — proven live (2026-06-28).** Both halves ran on the real storefront. (1) **Card-save:** a refundable booking completed the Ryft CardForm (3DS), saved the card, created the Cloudbeds reservation, and ended `pms_synced` (NOT paid) with `ryftVerifySessionId`+`ryftCustomerId`+`ryftPaymentMethodId` set. (2) **Off-session charge:** the auto-charge cron charged the saved card via a Merchant-Initiated Transaction → session **Captured** (£108 GBP), booking `paid`, folio payment posted to Cloudbeds, `auto_charge_succeeded` recorded. Booking `order_id c2da9d1d…`, charge session `ps_01KW7NKD…`. Live proof surfaced four contract bugs the sandbox proof had missed — see §5 items 8–11.
-- **Refunds/cancellations on Ryft — done (2026-06-27).** The cancel route refunds (Captured) or voids (Approved) via Ryft, falling back to Stripe.
+What's proven (sandbox):
+- **NR (pay-now)** — storefront checkout → Ryft `Captured` (platform fee skimmed, card fee booked to hotel) → Cloudbeds reservation + folio payment. Originally proven live `order_id f80df0b5…` (session Captured, £108 GBP, Cloudbeds res `5828976389743`).
+- **Flex (refundable)** — zero-value card-save (Credential-on-File mandate) + off-session Merchant-Initiated auto-charge. Both halves proven (`order_id c2da9d1d…`, charge session `ps_01KW7NKD…`). Plus a **re-enter-card recovery page** for a failed off-session charge (`/payment-update/[token]`, now Ryft) and a guest-facing decline email that links to it.
+- **Mews end-to-end** — `mews-fulfil-smoke` PASS: reservation + folio payment + extras land and are idempotent on re-run (the payment half is rail-agnostic; this proved the Mews write path under Ryft).
+- **Refunds / void / cancel** — rail-native (`refundPaymentSession` on Captured, `voidPaymentSession` on Approved, `deletePaymentMethod` for pre-charge Flex).
+- **Settlement-currency fix** — bookings are denominated in `ryftAccountCurrency` at creation (`prepareBooking`), so the displayed currency now matches the charge (no more USD-shown-while-GBP-charged).
 
-**Migration is phased:** Stripe columns/code are kept ALONGSIDE Ryft (additive schema) so the live storefront keeps transacting. Per-property rail selection decides which rail a hotel uses. Stripe is deleted only in the final cutover pass.
+**No longer phased.** The dual-rail period is over: `src/lib/stripe/*`, `src/app/api/stripe/*`, the Stripe checkout routes, `StripePaymentSection`, the theme `stripe-appearance` files, and the admin Stripe pages are all deleted; `paymentRail` was removed from `ResolvedProperty` (checkout is unconditionally Ryft); `@stripe/*` + `stripe` deps are gone. The `stripe_*` schema columns were removed from `schema.ts`; the DB columns were dropped, then re-added empty so the old `main` code kept working during the transition — they're now harmless dead columns the Ryft code ignores (drop them any time post-deploy, or leave them).
 
 ---
 
@@ -46,11 +49,10 @@ npx next dev --experimental-https \
 
 **This machine's proxy quirk:** the shell inherits a dead `ALL_PROXY` that blocks outbound. Prefix commands with `unset ALL_PROXY HTTP_PROXY HTTPS_PROXY http_proxy https_proxy all_proxy` and run with sandbox disabled. The dev server must be started with the proxy cleared too. (See `booking-engine-dead-proxy` memory.)
 
-**Rockenue demo data:**
-- Property `15cece68-d3da-4970-8aaf-46b025274d4e`, slug `rockenue-partner-account-15cece68`, theme `portico-ivory`.
-- Ryft sub-account `ac_34d2ae56-3f0c-4835-9780-f4278e8dd6c3` (status active, GBP).
-- NR rate `7ff9bd08-a4f8-4132-925a-7048378a3cc5` (Non Ref) on room `a225e5c5-3b78-4349-8bb4-6ed6d3ebecc1` (Double Room). **Inventory is only loaded ~May 2026.**
-- Ryft sandbox keys + sub-account id are in `.env.local` (`RYFT_SECRET_KEY`, `NEXT_PUBLIC_RYFT_PUBLIC_KEY`, `RYFT_TEST_SUBACCOUNT_ID`).
+**Ryft-active demo properties (sandbox):**
+- **Rockenue Partner Account** — `15cece68-…`, slug `rockenue-partner-account-15cece68`, theme `portico-ivory`, PMS **Cloudbeds**. Ryft sub-account `ac_34d2ae56-…` (active, GBP). NR rate `7ff9bd08-…` on room `a225e5c5-…` (Double Room). Inventory loaded ~May 2026.
+- **Mason & Fifth** — slug `mews-demo-hotel`, theme `editorial-calm`, PMS **Mews**, currency GBP. Activated 2026-06-29 against the standalone test sub-account `ac_1dde8dc2-…` (`RYFT_TEST_SUBACCOUNT_ID`). Full inventory (121 room types, 15 rate plans) — but the **Mews demo dataset has wild prices** (£40k+); pick "Half Board" (~£300) for a sane test charge.
+- Ryft sandbox keys + test sub-account id are in `.env.local` (`RYFT_SECRET_KEY`, `NEXT_PUBLIC_RYFT_PUBLIC_KEY`, `RYFT_TEST_SUBACCOUNT_ID`).
 
 **Test cards (ALL Ryft sandbox cards require 3DS):**
 - Frictionless Visa: `4012000000060085` — captures without a challenge.
@@ -74,7 +76,7 @@ npx next dev --experimental-https \
 ## 5. CRITICAL gotchas (each cost real debugging time — don't re-derive)
 
 1. **`customerEmail` MUST be on the SESSION** or every payment attempt 400s (`"customerEmail is missing… in order for payment to be actioned"`). The storefront creates the session *before* the guest types their email, so `/api/bookings/[id]/details` PATCHes the session email (`updateSessionEmail`) right before card confirm. Passing it only to the SDK's `attemptPayment` is NOT enough — it must be on the session.
-2. **Currency: Cloudbeds sandbox forces `property.currency` → USD**, but the Ryft sub-account settles **GBP only** → `currency must be one of: [GBP]`. Two-layer fix: (a) guard in `sync-hotel-details.ts` skips the currency overwrite when `ryftAccountStatus==='active'`; (b) the real fix — `createBookingPaymentSession` charges in `property.ryftAccountCurrency` (GBP, sync never touches it), not `property.currency`. **Consequence:** confirmation page still *displays* USD (cosmetic) while charging GBP.
+2. **Currency: Cloudbeds sandbox forces `property.currency` → USD**, but the Ryft sub-account settles **GBP only** → `currency must be one of: [GBP]`. Layered fix: (a) guard in `sync-hotel-details.ts` skips the currency overwrite when `ryftAccountStatus==='active'`; (b) `createBookingPaymentSession`/`chargeSavedCard` charge in `property.ryftAccountCurrency` (GBP), not `property.currency`; (c) **the display fix** — `prepareBooking` now *denominates the booking row* in `ryftAccountCurrency`, so the confirmation page + email show the same currency that's charged. (The old "confirmation shows USD" cosmetic bug is resolved.)
 3. **There are TWO checkout UIs.** The live storefront renders the **theme** screen (`src/themes/<theme>/screens/Checkout.tsx`), NOT the fallback `src/app/[property]/checkout/checkout-client.tsx`. Rockenue = Portico. Any checkout change must go in the theme screen. Likewise admin has a **legacy** property editor (`/admin/properties/[id]`) AND the live one (`/admin/[propertyId]` with the Sidebar) — the live one is what's used.
 4. **Ryft return URL / account-link must be HTTPS.** On http/localhost the connect flow can't create a hosted-onboarding link; `connect/start` falls back to marking the sub-account active directly (sandbox accounts are card-enabled on creation). The payment session omits `returnUrl` on non-https origins (the SDK does 3DS inline).
 5. **All sandbox cards require 3DS** (no non-3DS card exists). Frictionless still needs the SDK to complete 3DS in-browser; works on local https once `customerEmail` is on the session.
@@ -103,40 +105,53 @@ npx next dev --experimental-https \
 - `webhooks` — PaymentSession.approved/captured → fulfil (backstop). **Card-save events** (amount 0 / matches `ryftVerifySessionId`) persist the saved card + fulfil but do NOT mark paid. Account.* → refresh status.
 - `connect/start` + `connect/return` — onboarding (admin).
 - `session/route.ts` — standalone spike session (used by `/ryft-spike`).
-- `../cron/auto-charge` — hourly; runs the Stripe AND Ryft Flex sweeps side by side (rails disambiguated by saved-card state).
+- `../cron/auto-charge` — hourly; runs the Ryft Flex sweep (`findEligibleRyftBookings` → `chargeRyftBooking`). Stripe sweep removed.
+
+**Re-enter-card recovery** (failed off-session charge)
+- `src/app/payment-update/[token]/page.tsx` — for a Ryft-active Flex booking, mints a fresh card-save (verifyAccount/COF) session and renders the Ryft CardForm. `ryft-payment-update-client.tsx` drives it.
+- `src/app/api/bookings/payment-update/route.ts` — verifies the new verify session, swaps BOTH `ryftPaymentMethodId` + `ryftVerifySessionId` (the new mandate) onto the booking, re-arms the cron.
+- `lib/ryft/auto-charge.ts` emails this link to the guest on the first decline (`sendReEnterCardEmail`).
 
 **Checkout (storefront)**
-- `src/components/checkout/RyftPaymentSection.tsx` — `@ryftpay/react` CardForm, separated fields, `confirm()` → `attemptPayment`. (Was the v2 embedded `ryft.min.js` — replaced; that was the cramped white-on-white single line.)
-- `src/themes/{portico,street,editorial-calm}/screens/Checkout.tsx` — all three **branched by `property.paymentRail`** (Ryft vs Stripe).
-- `src/app/[property]/checkout/checkout-client.tsx` — fallback, also branched.
-- `src/lib/booking/submitBooking.ts` — `ryftInitBooking`, `ryftFinaliseBooking` helpers.
-- `src/lib/get-property.ts` — `ResolvedProperty.paymentRail` = `ryftAccountStatus==='active' ? 'ryft' : 'stripe'`.
+- `src/components/checkout/RyftPaymentSection.tsx` — `@ryftpay/react` CardForm, separated fields, `confirm()` → `attemptPayment`. `saveCard` prop switches it to setup-card usage for Flex.
+- `src/themes/{portico,street,editorial-calm}/screens/Checkout.tsx` + `src/app/[property]/checkout/checkout-client.tsx` — all four run the Ryft path **unconditionally** (no rail branch — Stripe is gone).
+- `src/lib/booking/submitBooking.ts` — `ryftInitBooking`, `ryftFinaliseBooking` (returns `cancelUrl` for Flex), `patchBookingDetails`. The Stripe `initBooking`/`submitBooking` helpers are deleted.
+- `src/lib/get-property.ts` — `paymentRail` removed; checkout is always Ryft.
 - `src/app/api/bookings/[id]/details/route.ts` — patches guest details AND the Ryft session email.
 
 **Admin**
-- `src/app/admin/[propertyId]/ryft/page.tsx` — Connect-to-Ryft + status. `src/components/admin/Sidebar.tsx` — "Ryft" nav item.
+- `src/app/admin/[propertyId]/ryft/page.tsx` — Connect-to-Ryft + status. `src/components/admin/Sidebar.tsx` — "Ryft" nav item (Stripe nav removed). Overview/list/super-admin/bookings pages all read `ryftAccount*`.
 
 **Fulfilment / shared**
-- `src/lib/pms/fulfil-booking.ts` — payment posting is rail-agnostic (prefers Ryft session id, falls back to Stripe).
-- `src/db/schema.ts` — additive: `ryft_account_*` on properties, `ryft_*` on bookings, `ryft_id` on paymentEvents, all ALONGSIDE the stripe_* columns. (DB columns were added via ad-hoc `ALTER TABLE … ADD COLUMN IF NOT EXISTS`; no migration file — project uses drizzle push.)
+- `src/lib/pms/fulfil-booking.ts` — posts the external payment from the Ryft session id (Stripe fallback removed). `retry-pms.ts` give-up refunds/deletes via Ryft.
+- `src/db/schema.ts` — `ryft_account_*` on properties, `ryft_*` on bookings, `ryft_id` on paymentEvents. `stripe_*` columns removed. Project uses **drizzle push** (no migrations folder — deliberate at this scale).
 - `src/db/index.ts` — Neon retry wrapper.
 
 ---
 
-## 7. What's left before "Ryft completed"
+## 7. What's left
 
-### Cosmetic (small)
-- [ ] **Currency display USD→GBP** — charge is GBP, storefront/confirmation shows USD. Fix display to use charge currency, or set the demo hotel to GBP in Cloudbeds.
-- [ ] *(optional)* re-add **name-on-card** field (stripped during debugging; `collectNameOnCard:false` in `RyftPaymentSection`).
+The **code side is finished.** Everything below is operational / go-live work that needs a live Ryft account (which doesn't exist yet — still sandbox).
 
-### Functional (real gaps)
-- [x] **Flex / refundable rates** — BUILT (2026-06-27) and **PROVEN LIVE end-to-end (2026-06-28)** — card-save (3DS) + off-session MIT charge both ran on the real storefront/cron (see §1). Ryft has no SetupIntent 1:1, so Flex runs as **Credential-on-File / Merchant-Initiated Transactions**: a zero-value `verifyAccount` card-save session with `paymentType:"Unscheduled"` on the hotel sub-account establishes the COF mandate; the auto-charge cron later charges the saved card off-session (`paymentType:"Unscheduled"` + `previousPayment` = the mandate + saved `pmt_`). Both constraints (sub-account scope for mandate+charge; mandate must be `Unscheduled` not Standard) were proven in sandbox. Files: `lib/ryft/sessions.ts` (`createBookingCardSave`, `getCustomerPaymentMethods`, `chargeSavedCard`, `deletePaymentMethod`), `lib/ryft/auto-charge.ts` (mirrors the Stripe cron), `cron/auto-charge` (runs both rails), `ryft/booking-init`+`booking-finalise` (rate-aware), `ryft/webhooks` (card-save backstop), Portico + fallback checkout un-gated. **Deferred sub-piece:** a Ryft "re-enter your card" page for a failed off-session charge (the Stripe `payment-update` page equivalent) — grace retries + auto-cancel cover it for now.
-- [x] **Street + Editorial-Calm themes** — DONE (2026-06-27). Both checkout screens now branch by `property.paymentRail`, same pattern as Portico. All three storefront themes can transact NR + Flex on Ryft.
-- [x] **Cancellations / refunds on Ryft** — DONE (2026-06-27). `api/bookings/cancel/route.ts` refund branch is now rail-aware: refunds (Captured) or voids (Approved) via Ryft, falls back to the Stripe paths. (Note: NR self-cancel is still punted to the hotel before the refund branch, so this activates for Flex/refundable bookings.)
-- [ ] **Production webhook** — register `POST /api/ryft/webhooks` against a stable HTTPS prod domain (inline finalise covers the happy path; webhook is the durable backstop if the guest tab dies post-charge). Store the `whs_…` secret as `RYFT_WEBHOOK_SECRET`.
-- [ ] **Real hotel onboarding** — `connect/start` shortcuts on localhost (no hosted KYC). In prod (https), the hosted-onboarding link + `Account.updated` webhook drive real verification → active.
-- [ ] **Final Stripe removal (cutover)** — once all themes + Flex + refunds run on Ryft: delete `src/lib/stripe`, the `/api/stripe/*` routes, the admin Stripe page, and the `stripe_*` schema columns. ~65 files reference Stripe today.
-- [ ] **Migrations** — the Ryft columns were added by ad-hoc ALTERs; fold them into the project's drizzle migration workflow for other environments/prod.
+### Done (this migration)
+- [x] NR + Flex on Ryft, refunds/void/cancel, off-session auto-charge.
+- [x] **Re-enter-card recovery page** (`/payment-update/[token]`, Ryft) + decline email that links to it.
+- [x] **Currency display fix** — bookings denominated in `ryftAccountCurrency` at creation; confirmation/email now match the charge.
+- [x] **Flex self-cancel link** on the confirmation screen (`booking-finalise` returns `cancelUrl` → all 4 checkout screens).
+- [x] **All three themes + fallback** run Ryft unconditionally.
+- [x] **Stripe deleted** (`lib/stripe`, `api/stripe`, Stripe checkout routes, `StripePaymentSection`, theme appearances, admin Stripe pages, `stripe_*` schema columns, `@stripe/*` deps).
+- [x] **Mews end-to-end** proven (`mews-fulfil-smoke`).
+- [x] **Merged to `main`** → Railway deploys on sandbox keys.
+
+### Go-live (blocked on a live Ryft account)
+- [ ] **Live keys** — swap `sk_sandbox_*`/`pk_sandbox_*` → `sk_live_*`/`pk_live_*` on Railway (client auto-switches base URL by prefix; no code change).
+- [ ] **Production webhook** — run `src/scripts/ryft-register-webhook.ts` with the live key + `https://app.rockenue.tech/api/ryft/webhooks`, store the `whs_…` as `RYFT_WEBHOOK_SECRET`. (Inline finalise covers the happy path; the webhook is the durable backstop.)
+- [ ] **First-delivery signature check** — confirm the digest encoding (hex vs base64); the verifier accepts both meanwhile.
+- [ ] **Per-hotel onboarding** — each real hotel runs the Ryft connect flow (`/admin/[propertyId]/ryft`) to get its own sub-account. Today the demos (`rockenue-partner-account-15cece68`, `mews-demo-hotel`) share sandbox sub-accounts; checkout is Ryft-only so only Ryft-active properties can take payment.
+- [ ] **Custom-domain 3DS** — verify a real-card challenge-flow 3DS (which redirects to `PUBLIC_APP_URL`) works when the guest started on a hotel's own domain. Frictionless 3DS (sandbox default) doesn't redirect, so this won't surface in sandbox testing.
+
+### Optional cleanup
+- [ ] **Drop the empty `stripe_*` DB columns** — safe any time now that `main` runs the Ryft code; or leave them (harmless, ignored).
 
 ---
 
@@ -172,9 +187,25 @@ b8136bb Ryft rail: webhook → fee split → Cloudbeds posting (backend)
 
 ---
 
-## 9. What's next (recommended order)
+## 9. What's next — the path to live
 
-1. ~~**Prove Flex live**~~ — DONE (2026-06-28). Card-save (3DS) + off-session MIT charge both ran on the real storefront/cron; see §1. To re-run the charge half locally: a Flex booking must be `pms_synced` with `chargeAt <= NOW()` and `ryftPaymentMethodId` set, then `POST /api/cron/auto-charge` with the `CRON_SECRET` bearer (set a throwaway `CRON_SECRET` in `.env.local` — it's unset by default).
-2. **Production webhook** — register `/api/ryft/webhooks` on the prod HTTPS domain; store `whs_…` as `RYFT_WEBHOOK_SECRET`. Confirm the signature digest encoding against the first live delivery (verifier accepts hex+base64).
-3. **Ryft "re-enter card" page** for a failed off-session charge (the Stripe `payment-update` equivalent) — currently deferred; grace retries + auto-cancel cover it.
-4. **Cutover** — Flex is now proven live, so this is unblocked: delete Stripe (~65 files + `stripe_*` columns) and fold the ad-hoc Ryft ALTERs into drizzle migrations.
+The code is done and deployed to `main` on sandbox keys. To go live (in order):
+
+1. **Sandbox-test the Railway deploy** — confirm app.rockenue.tech runs the Ryft storefront end-to-end on the hosted environment (book on a Ryft-active property with the sandbox test card). Catches hosted-env issues (PUBLIC_APP_URL, 3DS returnUrl, Neon) before launch.
+2. **Get a live Ryft account** → live keys.
+3. **Swap keys on Railway** — `sk_sandbox_*`→`sk_live_*`, `pk_sandbox_*`→`pk_live_*`. Redeploy not needed for env-only changes (Railway restarts).
+4. **Register the production webhook** — `ryft-register-webhook.ts` with the live key + prod URL; set `RYFT_WEBHOOK_SECRET`. Confirm signature encoding on the first delivery.
+5. **Onboard each real hotel** — Ryft connect flow per hotel → its own sub-account. Until a hotel is Ryft-active its checkout 409s (Ryft-only).
+6. **Custom-domain 3DS** — one real-card challenge-flow test from a hotel's own domain (see §7).
+
+Local dev to re-run the Flex charge: a Flex booking must be `pms_synced` with `chargeAt <= NOW()` and `ryftPaymentMethodId` set, then `POST /api/cron/auto-charge` with the `CRON_SECRET` bearer (set a throwaway `CRON_SECRET` in `.env.local`).
+
+---
+
+## 10. Deployment
+
+- **Railway service:** the app serving **app.rockenue.tech** (this repo). Deploys from `main`.
+- **`main` is now the Ryft code** (fast-forwarded to `ryft-migration` tip `80c50f5`, 2026-06-29).
+- **Env vars set (sandbox):** `RYFT_SECRET_KEY`, `NEXT_PUBLIC_RYFT_PUBLIC_KEY`, `PUBLIC_APP_URL=https://app.rockenue.tech`. Not yet set: `RYFT_WEBHOOK_SECRET` (only needed once a live webhook is registered).
+- **Railway CLI** is installed (`/usr/local/bin/railway`) but its OAuth token may be expired — `railway login` to read/set vars from the CLI.
+- **DB:** single shared Neon instance (local dev + Railway). **Lesson learned:** never drop columns before the code that stops using them is deployed everywhere — dropping `stripe_*` while `main` still ran Stripe broke the admin ("no hotels"); fixed by re-adding the (empty) columns.
